@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="pipeGrad" x1="180" y1="280" x2="520" y2="280" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#60A5FA"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.18"/>
+    </filter>
+    <filter id="cardShadow" x="-15%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0F172A" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <!-- Flow pipes: sources -> dashboard -->
+  <g stroke="url(#pipeGrad)" stroke-width="22" stroke-linecap="round" fill="none" opacity="0.95">
+    <path d="M150 120 C260 120, 300 280, 430 280"/>
+    <path d="M150 280 H430"/>
+    <path d="M150 440 C260 440, 300 280, 430 280"/>
+  </g>
+  <g stroke="#BFDBFE" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.55">
+    <path d="M150 120 C260 120, 300 280, 430 280"/>
+    <path d="M150 280 H430"/>
+    <path d="M150 440 C260 440, 300 280, 430 280"/>
+  </g>
+
+  <!-- Source: Website -->
+  <g filter="url(#softShadow)">
+    <circle cx="110" cy="120" r="54" fill="#FFFFFF"/>
+    <circle cx="110" cy="120" r="53" stroke="#E2E8F0" stroke-width="2"/>
+    <circle cx="110" cy="120" r="28" fill="none" stroke="#3B82F6" stroke-width="4"/>
+    <ellipse cx="110" cy="120" rx="12" ry="28" fill="none" stroke="#3B82F6" stroke-width="3.5"/>
+    <path d="M82 120 H138 M86 106 H134 M86 134 H134" stroke="#60A5FA" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- Source: Campaigns -->
+  <g filter="url(#softShadow)">
+    <circle cx="110" cy="280" r="54" fill="#FFFFFF"/>
+    <circle cx="110" cy="280" r="53" stroke="#E2E8F0" stroke-width="2"/>
+    <path d="M92 268 H118 L138 252 V308 L118 292 H92 Z" fill="#F87171"/>
+    <rect x="84" y="268" width="10" height="24" rx="3" fill="#EF4444"/>
+    <path d="M92 292 L86 304" stroke="#DC2626" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <!-- Source: Property portals -->
+  <g filter="url(#softShadow)">
+    <circle cx="110" cy="440" r="54" fill="#FFFFFF"/>
+    <circle cx="110" cy="440" r="53" stroke="#E2E8F0" stroke-width="2"/>
+    <path d="M110 416 L132 434 V460 H88 V434 Z" fill="#14B8A6"/>
+    <rect x="102" y="444" width="16" height="16" rx="2" fill="#FFFFFF"/>
+    <rect x="94" y="436" width="10" height="8" rx="1" fill="#CCFBF1"/>
+    <rect x="116" y="436" width="10" height="8" rx="1" fill="#CCFBF1"/>
+  </g>
+
+  <!-- Leads dashboard card -->
+  <g filter="url(#cardShadow)">
+    <rect x="450" y="70" width="460" height="420" rx="28" fill="#FFFFFF"/>
+    <rect x="450" y="70" width="460" height="420" rx="28" stroke="#E2E8F0" stroke-width="1.5"/>
+
+    <!-- Window dots -->
+    <circle cx="482" cy="102" r="7" fill="#F87171"/>
+    <circle cx="506" cy="102" r="7" fill="#FBBF24"/>
+    <circle cx="530" cy="102" r="7" fill="#34D399"/>
+
+    <text x="560" y="110" fill="#1E3A8A" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="28" font-weight="700">Leads</text>
+    <rect x="640" y="92" width="22" height="22" rx="5" fill="#E2E8F0"/>
+
+    <!-- Lead rows -->
+    <!-- Sara Khan -->
+    <g>
+      <line x1="482" y1="150" x2="878" y2="150" stroke="#F1F5F9" stroke-width="2"/>
+      <circle cx="510" cy="190" r="22" fill="#DBEAFE"/>
+      <text x="510" y="196" text-anchor="middle" fill="#1D4ED8" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="14" font-weight="700">SK</text>
+      <text x="548" y="186" fill="#0F172A" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="18" font-weight="600">Sara Khan</text>
+      <rect x="548" y="198" width="180" height="6" rx="3" fill="#93C5FD"/>
+      <rect x="780" y="176" width="70" height="28" rx="10" fill="#DBEAFE"/>
+      <text x="815" y="195" text-anchor="middle" fill="#1D4ED8" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="13" font-weight="600">New</text>
+    </g>
+
+    <!-- James Lee -->
+    <g>
+      <line x1="482" y1="230" x2="878" y2="230" stroke="#F1F5F9" stroke-width="2"/>
+      <circle cx="510" cy="270" r="22" fill="#D1FAE5"/>
+      <text x="510" y="276" text-anchor="middle" fill="#047857" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="14" font-weight="700">JL</text>
+      <text x="548" y="266" fill="#0F172A" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="18" font-weight="600">James Lee</text>
+      <rect x="548" y="278" width="210" height="6" rx="3" fill="#34D399"/>
+      <rect x="760" y="256" width="90" height="28" rx="10" fill="#D1FAE5"/>
+      <text x="805" y="275" text-anchor="middle" fill="#047857" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="13" font-weight="600">Qualified</text>
+    </g>
+
+    <!-- Mark Jones -->
+    <g>
+      <line x1="482" y1="310" x2="878" y2="310" stroke="#F1F5F9" stroke-width="2"/>
+      <circle cx="510" cy="350" r="22" fill="#FFEDD5"/>
+      <text x="510" y="356" text-anchor="middle" fill="#C2410C" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="14" font-weight="700">MJ</text>
+      <text x="548" y="346" fill="#0F172A" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="18" font-weight="600">Mark Jones</text>
+      <rect x="548" y="358" width="160" height="6" rx="3" fill="#FB923C"/>
+      <rect x="748" y="336" width="102" height="28" rx="10" fill="#FFEDD5"/>
+      <text x="799" y="355" text-anchor="middle" fill="#C2410C" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="13" font-weight="600">Site Visit</text>
+    </g>
+
+    <!-- Anna Lee -->
+    <g>
+      <line x1="482" y1="390" x2="878" y2="390" stroke="#F1F5F9" stroke-width="2"/>
+      <circle cx="510" cy="430" r="22" fill="#E0E7FF"/>
+      <text x="510" y="436" text-anchor="middle" fill="#4338CA" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="14" font-weight="700">AL</text>
+      <text x="548" y="426" fill="#0F172A" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="18" font-weight="600">Anna Lee</text>
+      <rect x="548" y="438" width="140" height="6" rx="3" fill="#818CF8"/>
+      <rect x="780" y="416" width="70" height="28" rx="10" fill="#DBEAFE"/>
+      <text x="815" y="435" text-anchor="middle" fill="#1D4ED8" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="13" font-weight="600">New</text>
+    </g>
+  </g>
+</svg>
