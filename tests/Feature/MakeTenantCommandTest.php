@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Enums\UserStatus;
+use App\Enums\UserType;
 use App\Models\LeadStage;
 use App\Models\Permission;
 use App\Models\Role;
@@ -10,6 +12,8 @@ use App\Models\User;
 use App\Support\TenantPermissions;
 use Database\Seeders\TenantDatabaseSeeder;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class MakeTenantCommandTest extends TestCase
@@ -46,6 +50,40 @@ class MakeTenantCommandTest extends TestCase
         ])->assertFailed();
     }
 
+    public function test_make_tenant_requires_password_option(): void
+    {
+        $this->artisan('make:tenant', [
+            '--name' => 'Acme',
+            '--database' => 'tenant_acme',
+            '--identifier' => 'acme',
+            '--admin_email' => 'admin@acme.test',
+        ])->assertFailed();
+    }
+
+    public function test_admin_password_option_is_stored_for_login(): void
+    {
+        $user = User::query()->firstOrNew(['email_address' => 'admin@acme.test']);
+        $user->fill([
+            'display_name' => 'Acme Admin',
+            'first_name' => 'Acme',
+            'last_name' => 'Admin',
+            'password' => 'secret',
+            'type' => UserType::Tenant,
+            'status' => UserStatus::Active,
+        ]);
+        $user->save();
+
+        $this->assertTrue(
+            Hash::check('secret', $user->fresh()->getRawOriginal('password'))
+        );
+        $this->assertTrue(
+            Auth::attempt([
+                'email_address' => 'admin@acme.test',
+                'password' => 'secret',
+            ])
+        );
+    }
+
     public function test_tenant_database_seeder_creates_admin_role_permissions_and_stages(): void
     {
         $this->migrateTenant();
@@ -62,14 +100,28 @@ class MakeTenantCommandTest extends TestCase
             '--force' => true,
         ]);
 
-        $this->assertTrue(Role::query()->where('name', 'admin')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Admin')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Team Lead')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Manager')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Sales Executive')->exists());
+
         $this->assertSame(
             count(TenantPermissions::names()),
             Permission::query()->count()
         );
-        $this->assertTrue($admin->fresh()->hasRole('admin'));
-        $this->assertTrue($admin->can('leads.view'));
+
+        $adminRole = Role::query()->where('name', 'Admin')->first();
+        $this->assertSame('admin with all permissions', $adminRole?->description);
+        $this->assertTrue($admin->fresh()->hasRole('Admin'));
+        $this->assertTrue($admin->can('manage admin'));
+        $this->assertTrue($admin->can('work lead'));
+
+        $sales = Role::query()->where('name', 'Sales Executive')->first();
+        $this->assertEqualsCanonicalizing(['work lead'], $sales?->permissions->pluck('name')->all());
+
+        $this->assertSame('Administration', Permission::query()->where('name', 'manage admin')->value('group'));
         $this->assertGreaterThan(0, LeadStage::query()->count());
+        $this->assertCount(5, TenantPermissions::groupedForForm());
 
         Tenant::forgetCurrent();
     }

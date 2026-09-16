@@ -36,7 +36,9 @@ return [
     'pages' => [
 
         'paths' => [
-            resource_path('js/pages'),
+            resource_path('js/apps/portal/pages'),
+            resource_path('js/apps/public/pages'),
+            resource_path('js/apps/auth/pages'),
         ],
 
         'extensions' => [

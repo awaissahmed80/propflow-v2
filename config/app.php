@@ -56,6 +56,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Domains
+    |--------------------------------------------------------------------------
+    |
+    | Propflow serves marketing, auth, and portal apps on subdomains of the
+    | base domain. Session cookies must be scoped to the parent domain so
+    | login on auth.* is shared with portal.*.
+    |
+    */
+
+    'base_domain' => env('APP_BASE_DOMAIN', 'propflow.test'),
+
+    'url_scheme' => env('APP_URL_SCHEME', 'https'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

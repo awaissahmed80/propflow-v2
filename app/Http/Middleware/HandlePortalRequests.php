@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Tenant;
 use App\Services\TenantContext;
+use App\Support\Domain;
 use Closure;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -46,7 +47,17 @@ class HandlePortalRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $request->user()?->only([
+                    'id',
+                    'display_name',
+                    'first_name',
+                    'last_name',
+                    'email_address',
+                ]),
+            ],
+            'urls' => [
+                'auth' => Domain::auth(),
+                'portal' => Domain::portal(),
             ],
             'tenant' => [
                 'current' => Tenant::current()?->only(['id', 'name', 'identifier']),

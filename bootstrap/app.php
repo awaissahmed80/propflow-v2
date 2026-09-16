@@ -4,11 +4,14 @@ use App\Http\Middleware\EnsureTenantContext;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\HandlePortalRequests;
+use App\Support\Domain;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Spatie\Permission\Middleware\PermissionMiddleware;
@@ -22,10 +25,16 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function () {
-            Route::domain('api.'.env('APP_BASE_DOMAIN', 'propflow.test'))
+            Route::domain('api.'.config('app.base_domain'))
                 ->middleware('api')
-                ->prefix('') // optional: keep /api prefix if desired
+                ->prefix('')
                 ->group(base_path('routes/api.php'));
+
+            RateLimiter::for('login', function (Request $request) {
+                return Limit::perMinute(5)->by(
+                    (string) $request->string('email_address').'|'.$request->ip()
+                );
+            });
         }
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -34,6 +43,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'webhooks/*',
         ]);
+
+        $middleware->redirectGuestsTo(fn () => Domain::auth());
+        $middleware->redirectUsersTo(fn () => Domain::portal());
 
         $middleware->web(append: [
             // HandleAppearance::class,
@@ -61,7 +73,6 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
         $exceptions->render(function (NotFoundHttpException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([

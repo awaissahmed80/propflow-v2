@@ -42,7 +42,13 @@ export const baseQuery = (baseUrl) => async (args, api, extraOptions) => {
     let result = await baseAuthQuery(baseUrl)(args, api, extraOptions)    
         
     if (result.error  && result.error.status === 401) {
-        router.post('/logout');
+        router.post('/logout', {}, {
+            onSuccess: (page) => {
+                if (page.props.status === 'logged_out' && page.props.redirect) {
+                    window.location.assign(page.props.redirect);
+                }
+            },
+        });
     }
     
     else if (result.error && result.error.status === 'FETCH_ERROR') {

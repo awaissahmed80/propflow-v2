@@ -7,6 +7,7 @@ use App\Enums\UserStatus;
 use App\Enums\UserType;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\Domain;
 use Database\Seeders\TenantDatabaseSeeder;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -14,7 +15,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Throwable;
 
 #[Signature('make:tenant
@@ -22,7 +22,8 @@ use Throwable;
         {--database= : Database name (letters, numbers, underscores)}
         {--identifier= : Unique identifier (slug)}
         {--admin_email=admin@example.com : Admin email}
-        {--admin_password=password : Admin password}')]
+        {--password= : Admin password (preferred)}
+        {--admin_password= : Admin password (alias of --password)}')]
 #[Description('Create a tenant: landlord records, MySQL database, migrations, permissions, and admin role')]
 class MakeTenant extends Command
 {
@@ -32,10 +33,16 @@ class MakeTenant extends Command
         $dbName = (string) $this->option('database');
         $identifier = (string) $this->option('identifier');
         $email = (string) $this->option('admin_email');
-        $password = (string) $this->option('admin_password');
+        $password = $this->resolveAdminPassword();
 
         if ($name === '' || $dbName === '' || $identifier === '') {
             $this->error('Missing required options: --name, --database, --identifier');
+
+            return self::FAILURE;
+        }
+
+        if ($password === '') {
+            $this->error('Missing required option: --password (or --admin_password)');
 
             return self::FAILURE;
         }
@@ -73,22 +80,26 @@ class MakeTenant extends Command
                 'identifier' => $identifier,
             ]);
 
-            $user = User::query()->firstOrCreate(
-                ['email_address' => $email],
-                [
-                    'display_name' => $name.' Admin',
-                    'first_name' => $name,
-                    'last_name' => 'Admin',
-                    'password' => Hash::make($password),
-                    'type' => UserType::Tenant,
-                    'status' => UserStatus::Active,
-                ]
-            );
+            $user = User::query()->firstOrNew(['email_address' => $email]);
 
-            if ($user->wasRecentlyCreated === false && $user->type !== UserType::Tenant) {
+            if ($user->exists && $user->type !== UserType::Tenant) {
                 $this->error("User [{$email}] already exists as a platform account.");
 
                 return self::FAILURE;
+            }
+
+            $user->fill([
+                'display_name' => $user->display_name ?: $name.' Admin',
+                'first_name' => $user->first_name ?: $name,
+                'last_name' => $user->last_name ?: 'Admin',
+                'password' => $password,
+                'type' => UserType::Tenant,
+                'status' => UserStatus::Active,
+            ]);
+            $user->save();
+
+            if (! $user->wasRecentlyCreated) {
+                $this->warn("User [{$email}] already existed — password was updated to the value you passed.");
             }
 
             $tenant->tenantUsers()->firstOrCreate(
@@ -143,6 +154,8 @@ class MakeTenant extends Command
             $this->line("  Identifier : {$identifier}");
             $this->line("  Database   : {$dbName}");
             $this->line("  Admin      : {$email}");
+            $this->line("  Password   : {$password}");
+            $this->line('  Login URL  : '.Domain::auth());
 
             return self::SUCCESS;
         } catch (Throwable $e) {
@@ -154,6 +167,19 @@ class MakeTenant extends Command
 
             return self::FAILURE;
         }
+    }
+
+    protected function resolveAdminPassword(): string
+    {
+        $password = $this->option('password');
+
+        if (is_string($password) && $password !== '') {
+            return $password;
+        }
+
+        $alias = $this->option('admin_password');
+
+        return is_string($alias) ? $alias : '';
     }
 
     protected function configureTenantConnection(string $database): void

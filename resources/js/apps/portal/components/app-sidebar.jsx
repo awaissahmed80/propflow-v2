@@ -1,12 +1,11 @@
 import { Sidebar } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ThemeSwitcher } from "./theme-switcher"
 import { menu_items } from "../utils/menu_items"
 import { NavLink } from "./nav-link"
+import { NavUser } from "./nav-user"
 import { Icon } from "@/components/ui/icon"
 
 export function AppSidebar () {
-
     return(
         <Sidebar collapsible="offcanvas" variant="sidebar" className="flex h-screen p-0!  flex-col overflow-hidden">
             <div className="h-full  border-r-0">
@@ -40,8 +39,8 @@ export function AppSidebar () {
                             </ScrollArea>
                         </div>
                     </div>
-                    <div className="p-3">
-                        <ThemeSwitcher />
+                    <div className="p-3 border-t border-sidebar-border/50">
+                        <NavUser />
                     </div>
                 </div>
             </div>

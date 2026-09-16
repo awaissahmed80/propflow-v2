@@ -13,29 +13,57 @@ use Spatie\Permission\PermissionRegistrar;
 class TenantDatabaseSeeder extends Seeder
 {
     /**
-     * Seed the current tenant database (permissions, admin role, default stages).
-     * Expects a tenant to already be current and the admin User to be passed via config.
+     * Seed the current tenant database:
+     * permissions (grouped catalog), default roles, admin assignment, lead stages.
      */
     public function run(): void
     {
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        foreach (TenantPermissions::names() as $name) {
-            Permission::findOrCreate($name, 'web');
-        }
-
-        $adminRole = Role::findOrCreate('admin', 'web');
-        $adminRole->syncPermissions(TenantPermissions::names());
+        $this->seedPermissions();
+        $adminRole = $this->seedDefaultRoles();
 
         /** @var User|null $admin */
         $admin = config('seeder.tenant_admin_user');
 
-        if ($admin instanceof User) {
+        if ($admin instanceof User && $adminRole) {
             $admin->unsetRelation('roles')->unsetRelation('permissions');
             $admin->syncRoles([$adminRole]);
         }
 
         $this->seedDefaultLeadStages();
+    }
+
+    protected function seedPermissions(): void
+    {
+        foreach (TenantPermissions::catalog() as $group) {
+            foreach ($group['permissions'] as $permission) {
+                $model = Permission::findOrCreate($permission['name'], 'web');
+                $model->forceFill([
+                    'group' => $group['group'],
+                    'label' => $permission['label'],
+                ])->save();
+            }
+        }
+    }
+
+    protected function seedDefaultRoles(): ?Role
+    {
+        $adminRole = null;
+
+        foreach (TenantPermissions::defaultRoles() as $roleData) {
+            $role = Role::findOrCreate($roleData['name'], 'web');
+            $role->forceFill([
+                'description' => $roleData['description'],
+            ])->save();
+            $role->syncPermissions($roleData['permissions']);
+
+            if ($roleData['name'] === 'Admin') {
+                $adminRole = $role;
+            }
+        }
+
+        return $adminRole;
     }
 
     protected function seedDefaultLeadStages(): void

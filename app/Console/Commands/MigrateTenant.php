@@ -53,13 +53,19 @@ class MigrateTenant extends Command
         }
 
         if ($this->option('seed')) {
+            $owner = $tenant->tenantUsers()->where('is_owner', true)->first()?->user;
+
             $tenant->makeCurrent();
+            config(['seeder.tenant_admin_user' => $owner]);
+
             $this->call('db:seed', [
                 '--class' => TenantDatabaseSeeder::class,
                 '--database' => 'tenant',
                 '--force' => true,
             ]);
+
             Tenant::forgetCurrent();
+            config(['seeder.tenant_admin_user' => null]);
         }
 
         $this->info("Migration complete for {$tenant->database}");

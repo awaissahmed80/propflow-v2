@@ -22,6 +22,8 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('guard_name');
+            $table->string('group')->nullable()->index();
+            $table->string('label')->nullable();
             $table->timestamps();
 
             $table->unique(['name', 'guard_name']);
@@ -31,6 +33,7 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('guard_name');
+            $table->text('description')->nullable();
             $table->timestamps();
 
             $table->unique(['name', 'guard_name']);
