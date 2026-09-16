@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\LeadStage;
+use App\Models\MetaData;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
@@ -14,7 +15,7 @@ class TenantDatabaseSeeder extends Seeder
 {
     /**
      * Seed the current tenant database:
-     * permissions (grouped catalog), default roles, admin assignment, lead stages.
+     * permissions (grouped catalog), default roles, admin assignment, lead stages, area units.
      */
     public function run(): void
     {
@@ -32,6 +33,7 @@ class TenantDatabaseSeeder extends Seeder
         }
 
         $this->seedDefaultLeadStages();
+        $this->seedDefaultAreaUnits();
     }
 
     protected function seedPermissions(): void
@@ -84,6 +86,23 @@ class TenantDatabaseSeeder extends Seeder
 
         foreach ($stages as $stage) {
             LeadStage::query()->create($stage);
+        }
+    }
+
+    protected function seedDefaultAreaUnits(): void
+    {
+        $units = [
+            'Sq. Feet',
+            'Sq. Meter',
+            'Sq. Yards',
+            'Marla',
+            'Kanal',
+            'Acre',
+            'Hectare',
+        ];
+
+        foreach ($units as $unit) {
+            MetaData::remember(MetaData::TYPE_AREA, $unit);
         }
     }
 }

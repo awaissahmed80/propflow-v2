@@ -51,7 +51,10 @@ export default defineConfig({
             // Your existing alias            
             // 💡 Add your new portal alias here
             '@/portal': path.resolve(__dirname, './resources/js/apps/portal'),
+            // Published package mixes ESM + CJS require and breaks React hooks under Vite.
+            'use-input-mask': path.resolve(__dirname, './resources/js/hooks/use-input-mask.js'),
         },
+        dedupe: ['react', 'react-dom'],
     },
     esbuild: {
         jsx: 'automatic',

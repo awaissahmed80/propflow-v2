@@ -141,13 +141,20 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:**:[svg]:text-foreground",
+        "group/command-item relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none",
+        "in-data-[slot=dialog-content]:rounded-lg!",
+        "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
+        "data-[checked=true]:bg-primary data-[checked=true]:text-primary-foreground",
+        "data-[checked=true]:data-[selected=true]:bg-primary data-[checked=true]:data-[selected=true]:text-primary-foreground",
+        "data-[checked=true]:**:text-primary-foreground",
+        "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}>
       {children}
       <CheckIcon
-        className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+        className="pointer-events-none absolute right-2 size-4 opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
     </CommandPrimitive.Item>
   );
 }
@@ -160,7 +167,7 @@ function CommandShortcut({
     <span
       data-slot="command-shortcut"
       className={cn(
-        "ml-auto text-xs tracking-widest text-muted-foreground group-data-selected/command-item:text-foreground",
+        "ml-auto text-xs tracking-widest text-muted-foreground group-data-[selected=true]/command-item:text-foreground",
         className
       )}
       {...props} />

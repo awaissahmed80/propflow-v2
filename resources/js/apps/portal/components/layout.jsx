@@ -50,7 +50,7 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
     return(
         <>
         <Head title={metaTitle || "Applicaiton"} />
-        <div className="px-8 py-3 border-b-0 flex items-center justify-between space-x-3">   
+        <div className="flex w-full items-center justify-between space-x-3 px-6 py-3">   
             <div className="flex flex-row items-center space-x-2">
                 <SidebarTrigger className="-ml-1" />
                 <Separator orientation="vertical"  className="h-4 border-l border-muted-foreground/50 mr-4" />
@@ -126,6 +126,23 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
     )
 }
 
+/**
+ * Full-width page title / actions bar (top + bottom borders, edge-to-edge).
+ */
+const LayoutToolbar = ({ className, children, ...rest }) => {
+    return (
+        <div
+            className={cn(
+                "flex w-full shrink-0 items-center gap-4 border-t border-b border-border px-6 py-3",
+                className
+            )}
+            {...rest}
+        >
+            {children}
+        </div>
+    )
+}
+
 const LayoutContent = ({children, className, ...rest}) => {
 
     return(
@@ -145,6 +162,7 @@ const LayoutFooter = ({children, ...rest}) => {
 }
 
 Layout.Header = LayoutHeader
+Layout.Toolbar = LayoutToolbar
 Layout.Content = LayoutContent
 Layout.Footer = LayoutFooter
 

@@ -2,30 +2,20 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\MetaData;
 use App\Models\Tenant;
 use App\Services\TenantContext;
 use App\Support\Domain;
-use Closure;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Middleware;
-use Symfony\Component\HttpFoundation\Response;
 
 class HandlePortalRequests extends Middleware
 {
-    // protected $rootView = 'portal';
     public function rootView(Request $request): string
     {
         return 'portal';
     }
-    /**
-     * Handle an incoming request.
-     *
-     * @param  Closure(Request): (Response)  $next
-     */
-    // public function handle(Request $request, Closure $next): Response
-    // {
-    //     return $next($request);
-    // }
 
     public function version(Request $request): ?string
     {
@@ -65,6 +55,44 @@ class HandlePortalRequests extends Middleware
                 'impersonator' => $tenantContext->impersonator()?->only(['id', 'display_name', 'email_address']),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // Always included so partial reloads keep meta lists fresh.
+            'meta' => Inertia::always(fn (): array => $this->sharedMeta()),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     CITY: list<string>,
+     *     COUNTRY: list<string>,
+     *     PROJECT: list<string>,
+     *     UNIT: list<string>,
+     *     AREA: list<string>,
+     *     LINK: list<string>,
+     *     DEPARTMENT: list<string>
+     * }
+     */
+    protected function sharedMeta(): array
+    {
+        if (! Tenant::current()) {
+            return [
+                'CITY' => [],
+                'COUNTRY' => [],
+                'PROJECT' => [],
+                'UNIT' => [],
+                'AREA' => [],
+                'LINK' => [],
+                'DEPARTMENT' => [],
+            ];
+        }
+
+        return [
+            'CITY' => MetaData::valuesFor(MetaData::TYPE_CITY)->all(),
+            'COUNTRY' => MetaData::valuesFor(MetaData::TYPE_COUNTRY)->all(),
+            'PROJECT' => MetaData::valuesFor(MetaData::TYPE_PROJECT)->all(),
+            'UNIT' => MetaData::valuesFor(MetaData::TYPE_UNIT)->all(),
+            'AREA' => MetaData::valuesFor(MetaData::TYPE_AREA)->all(),
+            'LINK' => MetaData::valuesFor(MetaData::TYPE_LINK)->all(),
+            'DEPARTMENT' => MetaData::valuesFor(MetaData::TYPE_DEPARTMENT)->all(),
         ];
     }
 }

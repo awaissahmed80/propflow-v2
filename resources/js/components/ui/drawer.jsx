@@ -34,7 +34,7 @@ export const Drawer = ({title, isOpen, size="default", onClose, footer, actions,
     return(        
         <Sheet open={isOpen} onOpenChange={onClose}>            
             <SheetContent side="right" className={cn(drawerVariants({ variant: "default", size, className: '' }))}>
-                <div className="flex flex-col bg-muted flex-1 rounded-lg  gap-0">
+                <div className="flex flex-col bg-card flex-1 rounded-lg  gap-0">
                     {
                         (title || actions) &&
                         <SheetHeader className="border-b items-center flex-row justify-between">

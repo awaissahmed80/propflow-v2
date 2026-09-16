@@ -12,7 +12,7 @@ export default function PortalLayout ({ children }) {
             <div className="h-dvh flex overflow-y-hidden space-x-0">
                 <SidebarProvider defaultOpen={isOpen}>
                     <AppSidebar />                    
-                    <div className="flex-1 h-full">
+                    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
                         {children}
                     </div>                                                
                 </SidebarProvider>

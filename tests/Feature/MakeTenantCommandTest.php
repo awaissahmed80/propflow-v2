@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\UserStatus;
 use App\Enums\UserType;
 use App\Models\LeadStage;
+use App\Models\MetaData;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\Tenant;
@@ -121,7 +122,11 @@ class MakeTenantCommandTest extends TestCase
 
         $this->assertSame('Administration', Permission::query()->where('name', 'manage admin')->value('group'));
         $this->assertGreaterThan(0, LeadStage::query()->count());
-        $this->assertCount(5, TenantPermissions::groupedForForm());
+        $this->assertEqualsCanonicalizing(
+            ['Acre', 'Hectare', 'Kanal', 'Marla', 'Sq. Feet', 'Sq. Meter', 'Sq. Yards'],
+            MetaData::valuesFor(MetaData::TYPE_AREA)->all()
+        );
+        $this->assertCount(count(TenantPermissions::catalog()), TenantPermissions::groupedForForm());
 
         Tenant::forgetCurrent();
     }

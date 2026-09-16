@@ -7,13 +7,14 @@ class TenantPermissions
     /**
      * Permission catalog for the Add Role UI (grouped toggles).
      *
-     * @return list<array{group: string, permissions: list<array{name: string, label: string}>}>
+     * @return list<array{group: string, type?: string, permissions: list<array{name: string, label: string}>}>
      */
     public static function catalog(): array
     {
         return [
             [
                 'group' => 'Administration',
+                'type' => 'checkbox',
                 'permissions' => [
                     [
                         'name' => 'manage admin',
@@ -23,6 +24,7 @@ class TenantPermissions
             ],
             [
                 'group' => 'Users & Role Management',
+                'type' => 'checkbox',
                 'permissions' => [
                     [
                         'name' => 'manage user',
@@ -36,6 +38,7 @@ class TenantPermissions
             ],
             [
                 'group' => 'Team Management',
+                'type' => 'checkbox',
                 'permissions' => [
                     [
                         'name' => 'manage team',
@@ -60,24 +63,40 @@ class TenantPermissions
                 ],
             ],
             [
+                'group' => 'Project Management',
+                'type' => 'checkbox',
+                'permissions' => [
+                    [
+                        'name' => 'manage project',
+                        'label' => 'Can manage all projects (create, edit, delete)',
+                    ],
+                    [
+                        'name' => 'view projects',
+                        'label' => 'Can view the list of projects',
+                    ],
+                ],
+            ],
+            [
                 'group' => 'Campaign Management',
+                'type' => 'radio',
                 'permissions' => [
                     [
                         'name' => 'manage campaign',
-                        'label' => 'Can manage campaigns (all operations)',
+                        'label' => 'Can manage all campaigns',
                     ],
                     [
                         'name' => 'assigned campaign',
-                        'label' => 'Can work on assigned campaigns',
+                        'label' => 'Can manage assigned campaigns only',
                     ],
                 ],
             ],
             [
                 'group' => 'Leads Management',
+                'type' => 'checkbox',
                 'permissions' => [
                     [
                         'name' => 'work lead',
-                        'label' => 'Can work leads (Sales Executive / leads operator)',
+                        'label' => 'Can manage all leads',
                     ],
                 ],
             ],
@@ -144,9 +163,9 @@ class TenantPermissions
     }
 
     /**
-     * Catalog keyed for API / Inertia props on the Add Role screen.
+     * Catalog keyed for API / Inertia props on the role form.
      *
-     * @return list<array{group: string, permissions: list<array{name: string, label: string}>}>
+     * @return list<array{group: string, type?: string, permissions: list<array{name: string, label: string}>}>
      */
     public static function groupedForForm(): array
     {

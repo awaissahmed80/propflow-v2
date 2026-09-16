@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { router } from "@inertiajs/react"
 import { toast } from "sonner"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar } from "@/components/ui/avatar"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -16,36 +16,13 @@ import { useAppearance } from "@/hooks/use-appearance"
 import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 
-function userInitials(user) {
-    const fromName = `${user?.first_name?.[0] ?? ''}${user?.last_name?.[0] ?? ''}`.trim();
-
-    if (fromName) {
-        return fromName.toUpperCase();
-    }
-
-    const parts = String(user?.display_name ?? '')
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
-
-    if (parts.length >= 2) {
-        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-
-    return (parts[0]?.[0] ?? user?.email_address?.[0] ?? '?').toUpperCase();
-}
-
 function UserIdentity({ user, className }) {
     const name = user?.display_name || 'User';
     const email = user?.email_address || '';
 
     return (
         <div className={cn("flex min-w-0 items-center gap-3", className)}>
-            <Avatar size="default" className="size-9">
-                <AvatarFallback className="bg-lime-800 text-sm font-semibold text-lime-50">
-                    {userInitials(user)}
-                </AvatarFallback>
-            </Avatar>
+            <Avatar name={name} size="default" className="size-9" textClass="text-sm" />
             <div className="min-w-0 flex-1 text-left">
                 <div className="truncate text-sm font-medium text-sidebar-foreground">
                     {name}
@@ -112,7 +89,7 @@ export function NavUser() {
                 side="top"
                 align="start"
                 sideOffset={8}
-                className="w-(--anchor-width) min-w-56 rounded-lg p-0 ring-1 ring-border"
+                className="w-(--anchor-width) rounded-lg p-0 ring-1 ring-border"
             >
                 <div className="px-3 py-3">
                     <UserIdentity user={user} />

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\AssetManager;
 use App\Traits\HasMeta;
 use App\Traits\LogUserActivity;
 use Illuminate\Database\Eloquent\Attributes\Connection;
@@ -53,10 +54,16 @@ class Project extends Model
     public function metaData(): array
     {
         return [
+            'COUNTRY' => $this->country,
             'CITY' => $this->city,
             'PROJECT' => $this->type,
             'AREA' => $this->details->area_type,
         ];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'code';
     }
 
     public static function boot()
@@ -76,27 +83,27 @@ class Project extends Model
 
     public function thumbnail(): MorphOne
     {
-        return $this->morphOne(AssetLink::class, 'assetable')->where('linkage', 'THUMBNAIL');
+        return $this->morphOne(AssetLink::class, 'assetable')
+            ->where('linkage', AssetManager::LINKAGE_THUMBNAIL);
     }
 
-    /**
-     * A morph one relationship to the thumbnail asset link.
-     *
-     * @return MorphOne
-     */
     public function gallery(): MorphMany
     {
-        return $this->morphMany(AssetLink::class, 'assetable')->where('linkage', 'GALLERY');
+        return $this->morphMany(AssetLink::class, 'assetable')
+            ->where('linkage', AssetManager::LINKAGE_GALLERY);
     }
 
     public function documents(): MorphMany
     {
-        return $this->morphMany(AssetLink::class, 'assetable')->where('linkage', 'DOCUMENT');
+        return $this->morphMany(AssetLink::class, 'assetable')
+            ->where('linkage', AssetManager::LINKAGE_DOCUMENT);
     }
 
     public function phases()
     {
-        return $this->hasMany(ProjectProgress::class)->orderBy('start_date', 'desc');
+        return $this->hasMany(ProjectProgress::class)
+            ->orderBy('order')
+            ->orderBy('start_date');
     }
 
     public function get_gallery()

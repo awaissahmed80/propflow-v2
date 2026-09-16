@@ -1,5 +1,6 @@
 import { createInertiaApp } from '@inertiajs/react';
 import { Provider } from 'react-redux'
+import { AlertProvider } from '@/portal/contexts/alert.context';
 import { AppStore } from '@/portal/store';
 import RootLayout from '@/portal/layouts/root.layout';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
@@ -28,9 +29,9 @@ createInertiaApp({
         root.render(
             <Provider store={AppStore}>                
                 <RootLayout>
-                    {/* <AlertProvider>                         */}
+                    <AlertProvider>                        
                         <App {...props} />                        
-                    {/* </AlertProvider> */}
+                    </AlertProvider>
                 </RootLayout>                
             </Provider>
         );
