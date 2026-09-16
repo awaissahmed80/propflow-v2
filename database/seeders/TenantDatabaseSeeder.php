@@ -34,6 +34,7 @@ class TenantDatabaseSeeder extends Seeder
 
         $this->seedDefaultLeadStages();
         $this->seedDefaultAreaUnits();
+        $this->seedDefaultUnitTypes();
     }
 
     protected function seedPermissions(): void
@@ -103,6 +104,13 @@ class TenantDatabaseSeeder extends Seeder
 
         foreach ($units as $unit) {
             MetaData::remember(MetaData::TYPE_AREA, $unit);
+        }
+    }
+
+    protected function seedDefaultUnitTypes(): void
+    {
+        foreach (['Apartment', 'Plot', 'Shop', 'Villa', 'Office'] as $type) {
+            MetaData::remember(MetaData::TYPE_UNIT, $type);
         }
     }
 }

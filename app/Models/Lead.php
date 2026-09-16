@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
@@ -32,8 +34,31 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Connection('tenant')]
 class Lead extends Model
 {
-    //
     use HasFactory, LogUserActivity, SoftDeletes;
+
+    public const TAG_VERY_HOT = 'VERY HOT';
+
+    public const TAG_HOT = 'HOT';
+
+    public const TAG_MODERATE = 'MODERATE';
+
+    public const TAG_COLD = 'COLD';
+
+    public const TAG_VERY_COLD = 'VERY COLD';
+
+    /**
+     * @return list<string>
+     */
+    public static function tags(): array
+    {
+        return [
+            self::TAG_VERY_HOT,
+            self::TAG_HOT,
+            self::TAG_MODERATE,
+            self::TAG_COLD,
+            self::TAG_VERY_COLD,
+        ];
+    }
 
     protected function casts(): array
     {
@@ -53,56 +78,85 @@ class Lead extends Model
         ];
     }
 
-    public static function boot()
+    public static function boot(): void
     {
         parent::boot();
 
-        static::creating(function ($model) {
-            $lastId = static::max('id') ?? 0;
+        static::creating(function (Lead $model): void {
+            if (filled($model->code)) {
+                return;
+            }
+
+            $lastId = static::withTrashed()->max('id') ?? 0;
             $datePart = date('dm');
-            $numberPart = str_pad($lastId + 1, 6, '0', STR_PAD_LEFT);
-            $tenantId = optional(Tenant::current())->id
-                ?? Tenant::latest()->first()?->id ?? 0;
+            $numberPart = str_pad((string) ($lastId + 1), 6, '0', STR_PAD_LEFT);
+            $tenantId = Tenant::current()?->id
+                ?? Tenant::query()->latest('id')->value('id')
+                ?? 0;
             $model->code = 'l'.$tenantId.$datePart.$numberPart;
         });
     }
 
-    public function stage()
+    /**
+     * @return BelongsTo<LeadStage, $this>
+     */
+    public function stage(): BelongsTo
     {
         return $this->belongsTo(LeadStage::class, 'lead_stage_id');
     }
 
-    public function project()
+    /**
+     * @return BelongsTo<Project, $this>
+     */
+    public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
     }
 
-    public function unit()
+    /**
+     * @return BelongsTo<Unit, $this>
+     */
+    public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class);
     }
 
-    public function contact()
+    /**
+     * @return BelongsTo<Contact, $this>
+     */
+    public function contact(): BelongsTo
     {
         return $this->belongsTo(Contact::class);
     }
 
-    public function creator()
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function assignee()
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
-    public function tasks()
+    /**
+     * @return HasMany<Task, $this>
+     */
+    public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
     }
 
-    public function campaign()
+    /**
+     * @return BelongsTo<Campaign, $this>
+     */
+    public function campaign(): BelongsTo
     {
         return $this->belongsTo(Campaign::class);
     }

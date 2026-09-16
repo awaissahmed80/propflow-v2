@@ -77,6 +77,20 @@ class TenantPermissions
                 ],
             ],
             [
+                'group' => 'Inventory Management',
+                'type' => 'checkbox',
+                'permissions' => [
+                    [
+                        'name' => 'manage inventory',
+                        'label' => 'Can manage inventory units and blocks (create, edit, delete)',
+                    ],
+                    [
+                        'name' => 'view inventory',
+                        'label' => 'Can view the inventory list',
+                    ],
+                ],
+            ],
+            [
                 'group' => 'Campaign Management',
                 'type' => 'radio',
                 'permissions' => [

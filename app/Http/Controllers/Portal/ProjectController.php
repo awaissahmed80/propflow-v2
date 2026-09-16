@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Portal\StoreProjectRequest;
 use App\Http\Requests\Portal\UpdateProjectRequest;
 use App\Http\Resources\Portal\ProjectResource;
+use App\Http\Resources\Portal\UnitResource;
 use App\Models\MetaData;
 use App\Models\Project;
 use App\Support\AssetManager;
@@ -47,9 +48,17 @@ class ProjectController extends Controller
                 'blocks',
                 'leads',
                 'units as sold_units_count' => fn ($query) => $query->where('status', 'SOLD'),
+                'units as available_units_count' => fn ($query) => $query->where('status', 'AVAILABLE'),
+                'units as reserved_units_count' => fn ($query) => $query->where('status', 'RESERVED'),
             ])
             ->withSum('units', 'size')
             ->firstOrFail();
+
+        $recentUnits = $projectModel->units()
+            ->with(['block:id,title,project_id'])
+            ->latest('id')
+            ->limit(5)
+            ->get();
 
         $projectModel->setAttribute(
             'thumbnail_url',
@@ -99,7 +108,13 @@ class ProjectController extends Controller
             'leads_count' => (int) ($projectModel->leads_count ?? 0),
             'units_count' => (int) ($projectModel->units_count ?? 0),
             'sold_count' => (int) ($projectModel->sold_units_count ?? 0),
+            'available_count' => (int) ($projectModel->available_units_count ?? 0),
+            'reserved_count' => (int) ($projectModel->reserved_units_count ?? 0),
             'blocks_count' => (int) ($projectModel->blocks_count ?? 0),
+        ];
+
+        $payload['inventory'] = [
+            'units' => UnitResource::collection($recentUnits)->resolve(),
         ];
 
         $payload['pin_location'] = $projectModel->pin_location;

@@ -4,12 +4,16 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Portal\DocumentController;
 use App\Http\Controllers\Portal\DocumentFolderController;
 use App\Http\Controllers\Portal\DocumentLabelController;
+use App\Http\Controllers\Portal\InventoryController;
+use App\Http\Controllers\Portal\LeadController;
 use App\Http\Controllers\Portal\MediaController;
 use App\Http\Controllers\Portal\MetaDataController;
+use App\Http\Controllers\Portal\ProjectBlockController;
 use App\Http\Controllers\Portal\ProjectController;
 use App\Http\Controllers\Portal\ProjectProgressController;
 use App\Http\Controllers\Portal\RoleController;
 use App\Http\Controllers\Portal\TeamController;
+use App\Http\Controllers\Portal\UnitController;
 use App\Http\Controllers\Portal\UserController;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -39,8 +43,19 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
 
     Route::domain('portal.'.$baseDomain)->middleware(['auth', 'tenant'])->group(function () {
         Route::inertia('/', 'welcome')->name('portal.home');
-        Route::inertia('/leads', 'leads/index')->name('portal.leads');
+        Route::get('/leads', [LeadController::class, 'index'])->name('portal.leads.index');
+        Route::post('/leads', [LeadController::class, 'store'])->name('portal.leads.store');
+        Route::match(['put', 'patch'], '/leads/{lead}', [LeadController::class, 'update'])->name('portal.leads.update');
+        Route::delete('/leads/{lead}', [LeadController::class, 'destroy'])->name('portal.leads.destroy');
         Route::inertia('/file-manager', 'file-manager/index')->name('portal.file-manager');
+        Route::get('/inventory', [InventoryController::class, 'index'])->name('portal.inventory.index');
+        Route::post('/units', [UnitController::class, 'store'])->name('portal.units.store');
+        Route::match(['put', 'patch'], '/units/{unit}', [UnitController::class, 'update'])->name('portal.units.update');
+        Route::delete('/units/{unit}', [UnitController::class, 'destroy'])->name('portal.units.destroy');
+        Route::get('/project-blocks', [ProjectBlockController::class, 'index'])->name('portal.project-blocks.index');
+        Route::post('/project-blocks', [ProjectBlockController::class, 'store'])->name('portal.project-blocks.store');
+        Route::match(['put', 'patch'], '/project-blocks/{block}', [ProjectBlockController::class, 'update'])->name('portal.project-blocks.update');
+        Route::delete('/project-blocks/{block}', [ProjectBlockController::class, 'destroy'])->name('portal.project-blocks.destroy');
         Route::get('/users', [UserController::class, 'index'])->name('portal.users.index');
         Route::post('/users', [UserController::class, 'store'])->name('portal.users.store');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('portal.users.update');

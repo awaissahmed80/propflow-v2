@@ -5,6 +5,7 @@ namespace Tests\Feature\Portal;
 use App\Models\Project;
 use App\Models\Tenant;
 use App\Models\TenantUser;
+use App\Models\Unit;
 use App\Models\User;
 use App\Services\TenantContext;
 use App\Support\Domain;
@@ -41,6 +42,10 @@ class ProjectShowTest extends TestCase
             'city' => 'Karachi',
             'progress' => 35,
         ]);
+        $unit = Unit::factory()->create([
+            'project_id' => $project->id,
+            'name' => 'Corner Suite',
+        ]);
         Tenant::forgetCurrent();
 
         $this->actingAs($user);
@@ -58,10 +63,14 @@ class ProjectShowTest extends TestCase
             ->where('project.status', 'active')
             ->where('project.progress', 35)
             ->has('project.stats')
+            ->where('project.stats.available_count', 1)
             ->has('project.gallery')
             ->has('project.documents')
             ->has('project.phases')
             ->has('project.features')
+            ->has('project.inventory.units', 1)
+            ->where('project.inventory.units.0.id', $unit->id)
+            ->where('project.inventory.units.0.name', 'Corner Suite')
             ->has('meta.CITY')
             ->has('meta.COUNTRY')
             ->has('meta.PROJECT')

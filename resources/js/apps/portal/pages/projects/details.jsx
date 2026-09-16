@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { router } from "@inertiajs/react";
+import { Link, router } from "@inertiajs/react";
 import { toast } from "sonner";
 import { destroy, update } from "@/actions/App/Http/Controllers/Portal/ProjectController";
 import { index as projectsIndex } from "@/routes/portal/projects";
+import { index as inventoryIndex } from "@/routes/portal/inventory";
+import { index as leadsIndex } from "@/routes/portal/leads";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +34,15 @@ const STATUS_LABELS = {
     on_hold: "On hold",
     completed: "Completed",
     archived: "Archived",
+};
+
+const UNIT_STATUS_LABELS = {
+    AVAILABLE: "Available",
+    RESERVED: "Reserved",
+    TOKEN: "Token",
+    HOLD: "On Hold",
+    SOLD: "Sold",
+    INACTIVE: "Inactive",
 };
 
 const PHASE_STATUS_LABELS = {
@@ -227,9 +238,9 @@ function FeaturesList({ features, onEdit }) {
     );
 }
 
-function StatItem({ icon, label, value }) {
-    return (
-        <div className="flex min-w-0 items-center gap-3 px-4 py-3 sm:px-5">
+function StatItem({ icon, label, value, href }) {
+    const content = (
+        <>
             <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                 <Icon name={icon} className="text-xl" />
             </div>
@@ -239,6 +250,23 @@ function StatItem({ icon, label, value }) {
                     {value}
                 </div>
             </div>
+        </>
+    );
+
+    if (href) {
+        return (
+            <Link
+                href={href}
+                className="flex min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40 sm:px-5"
+            >
+                {content}
+            </Link>
+        );
+    }
+
+    return (
+        <div className="flex min-w-0 items-center gap-3 px-4 py-3 sm:px-5">
+            {content}
         </div>
     );
 }
@@ -422,7 +450,102 @@ function LocationMapPanel({ project, onSave }) {
     );
 }
 
-function SidebarSection({ title, onAdd, children }) {
+function unitStatusTone(status) {
+    switch (status) {
+        case "AVAILABLE":
+            return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400";
+        case "RESERVED":
+            return "bg-sky-500/15 text-sky-700 dark:text-sky-400";
+        case "TOKEN":
+            return "bg-violet-500/15 text-violet-700 dark:text-violet-400";
+        case "HOLD":
+            return "bg-amber-500/15 text-amber-700 dark:text-amber-400";
+        case "SOLD":
+            return "bg-primary/10 text-primary";
+        default:
+            return "bg-muted text-muted-foreground";
+    }
+}
+
+function InventoryPanel({ project, stats, units }) {
+    const inventoryUrl = inventoryIndex.url({
+        query: { project: project.code },
+    });
+
+    return (
+        <SidebarSection
+            title="Inventory"
+            icon="shape-line"
+            action={
+                <Button type="button" size="sm" variant="outline" render={<Link href={inventoryUrl} />}>
+                    View inventory
+                </Button>
+            }
+        >
+            <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-md border border-border/80 px-2.5 py-2 text-center">
+                        <div className="text-base font-semibold text-foreground">
+                            {stats.available_count ?? 0}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">Available</div>
+                    </div>
+                    <div className="rounded-md border border-border/80 px-2.5 py-2 text-center">
+                        <div className="text-base font-semibold text-foreground">
+                            {stats.reserved_count ?? 0}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">Reserved</div>
+                    </div>
+                    <div className="rounded-md border border-border/80 px-2.5 py-2 text-center">
+                        <div className="text-base font-semibold text-foreground">
+                            {stats.sold_count ?? 0}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">Sold</div>
+                    </div>
+                </div>
+
+                {units.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        No units yet. Add inventory for this project from the inventory page.
+                    </p>
+                ) : (
+                    <ul className="space-y-2">
+                        {units.map((unit) => (
+                            <li key={unit.id}>
+                                <div className="flex items-center gap-2 rounded-md px-2 py-2 text-sm">
+                                    <Icon
+                                        name="layout-grid-line"
+                                        className="shrink-0 text-base text-muted-foreground"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate font-medium text-foreground">
+                                            {unit.name || unit.code}
+                                        </div>
+                                        <div className="truncate text-xs text-muted-foreground">
+                                            {[unit.code, unit.type, unit.block?.title]
+                                                .filter(Boolean)
+                                                .join(" · ")}
+                                        </div>
+                                    </div>
+                                    <Badge
+                                        className={cn(
+                                            "shrink-0 font-normal",
+                                            unitStatusTone(unit.status)
+                                        )}
+                                    >
+                                        {UNIT_STATUS_LABELS[unit.status] || unit.status}
+                                    </Badge>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        </SidebarSection>
+    );
+}
+
+function SidebarSection({ title, icon = "flag-line", onAdd, action, children }) {
     return (
         <Card
             size="sm"
@@ -430,10 +553,11 @@ function SidebarSection({ title, onAdd, children }) {
         >
             <CardHeader className="border-b border-border px-4 py-3 [.border-b]:pb-3">
                 <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                    <Icon name="flag-line" className="text-base text-muted-foreground" />
+                    <Icon name={icon} className="text-base text-muted-foreground" />
                     {title}
                 </CardTitle>
-                {onAdd ? (
+                {action ? <CardAction>{action}</CardAction> : null}
+                {!action && onAdd ? (
                     <CardAction>
                         <IconButton
                             type="button"
@@ -469,6 +593,7 @@ function ProjectDetails({ project }) {
     const phases = project.phases ?? [];
     const features = project.features ?? [];
     const stats = project.stats ?? {};
+    const inventoryUnits = project.inventory?.units ?? [];
     const progress = progressValue[0] ?? 0;
     const galleryIds = gallery.map((image) => image.id);
     const documentIds = documents.map((document) => document.id);
@@ -708,11 +833,17 @@ function ProjectDetails({ project }) {
                                 icon="filter-3-line"
                                 label="Total Leads"
                                 value={stats.leads_count ?? 0}
+                                href={leadsIndex.url({
+                                    query: { project: project.code },
+                                })}
                             />
                             <StatItem
                                 icon="layout-grid-line"
                                 label="Total Units"
                                 value={stats.units_count ?? 0}
+                                href={inventoryIndex.url({
+                                    query: { project: project.code },
+                                })}
                             />
                             <StatItem
                                 icon="checkbox-circle-line"
@@ -796,6 +927,12 @@ function ProjectDetails({ project }) {
                                     )}
                                 </CardContent>
                             </Card>
+
+                            <InventoryPanel
+                                project={project}
+                                stats={stats}
+                                units={inventoryUnits}
+                            />
 
                             <LocationMapPanel project={project} onSave={saveProject} />
                         </div>
