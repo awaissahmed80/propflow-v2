@@ -20,4 +20,9 @@ class LeadStage extends Model
     {
         return $this->hasMany(Lead::class);
     }
+
+    public function activeLeads()
+    {
+        return $this->hasMany(Lead::class)->whereNull('archived_at');
+    }
 }

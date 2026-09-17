@@ -3,7 +3,7 @@ import { configureStore, combineReducers } from '@reduxjs/toolkit'
 //     userApi, teamApi, mediaApi, contactApi,
 //     leadApi, campaignApi, dashboardApi, settingApi
 // } from './api'
-import { authApi, roleApi } from './api';
+import { authApi, leadApi, roleApi } from './api';
 
 const rootReducer = combineReducers({
     // [projectApi.reducerPath]: projectApi.reducer,     
@@ -12,7 +12,7 @@ const rootReducer = combineReducers({
     // [userApi.reducerPath]: userApi.reducer,   
     // [teamApi.reducerPath]: teamApi.reducer,  
     // [mediaApi.reducerPath]: mediaApi.reducer,
-    // [leadApi.reducerPath]: leadApi.reducer,
+    [leadApi.reducerPath]: leadApi.reducer,
     // [campaignApi.reducerPath]: campaignApi.reducer,
     // [contactApi.reducerPath]: contactApi.reducer,
     // [dashboardApi.reducerPath]: dashboardApi.reducer,
@@ -31,7 +31,7 @@ const AppStore = configureStore({
         // userApi.middleware, 
         // teamApi.middleware,
         // mediaApi.middleware,
-        // leadApi.middleware,
+        leadApi.middleware,
         // campaignApi.middleware,
         // contactApi.middleware,
         // dashboardApi.middleware,

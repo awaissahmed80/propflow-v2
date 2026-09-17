@@ -23,6 +23,14 @@ function PopoverContent({
   alignOffset = 0,
   side = "bottom",
   sideOffset = 4,
+  collisionBoundary = "clipping-ancestors",
+  collisionPadding = 8,
+  collisionAvoidance = {
+    side: "flip",
+    align: "shift",
+    fallbackAxisSide: "end",
+  },
+  positionMethod = "fixed",
   ...props
 }) {
   return (
@@ -32,6 +40,10 @@ function PopoverContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        collisionBoundary={collisionBoundary}
+        collisionPadding={collisionPadding}
+        collisionAvoidance={collisionAvoidance}
+        positionMethod={positionMethod}
         className="isolate z-50">
         <PopoverPrimitive.Popup
           data-slot="popover-content"

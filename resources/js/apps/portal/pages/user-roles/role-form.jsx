@@ -143,7 +143,7 @@ export default function RoleForm({ isOpen, onClose, data = null, permissionGroup
                 />
 
                 <div>
-                    <Label className="mb-0.5 text-base font-medium text-muted-foreground">
+                    <Label className="mb-1 text-label font-medium text-muted-foreground">
                         Description
                     </Label>
                     <Textarea

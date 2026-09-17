@@ -1,4 +1,4 @@
-import { createInertiaApp } from '@inertiajs/react';
+import { createInertiaApp, router } from '@inertiajs/react';
 import { Provider } from 'react-redux'
 import { AlertProvider } from '@/portal/contexts/alert.context';
 import { AppStore } from '@/portal/store';
@@ -7,6 +7,14 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 import { initializeTheme } from '@/hooks/use-appearance';
+
+function redirectToAuth(authUrl) {
+    if (!authUrl) {
+        return;
+    }
+
+    window.location.assign(authUrl);
+}
 
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
@@ -24,6 +32,24 @@ createInertiaApp({
         return resolvePageComponent(`./pages/${name}.jsx`, import.meta.glob('./pages/**/*.jsx'));
     },
     setup({ el, App, props }) {
+        const authUrl = props.initialPage?.props?.urls?.auth;
+
+        router.on('httpException', (event) => {
+            const status = event.detail?.response?.status;
+
+            if (status === 401 || status === 419) {
+                event.preventDefault();
+                redirectToAuth(authUrl);
+            }
+        });
+
+        router.on('networkError', () => {
+            // Session cookies cleared mid-visit can fail cross-origin XHR to auth.
+            if (!document.cookie.includes('XSRF-TOKEN=')) {
+                redirectToAuth(authUrl);
+            }
+        });
+
         const root = createRoot(el);
 
         root.render(

@@ -235,7 +235,7 @@ function NumberInput({
   const control = (
     <>
       {startElement ? (
-        <div className="shrink-0 select-none text-base text-muted-foreground">
+        <div className="shrink-0 select-none text-sm text-muted-foreground">
           {startElement}
         </div>
       ) : null}
@@ -270,8 +270,8 @@ function NumberInput({
           }
         }}
         className={cn(
-          "min-w-0 grow bg-transparent py-1 text-base outline-none",
-          "placeholder:text-base placeholder:text-muted-foreground disabled:cursor-not-allowed",
+          "min-w-0 grow bg-transparent py-1 text-sm outline-none",
+          "placeholder:text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed",
           "selection:bg-primary selection:text-primary-foreground",
           isGroup && "h-full px-2.5",
           inputClassName
@@ -330,16 +330,16 @@ function NumberInput({
       {label ? (
         <Label
           htmlFor={id}
-          className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground"
+          className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground"
         >
           {label}
-          {required ? <span className="text-sm text-destructive">*</span> : null}
+          {required ? <span className="text-xs text-destructive">*</span> : null}
         </Label>
       ) : null}
 
       <div
         className={cn(
-          "flex h-9 items-center gap-1 rounded-md border border-input bg-transparent px-2 shadow-xs transition-[color,box-shadow]",
+          "flex h-control items-center gap-1 rounded-md border border-input bg-transparent px-2 shadow-xs transition-[color,box-shadow]",
           "has-[input:focus-within]:border-ring has-[input:focus-within]:ring-[1px] has-[input:focus-within]:ring-ring/50",
           "dark:bg-input/30",
           error &&

@@ -27,14 +27,14 @@ class LeadDestroyTest extends TestCase
         $this->migrateTenant();
     }
 
-    public function test_lead_can_be_soft_deleted(): void
+    public function test_archived_lead_can_be_soft_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_lead_destroy');
 
         $tenant->makeCurrent();
         $project = Project::factory()->create();
         $stage = LeadStage::factory()->newLead()->create();
-        $lead = Lead::factory()->create([
+        $lead = Lead::factory()->archived()->create([
             'project_id' => $project->id,
             'lead_stage_id' => $stage->id,
         ]);
@@ -45,10 +45,32 @@ class LeadDestroyTest extends TestCase
 
         $response = $this->delete(Domain::portal('/leads/'.$lead->id));
 
-        $response->assertRedirect(Domain::portal('/leads'));
+        $response->assertRedirect(Domain::portal('/leads?view=archive'));
 
         $tenant->makeCurrent();
         $this->assertSoftDeleted('leads', ['id' => $lead->id], 'tenant');
+        Tenant::forgetCurrent();
+    }
+
+    public function test_active_lead_cannot_be_soft_deleted(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_lead_destroy_active');
+
+        $tenant->makeCurrent();
+        $stage = LeadStage::factory()->newLead()->create();
+        $lead = Lead::factory()->create(['lead_stage_id' => $stage->id]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->from(Domain::portal('/leads'))
+            ->delete(Domain::portal('/leads/'.$lead->id))
+            ->assertRedirect(Domain::portal('/leads'))
+            ->assertSessionHasErrors('lead');
+
+        $tenant->makeCurrent();
+        $this->assertNotSoftDeleted('leads', ['id' => $lead->id], 'tenant');
         Tenant::forgetCurrent();
     }
 

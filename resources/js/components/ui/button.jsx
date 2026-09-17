@@ -4,7 +4,7 @@ import { Icon } from "./icon";
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
@@ -28,10 +28,10 @@ const buttonVariants = cva(
           "border-0  bg-destructive/50 hover:bg-destructive/70 text-white/70",
       },
       size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
-        lg: "h-11 rounded-md text-lg px-6 has-[>svg]:px-4",
-        icon: "size-9",
+        default: "h-control px-3 py-1.5 has-[>svg]:px-2.5",
+        sm: "h-control-sm rounded-md gap-1 px-2.5 has-[>svg]:px-2",
+        lg: "h-control-lg rounded-md px-4 has-[>svg]:px-3",
+        icon: "size-(--height-control-icon)",
         smicon: "size-7",
       },
     },
@@ -61,7 +61,7 @@ function Button({
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}>
         { loading ? <Icon name="loader-3-fill" className="animate-spin" />:
-                leftIcon && <Icon className="text-lg" name={leftIcon} />
+                leftIcon && <Icon className="text-base" name={leftIcon} />
             }
             {children}
     </ButtonPrimitive>

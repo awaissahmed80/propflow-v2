@@ -42,7 +42,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "flex w-fit items-center justify-between gap-1.5 rounded-md border border-input bg-transparent py-1 pr-2 pl-3 text-base whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 data-[size=sm]:text-sm *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex w-fit items-center justify-between gap-1.5 rounded-md border border-input bg-transparent py-1 pr-2 pl-2.5 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-control data-[size=sm]:h-control-sm data-[size=sm]:text-sm *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -310,9 +310,9 @@ function SelectBox({
   return (
     <div className={cn(isGroup ? "contents" : "space-y-0.5", className)}>
       {label && !isGroup ? (
-        <Label className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground">
+        <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
           {label}
-          {required ? <span className="text-sm text-destructive">*</span> : null}
+          {required ? <span className="text-xs text-destructive">*</span> : null}
         </Label>
       ) : null}
 
@@ -328,7 +328,7 @@ function SelectBox({
           aria-invalid={Boolean(error) || undefined}
           data-slot={isGroup ? "input-group-control" : "select-trigger"}
           className={cn(
-            "h-9 w-full min-w-0 dark:bg-input/30",
+            "h-control w-full min-w-0 dark:bg-input/30",
             isGroup &&
               "h-full w-auto max-w-none shrink-0 rounded-none border-0 bg-transparent px-3 shadow-none ring-0 focus-visible:border-transparent focus-visible:ring-0 *:data-[slot=select-value]:line-clamp-none dark:bg-transparent dark:hover:bg-transparent",
             triggerClassName
@@ -340,7 +340,7 @@ function SelectBox({
 
               if (!option) {
                 return (
-                  <span className="whitespace-nowrap text-base text-muted-foreground">
+                  <span className="whitespace-nowrap text-sm text-muted-foreground">
                     {placeholder}
                   </span>
                 )

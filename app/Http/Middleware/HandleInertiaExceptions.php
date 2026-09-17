@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Domain;
 use Closure;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -19,13 +20,18 @@ class HandleInertiaExceptions
     {
         try {
             return $next($request);
-
         } catch (NotFoundHttpException $e) {
             if ($request->inertia()) {
-                // Set the root view dynamically before rendering
-                Inertia::setRootView('public');
+                $isPortal = str_starts_with($request->getHost(), 'portal.');
 
-                return Inertia::render('errors/not-found')
+                Inertia::setRootView($isPortal ? 'portal' : 'app');
+
+                return Inertia::render('errors/not-found', [
+                    'status' => 404,
+                    'homeUrl' => $isPortal ? Domain::portal() : Domain::url(null, '/'),
+                    'portalUrl' => Domain::portal(),
+                    'authUrl' => Domain::auth(),
+                ])
                     ->toResponse($request)
                     ->setStatusCode(404);
             }

@@ -26,6 +26,7 @@ import { MetaComboBox } from "@/components/ui/meta-combo-box";
 import { SelectBox } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useMeta } from "@/hooks/use-meta";
+import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS = [
@@ -78,6 +79,7 @@ export default function UnitForm({
 }) {
     const isEditing = Boolean(data?.id);
     const meta = useMeta();
+    const { symbol: currencySymbol } = useCurrency();
     const [processing, setProcessing] = useState(false);
     const [serverErrors, setServerErrors] = useState({});
     const [localBlocks, setLocalBlocks] = useState(blocks);
@@ -385,7 +387,7 @@ export default function UnitForm({
                                 control={control}
                                 render={({ field }) => (
                                     <div className="space-y-0.5">
-                                        <Label className="mb-0.5 text-base font-medium text-muted-foreground">
+                                        <Label className="mb-1 text-label font-medium text-muted-foreground">
                                             Size
                                         </Label>
                                         <InputGroup
@@ -431,7 +433,7 @@ export default function UnitForm({
                                 control={control}
                                 render={({ field }) => (
                                     <div className="space-y-0.5">
-                                        <Label className="mb-0.5 text-base font-medium text-muted-foreground">
+                                        <Label className="mb-1 text-label font-medium text-muted-foreground">
                                             Price
                                         </Label>
                                         <InputGroup
@@ -439,7 +441,7 @@ export default function UnitForm({
                                                 fieldError("price") && "border-destructive"
                                             )}
                                         >
-                                            <InputGroupAddon>PKR</InputGroupAddon>
+                                            <InputGroupAddon>{currencySymbol}</InputGroupAddon>
                                             <InputGroupNumberInput
                                                 value={field.value}
                                                 onChange={field.onChange}

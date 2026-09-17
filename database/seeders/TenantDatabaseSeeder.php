@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\CampaignGoalType;
 use App\Models\LeadStage;
 use App\Models\MetaData;
 use App\Models\Permission;
@@ -33,6 +34,7 @@ class TenantDatabaseSeeder extends Seeder
         }
 
         $this->seedDefaultLeadStages();
+        $this->seedDefaultCampaignGoalTypes();
         $this->seedDefaultAreaUnits();
         $this->seedDefaultUnitTypes();
     }
@@ -78,16 +80,21 @@ class TenantDatabaseSeeder extends Seeder
         $stages = [
             ['label' => 'new', 'title' => 'New', 'priority' => 1, 'color' => '#3B82F6'],
             ['label' => 'contacted', 'title' => 'Contacted', 'priority' => 2, 'color' => '#8B5CF6'],
-            ['label' => 'qualified', 'title' => 'Qualified', 'priority' => 3, 'color' => '#10B981'],
+            ['label' => 'qualified', 'title' => 'Qualified', 'priority' => 3, 'color' => '#06B6D4'],
             ['label' => 'site_visit', 'title' => 'Site Visit', 'priority' => 4, 'color' => '#F59E0B'],
-            ['label' => 'negotiation', 'title' => 'Negotiation', 'priority' => 5, 'color' => '#EF4444'],
+            ['label' => 'negotiation', 'title' => 'Negotiation', 'priority' => 5, 'color' => '#F97316'],
             ['label' => 'closed_won', 'title' => 'Closed Won', 'priority' => 6, 'color' => '#059669'],
-            ['label' => 'closed_lost', 'title' => 'Closed Lost', 'priority' => 7, 'color' => '#6B7280'],
+            ['label' => 'closed_lost', 'title' => 'Closed Lost', 'priority' => 7, 'color' => '#EF4444'],
         ];
 
         foreach ($stages as $stage) {
             LeadStage::query()->create($stage);
         }
+    }
+
+    protected function seedDefaultCampaignGoalTypes(): void
+    {
+        CampaignGoalType::ensureDefaults();
     }
 
     protected function seedDefaultAreaUnits(): void

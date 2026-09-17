@@ -15,11 +15,73 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FilterInput } from "@/components/ui/filter-input";
-import { FilterMenu } from "@/components/ui/filter-menu";
+import {
+    ActiveFilters,
+    FilterMenu,
+    isRangeActive,
+    sectionBounds,
+    toRangeValue,
+    toSelectedList,
+} from "@/components/ui/filter-menu";
 import { Icon } from "@/components/ui/icon";
+import {
+    Pagination,
+    PaginationContent,
+    PaginationEllipsis,
+    PaginationItem,
+    PaginationLink,
+    PaginationNext,
+    PaginationPrevious,
+} from "@/components/ui/pagination";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatMoney } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import UnitForm from "./unit-form";
+
+function toFilterParam(value) {
+    const list = toSelectedList(value);
+
+    return list.length > 0 ? list.join(",") : "";
+}
+
+/**
+ * @returns {Array<number | "ellipsis">}
+ */
+function paginationItems(current, last) {
+    if (last <= 7) {
+        return Array.from({ length: last }, (_, index) => index + 1);
+    }
+
+    const items = [1];
+
+    if (current > 3) {
+        items.push("ellipsis");
+    }
+
+    const start = Math.max(2, current - 1);
+    const end = Math.min(last - 1, current + 1);
+
+    for (let page = start; page <= end; page += 1) {
+        items.push(page);
+    }
+
+    if (current < last - 2) {
+        items.push("ellipsis");
+    }
+
+    items.push(last);
+
+    return items;
+}
+
+const emptyPagination = {
+    current_page: 1,
+    last_page: 1,
+    per_page: 20,
+    total: 0,
+    from: null,
+    to: null,
+};
 
 const STATUS_LABELS = {
     AVAILABLE: "Available",
@@ -28,6 +90,16 @@ const STATUS_LABELS = {
     HOLD: "On Hold",
     SOLD: "Sold",
     INACTIVE: "Inactive",
+};
+
+/** Shared status swatch colors (filters + badges). */
+const STATUS_COLORS = {
+    AVAILABLE: "#10b981",
+    RESERVED: "#0ea5e9",
+    TOKEN: "#8b5cf6",
+    HOLD: "#f59e0b",
+    SOLD: "#3b82f6",
+    INACTIVE: "#94a3b8",
 };
 
 function statusTone(status) {
@@ -45,16 +117,6 @@ function statusTone(status) {
         default:
             return "bg-muted text-muted-foreground";
     }
-}
-
-function formatMoney(value) {
-    if (value == null || value === "") {
-        return "—";
-    }
-
-    return new Intl.NumberFormat(undefined, {
-        maximumFractionDigits: 0,
-    }).format(Number(value));
 }
 
 function formatSize(size, areaType) {
@@ -93,7 +155,15 @@ function UnitRow({ unit, onEdit, onDelete }) {
                 {formatMoney(unit.price)}
             </td>
             <td className="px-4 py-3 align-middle">
-                <Badge className={cn("font-normal", statusTone(unit.status))}>
+                <Badge className={cn("gap-1.5 font-normal", statusTone(unit.status))}>
+                    <span
+                        className="size-1.5 shrink-0 rounded-sm"
+                        style={{
+                            backgroundColor:
+                                STATUS_COLORS[unit.status] || "var(--muted-foreground)",
+                        }}
+                        aria-hidden
+                    />
                     {STATUS_LABELS[unit.status] || unit.status || "—"}
                 </Badge>
             </td>
@@ -126,20 +196,40 @@ function UnitRow({ unit, onEdit, onDelete }) {
     );
 }
 
-function Inventory({ units = [], filters = {}, formOptions = {} }) {
+function Inventory({
+    units = [],
+    pagination = emptyPagination,
+    filters = {},
+    formOptions = {},
+}) {
     const [search, setSearch] = useState(filters.q || "");
     const [unitFormOpen, setUnitFormOpen] = useState(false);
     const [editingUnit, setEditingUnit] = useState(null);
     const [blocks, setBlocks] = useState(formOptions.blocks || []);
     const searchTimeout = useRef(null);
 
+    const priceBounds = useMemo(
+        () => formOptions.price || { min: 0, max: 10000000, step: 100000 },
+        [formOptions.price]
+    );
+
     const appliedFilters = useMemo(
         () => ({
-            project: filters.project || "",
-            status: filters.status || "",
-            type: filters.type || "",
+            project: toSelectedList(filters.project),
+            status: toSelectedList(filters.status),
+            type: toSelectedList(filters.type),
+            price: toRangeValue(filters.price, priceBounds),
         }),
-        [filters.project, filters.status, filters.type]
+        [filters.project, filters.status, filters.type, filters.price, priceBounds]
+    );
+
+    const priceFilterActive = isRangeActive(appliedFilters.price, priceBounds);
+
+    const currentPage = Number(pagination.current_page) || 1;
+    const lastPage = Math.max(1, Number(pagination.last_page) || 1);
+    const pageItems = useMemo(
+        () => paginationItems(currentPage, lastPage),
+        [currentPage, lastPage]
     );
 
     useEffect(() => {
@@ -162,11 +252,13 @@ function Inventory({ units = [], filters = {}, formOptions = {} }) {
         const statusOptions = (formOptions.statuses || []).map((value) => ({
             value,
             label: STATUS_LABELS[value] || value,
+            color: STATUS_COLORS[value],
         }));
 
         const projectOptions = (formOptions.projects || []).map((project) => ({
             value: project.code,
             label: project.title,
+            thumbnail: project.thumbnail || undefined,
         }));
 
         const typeOptions = (formOptions.types?.length
@@ -176,32 +268,72 @@ function Inventory({ units = [], filters = {}, formOptions = {} }) {
             .map((value) => ({ value, label: value }));
 
         return [
-            { key: "status", label: "Status", options: statusOptions },
-            { key: "project", label: "Project", options: projectOptions },
+            { key: "status", label: "Status", type: "status", options: statusOptions },
+            { key: "project", label: "Project", type: "projects", options: projectOptions },
             ...(typeOptions.length > 0
-                ? [{ key: "type", label: "Type", options: typeOptions }]
+                ? [{ key: "type", label: "Type", type: "chips", options: typeOptions }]
                 : []),
+            {
+                key: "price",
+                label: "Value",
+                type: "range",
+                min: priceBounds.min,
+                max: priceBounds.max,
+                step: priceBounds.step,
+            },
         ];
-    }, [formOptions.statuses, formOptions.projects, formOptions.types, units]);
+    }, [
+        formOptions.statuses,
+        formOptions.projects,
+        formOptions.types,
+        units,
+        priceBounds.min,
+        priceBounds.max,
+        priceBounds.step,
+    ]);
 
     const visitInventory = (next = {}) => {
+        const page = Object.prototype.hasOwnProperty.call(next, "page")
+            ? next.page
+            : currentPage;
+
+        const priceRange = toRangeValue(
+            Object.prototype.hasOwnProperty.call(next, "price")
+                ? next.price
+                : appliedFilters.price,
+            priceBounds
+        );
+        const priceActive = isRangeActive(priceRange, priceBounds);
+
         const params = {
             q: Object.prototype.hasOwnProperty.call(next, "q")
                 ? next.q
                 : search,
-            project: Object.prototype.hasOwnProperty.call(next, "project")
-                ? next.project
-                : appliedFilters.project,
-            status: Object.prototype.hasOwnProperty.call(next, "status")
-                ? next.status
-                : appliedFilters.status,
-            type: Object.prototype.hasOwnProperty.call(next, "type")
-                ? next.type
-                : appliedFilters.type,
+            project: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "project")
+                    ? next.project
+                    : appliedFilters.project
+            ),
+            status: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "status")
+                    ? next.status
+                    : appliedFilters.status
+            ),
+            type: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "type")
+                    ? next.type
+                    : appliedFilters.type
+            ),
+            page: page > 1 ? String(page) : "",
         };
 
+        if (priceActive) {
+            params.price_min = priceRange[0];
+            params.price_max = priceRange[1];
+        }
+
         Object.keys(params).forEach((key) => {
-            if (!params[key]) {
+            if (!params[key] && params[key] !== 0) {
                 delete params[key];
             }
         });
@@ -210,7 +342,7 @@ function Inventory({ units = [], filters = {}, formOptions = {} }) {
             preserveState: true,
             preserveScroll: true,
             replace: true,
-            only: ["units", "filters", "formOptions"],
+            only: ["units", "pagination", "filters", "formOptions"],
         });
     };
 
@@ -223,17 +355,41 @@ function Inventory({ units = [], filters = {}, formOptions = {} }) {
         }
 
         searchTimeout.current = setTimeout(() => {
-            visitInventory({ q: value.trim() });
+            visitInventory({ q: value.trim(), page: 1 });
         }, 300);
     };
 
     const handleFiltersApply = (next) => {
         visitInventory({
-            project: next.project || "",
-            status: next.status || "",
-            type: next.type || "",
+            project: next.project || [],
+            status: next.status || [],
+            type: next.type || [],
+            price: next.price || sectionBounds(priceBounds),
+            page: 1,
         });
     };
+
+    const handleFiltersClear = () => {
+        handleFiltersApply({
+            project: [],
+            status: [],
+            type: [],
+            price: sectionBounds(priceBounds),
+        });
+    };
+
+    const goToPage = (page) => {
+        if (page < 1 || page > lastPage || page === currentPage) {
+            return;
+        }
+
+        visitInventory({ page });
+    };
+
+    const rangeLabel =
+        pagination.total > 0
+            ? `Showing ${pagination.from}–${pagination.to} of ${pagination.total}`
+            : "No units";
 
     const openCreate = () => {
         setEditingUnit(null);
@@ -304,6 +460,13 @@ function Inventory({ units = [], filters = {}, formOptions = {} }) {
                     </Button>
                 </Layout.Toolbar>
 
+                <ActiveFilters
+                    sections={filterSections}
+                    value={appliedFilters}
+                    onChange={handleFiltersApply}
+                    onClear={handleFiltersClear}
+                />
+
                 <ScrollArea className="flex-1">
                     <div className="px-6 py-6">
                         {units.length === 0 ? (
@@ -312,16 +475,28 @@ function Inventory({ units = [], filters = {}, formOptions = {} }) {
                                     <Icon name="shape-line" className="text-2xl" />
                                 </div>
                                 <h2 className="text-lg font-semibold tracking-tight">
-                                    {filters.q || filters.project || filters.status || filters.type
+                                    {filters.q ||
+                                    appliedFilters.project.length > 0 ||
+                                    appliedFilters.status.length > 0 ||
+                                    appliedFilters.type.length > 0 ||
+                                    priceFilterActive
                                         ? "No units match your filters"
                                         : "Add your first inventory unit"}
                                 </h2>
                                 <p className="mt-2 max-w-md text-sm text-muted-foreground">
-                                    {filters.q || filters.project || filters.status || filters.type
+                                    {filters.q ||
+                                    appliedFilters.project.length > 0 ||
+                                    appliedFilters.status.length > 0 ||
+                                    appliedFilters.type.length > 0 ||
+                                    priceFilterActive
                                         ? "Try another project, status, or search term."
                                         : "Units belong to a project. Blocks are optional for grouping towers or phases."}
                                 </p>
-                                {!filters.q && !filters.project && !filters.status && !filters.type ? (
+                                {!filters.q &&
+                                appliedFilters.project.length === 0 &&
+                                appliedFilters.status.length === 0 &&
+                                appliedFilters.type.length === 0 &&
+                                !priceFilterActive ? (
                                     <Button type="button" className="mt-5" onClick={openCreate}>
                                         <Icon name="add-line" className="text-base" />
                                         Create unit
@@ -359,6 +534,64 @@ function Inventory({ units = [], filters = {}, formOptions = {} }) {
                         )}
                     </div>
                 </ScrollArea>
+
+                {lastPage > 1 ? (
+                    <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-background px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-muted-foreground">{rangeLabel}</p>
+                        <Pagination className="mx-0 w-auto justify-start sm:justify-end">
+                            <PaginationContent>
+                                <PaginationItem>
+                                    <PaginationPrevious
+                                        href="#"
+                                        text="Prev"
+                                        className={cn(
+                                            currentPage <= 1 &&
+                                                "pointer-events-none opacity-50"
+                                        )}
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            goToPage(currentPage - 1);
+                                        }}
+                                    />
+                                </PaginationItem>
+                                {pageItems.map((item, index) =>
+                                    item === "ellipsis" ? (
+                                        <PaginationItem key={`ellipsis-${index}`}>
+                                            <PaginationEllipsis />
+                                        </PaginationItem>
+                                    ) : (
+                                        <PaginationItem key={item}>
+                                            <PaginationLink
+                                                href="#"
+                                                isActive={item === currentPage}
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    goToPage(item);
+                                                }}
+                                            >
+                                                {item}
+                                            </PaginationLink>
+                                        </PaginationItem>
+                                    )
+                                )}
+                                <PaginationItem>
+                                    <PaginationNext
+                                        href="#"
+                                        text="Next"
+                                        className={cn(
+                                            currentPage >= lastPage &&
+                                                "pointer-events-none opacity-50"
+                                        )}
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            goToPage(currentPage + 1);
+                                        }}
+                                    />
+                                </PaginationItem>
+                            </PaginationContent>
+                        </Pagination>
+                    </div>
+                ) : null}
             </Layout.Content>
 
             <UnitForm

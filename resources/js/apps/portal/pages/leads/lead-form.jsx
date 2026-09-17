@@ -21,47 +21,64 @@ import {
 } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { ComboBox } from "@/components/ui/combo-box";
-import { DatePicker } from "@/components/ui/date-picker";
+import { HeatIconButton } from "@/components/ui/heat-icon";
 import { SelectBox } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+    TooltipProvider,
+} from "@/components/ui/tooltip";
+import { HEAT_OPTIONS } from "@/lib/heat";
 import { cn } from "@/lib/utils";
-
-const TAG_OPTIONS = [
-    { value: "VERY HOT", label: "Very Hot" },
-    { value: "HOT", label: "Hot" },
-    { value: "MODERATE", label: "Moderate" },
-    { value: "COLD", label: "Cold" },
-    { value: "VERY COLD", label: "Very Cold" },
-];
+import { useCurrency } from "@/hooks/use-currency";
 
 const emptyValues = {
-    contact_first_name: "",
-    contact_last_name: "",
+    contact_name: "",
     contact_phone_number: "",
     contact_email_address: "",
     project_id: "",
-    unit_id: "",
     assigned_to: "",
     lead_stage_id: "",
     source: "",
     tag: "MODERATE",
     budget: null,
-    next_action: "",
-    due_date: "",
     notes: "",
 };
+
+function splitName(fullName) {
+    const parts = String(fullName || "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+    if (parts.length === 0) {
+        return { first_name: null, last_name: null };
+    }
+
+    if (parts.length === 1) {
+        return { first_name: parts[0], last_name: null };
+    }
+
+    return {
+        first_name: parts[0],
+        last_name: parts.slice(1).join(" "),
+    };
+}
+
+function joinName(contact) {
+    return [contact?.first_name, contact?.last_name].filter(Boolean).join(" ");
+}
 
 export default function LeadForm({
     isOpen,
     onClose,
     data = null,
     projects = [],
-    units = [],
     stages = [],
     assignees = [],
     sources = [],
 }) {
     const isEditing = Boolean(data?.id);
+    const { symbol: currencySymbol } = useCurrency();
     const [processing, setProcessing] = useState(false);
     const [serverErrors, setServerErrors] = useState({});
 
@@ -70,8 +87,6 @@ export default function LeadForm({
         register,
         reset,
         control,
-        watch,
-        setValue,
         formState: { errors },
     } = useForm({
         defaultValues: emptyValues,
@@ -79,45 +94,16 @@ export default function LeadForm({
         reValidateMode: "onChange",
     });
 
-    const projectId = watch("project_id");
-
-    const projectOptions = useMemo(
-        () =>
-            projects.map((project) => ({
-                value: String(project.id),
-                label: project.title,
-            })),
-        [projects]
-    );
-
-    const unitOptions = useMemo(
-        () =>
-            units
-                .filter(
-                    (unit) =>
-                        !projectId || String(unit.project_id) === String(projectId)
-                )
-                .map((unit) => ({
-                    value: String(unit.id),
-                    label: unit.name ? `${unit.name} (${unit.code})` : unit.code,
-                })),
-        [units, projectId]
-    );
-
-    const stageOptions = useMemo(
-        () =>
-            stages.map((stage) => ({
-                value: String(stage.id),
-                label: stage.title,
-            })),
-        [stages]
-    );
-
     const assigneeOptions = useMemo(
         () =>
             assignees.map((user) => ({
                 value: String(user.id),
                 label: user.display_name,
+                description: user.title || undefined,
+                avatar: {
+                    name: user.display_name,
+                    src: user.avatar || undefined,
+                },
             })),
         [assignees]
     );
@@ -128,6 +114,7 @@ export default function LeadForm({
             "Referral",
             "Walk-in",
             "Facebook",
+            "Google",
             "Call",
             "WhatsApp",
             ...sources,
@@ -138,7 +125,9 @@ export default function LeadForm({
 
     const fieldError = (name) => {
         if (serverErrors[name]) {
-            return serverErrors[name];
+            return Array.isArray(serverErrors[name])
+                ? serverErrors[name][0]
+                : serverErrors[name];
         }
 
         if (name.startsWith("contact.")) {
@@ -160,19 +149,15 @@ export default function LeadForm({
 
         if (data) {
             reset({
-                contact_first_name: data.contact?.first_name || "",
-                contact_last_name: data.contact?.last_name || "",
+                contact_name: joinName(data.contact),
                 contact_phone_number: data.contact?.phone_number || "",
                 contact_email_address: data.contact?.email_address || "",
                 project_id: data.project_id ? String(data.project_id) : "",
-                unit_id: data.unit_id ? String(data.unit_id) : "",
                 assigned_to: data.assigned_to ? String(data.assigned_to) : "",
                 lead_stage_id: data.lead_stage_id ? String(data.lead_stage_id) : "",
                 source: data.source || "",
                 tag: data.tag || "MODERATE",
                 budget: data.budget ?? null,
-                next_action: data.next_action || "",
-                due_date: data.due_date ? data.due_date.slice(0, 10) : "",
                 notes: data.notes || "",
             });
         } else {
@@ -186,27 +171,6 @@ export default function LeadForm({
         }
     }, [isOpen, data, reset, stages]);
 
-    useEffect(() => {
-        if (!projectId) {
-            return;
-        }
-
-        const currentUnitId = watch("unit_id");
-        if (!currentUnitId) {
-            return;
-        }
-
-        const stillValid = units.some(
-            (unit) =>
-                String(unit.id) === String(currentUnitId) &&
-                String(unit.project_id) === String(projectId)
-        );
-
-        if (!stillValid) {
-            setValue("unit_id", "");
-        }
-    }, [projectId, units, setValue, watch]);
-
     const handleClose = () => {
         if (processing) {
             return;
@@ -216,36 +180,57 @@ export default function LeadForm({
     };
 
     const onSubmit = (values) => {
+        const phone = String(values.contact_phone_number || "").trim();
+        const email = String(values.contact_email_address || "").trim();
+
+        if (!phone && !email) {
+            setServerErrors({
+                "contact.phone_number": "Phone or email is required.",
+                "contact.email_address": "Phone or email is required.",
+            });
+            toast.error("Please fix the highlighted fields");
+            return;
+        }
+
         setProcessing(true);
         setServerErrors({});
+
+        const { first_name, last_name } = splitName(values.contact_name);
 
         const payload = {
             contact_id: data?.contact_id || null,
             contact: {
-                first_name: values.contact_first_name || null,
-                last_name: values.contact_last_name || null,
-                phone_number: values.contact_phone_number || null,
-                email_address: values.contact_email_address || null,
+                first_name,
+                last_name,
+                phone_number: phone || null,
+                email_address: email || null,
             },
             project_id: values.project_id ? Number(values.project_id) : null,
-            unit_id: values.unit_id ? Number(values.unit_id) : null,
+            unit_id: null,
             assigned_to: values.assigned_to ? Number(values.assigned_to) : null,
-            lead_stage_id: values.lead_stage_id ? Number(values.lead_stage_id) : null,
+            lead_stage_id: values.lead_stage_id
+                ? Number(values.lead_stage_id)
+                : null,
             source: values.source || null,
             tag: values.tag || "MODERATE",
             budget:
                 values.budget === "" || values.budget == null
                     ? null
                     : Number(values.budget),
-            next_action: values.next_action || null,
-            due_date: values.due_date || null,
             notes: values.notes || null,
         };
 
         const visit = {
             preserveScroll: true,
-            onSuccess: () => {
-                toast.success(isEditing ? "Lead updated" : "Lead created");
+            onSuccess: (page) => {
+                const reused = page?.props?.flash?.contact_reused;
+                toast.success(
+                    isEditing
+                        ? "Lead updated"
+                        : reused
+                          ? "Lead created and linked to existing contact"
+                          : "Lead created"
+                );
                 handleClose();
             },
             onError: (errs) => {
@@ -267,13 +252,13 @@ export default function LeadForm({
             <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
                 <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
                     <DialogTitle className="flex items-center gap-2">
-                        <Icon name="customer-service-line" className="text-xl" />
-                        {isEditing ? "Edit lead" : "Add lead"}
+                        <Icon name="user-star-line" className="text-xl" />
+                        {isEditing ? "Edit lead" : "New lead"}
                     </DialogTitle>
                     <DialogDescription>
                         {isEditing
                             ? `Update details for ${data?.code || "this lead"}.`
-                            : "Capture a new inquiry. Lead code is assigned automatically."}
+                            : "Add a lead contact. Matching phone or email reuses an existing contact."}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -285,158 +270,203 @@ export default function LeadForm({
                         {isEditing && data?.code ? (
                             <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
                                 <span className="text-muted-foreground">Code </span>
-                                <span className="font-medium text-foreground">{data.code}</span>
+                                <span className="font-medium text-foreground">
+                                    {data.code}
+                                </span>
                             </div>
                         ) : null}
 
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Input
-                                label="First name"
-                                required
-                                placeholder="Ali"
-                                error={
-                                    fieldError("contact_first_name") ||
-                                    fieldError("contact.first_name")
-                                }
-                                {...register("contact_first_name", {
-                                    required: "First name is required.",
-                                })}
-                            />
-                            <Input
-                                label="Last name"
-                                placeholder="Khan"
-                                error={
-                                    fieldError("contact_last_name") ||
-                                    fieldError("contact.last_name")
-                                }
-                                {...register("contact_last_name")}
-                            />
+                        <Input
+                            label="Name"
+                            required
+                            placeholder="Sonia Koll"
+                            error={
+                                fieldError("contact_name") ||
+                                fieldError("contact.first_name")
+                            }
+                            {...register("contact_name", {
+                                required: "Name is required.",
+                            })}
+                        />
+
+                        <div className="space-y-1.5">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <Input
+                                    label="Phone"
+                                    required
+                                    placeholder="+92 300 1234567"
+                                    error={
+                                        fieldError("contact_phone_number") ||
+                                        fieldError("contact.phone_number")
+                                    }
+                                    {...register("contact_phone_number")}
+                                />
+                                <Input
+                                    label="Email"
+                                    required
+                                    type="email"
+                                    placeholder="sonia@example.com"
+                                    error={
+                                        fieldError("contact_email_address") ||
+                                        fieldError("contact.email_address")
+                                    }
+                                    {...register("contact_email_address")}
+                                />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                At least one of phone or email is required to match existing
+                                contacts.
+                            </p>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Input
-                                label="Phone"
-                                required
-                                placeholder="03xx xxxxxxx"
-                                error={
-                                    fieldError("contact_phone_number") ||
-                                    fieldError("contact.phone_number")
-                                }
-                                {...register("contact_phone_number", {
-                                    required: "Phone is required.",
-                                })}
-                            />
-                            <Input
-                                label="Email"
-                                type="email"
-                                placeholder="ali@example.com"
-                                error={
-                                    fieldError("contact_email_address") ||
-                                    fieldError("contact.email_address")
-                                }
-                                {...register("contact_email_address")}
-                            />
-                        </div>
+                        <Controller
+                            name="project_id"
+                            control={control}
+                            render={({ field }) => (
+                                <div className="space-y-1.5">
+                                    <Label className="mb-1 text-label font-medium text-muted-foreground">
+                                        Project
+                                    </Label>
+                                    {projects.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">
+                                            No projects available.
+                                        </p>
+                                    ) : (
+                                        <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-border p-1.5">
+                                            {projects.map((project) => {
+                                                const value = String(project.id);
+                                                const selected = field.value === value;
 
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Controller
-                                name="project_id"
-                                control={control}
-                                render={({ field }) => (
-                                    <SelectBox
-                                        label="Project"
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                        options={projectOptions}
-                                        placeholder="Optional project..."
-                                        clearable
-                                        error={fieldError("project_id")}
-                                    />
-                                )}
-                            />
-                            <Controller
-                                name="unit_id"
-                                control={control}
-                                render={({ field }) => (
-                                    <SelectBox
-                                        label="Unit"
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                        options={unitOptions}
-                                        placeholder="Optional unit..."
-                                        disabled={!projectId}
-                                        clearable
-                                        error={fieldError("unit_id")}
-                                    />
-                                )}
-                            />
-                        </div>
+                                                return (
+                                                    <button
+                                                        key={project.id}
+                                                        type="button"
+                                                        onClick={() =>
+                                                            field.onChange(
+                                                                selected ? "" : value
+                                                            )
+                                                        }
+                                                        className={cn(
+                                                            "flex w-full items-center gap-2.5 rounded-md border px-2 py-1.5 text-left transition-colors",
+                                                            selected
+                                                                ? "border-primary/40 bg-primary/10"
+                                                                : "border-transparent hover:bg-muted/50"
+                                                        )}
+                                                    >
+                                                        {project.thumbnail ? (
+                                                            <img
+                                                                src={project.thumbnail}
+                                                                alt=""
+                                                                className="size-9 shrink-0 rounded-md object-cover"
+                                                            />
+                                                        ) : (
+                                                            <span
+                                                                className={cn(
+                                                                    "flex size-9 shrink-0 items-center justify-center rounded-md",
+                                                                    selected
+                                                                        ? "bg-primary/15 text-primary"
+                                                                        : "bg-muted text-muted-foreground"
+                                                                )}
+                                                            >
+                                                                <Icon
+                                                                    name="community-line"
+                                                                    className="text-lg"
+                                                                />
+                                                            </span>
+                                                        )}
+                                                        <span className="min-w-0 flex-1">
+                                                            <span
+                                                                className={cn(
+                                                                    "block truncate text-sm",
+                                                                    selected
+                                                                        ? "font-medium text-primary"
+                                                                        : "text-foreground"
+                                                                )}
+                                                            >
+                                                                {project.title}
+                                                            </span>
+                                                            {project.code ? (
+                                                                <span className="block truncate text-xs text-muted-foreground">
+                                                                    {project.code}
+                                                                </span>
+                                                            ) : null}
+                                                        </span>
+                                                        {selected ? (
+                                                            <Icon
+                                                                name="check-line"
+                                                                className="shrink-0 text-base text-primary"
+                                                            />
+                                                        ) : null}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                    {fieldError("project_id") ? (
+                                        <p className="text-sm text-destructive">
+                                            {fieldError("project_id")}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            )}
+                        />
 
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Controller
-                                name="lead_stage_id"
-                                control={control}
-                                rules={{ required: "Stage is required." }}
-                                render={({ field }) => (
-                                    <SelectBox
-                                        label="Stage"
-                                        required
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                        options={stageOptions}
-                                        placeholder="Select stage..."
-                                        error={fieldError("lead_stage_id")}
-                                    />
-                                )}
-                            />
-                            <Controller
-                                name="tag"
-                                control={control}
-                                render={({ field }) => (
-                                    <SelectBox
-                                        label="Heat"
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                        options={TAG_OPTIONS}
-                                        placeholder="Select heat..."
-                                        error={fieldError("tag")}
-                                    />
-                                )}
-                            />
-                        </div>
+                        <Controller
+                            name="lead_stage_id"
+                            control={control}
+                            rules={{ required: "Stage is required." }}
+                            render={({ field }) => (
+                                <div className="space-y-1.5">
+                                    <Label className="mb-1 text-label font-medium text-muted-foreground">
+                                        Stage
+                                        <span className="ml-0.5 text-destructive">*</span>
+                                    </Label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {stages.map((stage) => {
+                                            const value = String(stage.id);
+                                            const selected = field.value === value;
+                                            const color =
+                                                stage.color || "var(--muted-foreground)";
 
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Controller
-                                name="assigned_to"
-                                control={control}
-                                render={({ field }) => (
-                                    <SelectBox
-                                        label="Assignee"
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                        options={assigneeOptions}
-                                        placeholder="Assign to..."
-                                        clearable
-                                        error={fieldError("assigned_to")}
-                                    />
-                                )}
-                            />
-                            <Controller
-                                name="source"
-                                control={control}
-                                render={({ field }) => (
-                                    <ComboBox
-                                        label="Source"
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                        options={sourceOptions}
-                                        placeholder="Website, Referral..."
-                                        clearable
-                                        error={fieldError("source")}
-                                    />
-                                )}
-                            />
-                        </div>
+                                            return (
+                                                <button
+                                                    key={stage.id}
+                                                    type="button"
+                                                    onClick={() => field.onChange(value)}
+                                                    className={cn(
+                                                        "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm transition-colors",
+                                                        selected
+                                                            ? "ring-1 ring-current"
+                                                            : "opacity-80 hover:opacity-100"
+                                                    )}
+                                                    style={{
+                                                        backgroundColor: selected
+                                                            ? `${color}22`
+                                                            : `${color}14`,
+                                                        borderColor: selected
+                                                            ? `${color}66`
+                                                            : `${color}33`,
+                                                        color,
+                                                    }}
+                                                >
+                                                    <span
+                                                        className="size-1.5 shrink-0 rounded-sm"
+                                                        style={{ backgroundColor: color }}
+                                                        aria-hidden
+                                                    />
+                                                    {stage.title}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {fieldError("lead_stage_id") ? (
+                                        <p className="text-sm text-destructive">
+                                            {fieldError("lead_stage_id")}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            )}
+                        />
 
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <Controller
@@ -444,15 +474,16 @@ export default function LeadForm({
                                 control={control}
                                 render={({ field }) => (
                                     <div className="space-y-0.5">
-                                        <Label className="mb-0.5 text-base font-medium text-muted-foreground">
-                                            Budget
+                                        <Label className="mb-1 text-label font-medium text-muted-foreground">
+                                            Deal value
                                         </Label>
                                         <InputGroup
                                             className={cn(
-                                                fieldError("budget") && "border-destructive"
+                                                fieldError("budget") &&
+                                                    "border-destructive"
                                             )}
                                         >
-                                            <InputGroupAddon>PKR</InputGroupAddon>
+                                            <InputGroupAddon>{currencySymbol}</InputGroupAddon>
                                             <InputGroupNumberInput
                                                 value={field.value}
                                                 onChange={field.onChange}
@@ -470,54 +501,93 @@ export default function LeadForm({
                                 )}
                             />
                             <Controller
-                                name="due_date"
+                                name="source"
                                 control={control}
                                 render={({ field }) => (
-                                    <DatePicker
-                                        label="Due date"
+                                    <ComboBox
+                                        label="Source"
                                         value={field.value}
-                                        onChange={field.onChange}
-                                        placeholder="Select Date..."
-                                        error={fieldError("due_date")}
+                                        onValueChange={field.onChange}
+                                        options={sourceOptions}
+                                        placeholder="Google, Referral..."
+                                        clearable
+                                        error={fieldError("source")}
                                     />
                                 )}
                             />
                         </div>
 
-                        <Input
-                            label="Next action"
-                            placeholder="Call back, site visit..."
-                            error={fieldError("next_action")}
-                            {...register("next_action")}
+                        <Controller
+                            name="assigned_to"
+                            control={control}
+                            render={({ field }) => (
+                                <SelectBox
+                                    label="Assign to"
+                                    value={field.value}
+                                    onValueChange={field.onChange}
+                                    options={assigneeOptions}
+                                    placeholder="Select assignee..."
+                                    clearable
+                                    error={fieldError("assigned_to")}
+                                />
+                            )}
+                        />
+
+                        <Controller
+                            name="tag"
+                            control={control}
+                            render={({ field }) => (
+                                <div className="space-y-1.5">
+                                    <Label className="mb-1 text-label font-medium text-muted-foreground">
+                                        Heat
+                                    </Label>
+                                    <TooltipProvider delay={200}>
+                                        <div className="flex flex-wrap gap-2">
+                                            {HEAT_OPTIONS.map((option) => (
+                                                <HeatIconButton
+                                                    key={option.value}
+                                                    tag={option.value}
+                                                    selected={
+                                                        field.value === option.value
+                                                    }
+                                                    onClick={() =>
+                                                        field.onChange(option.value)
+                                                    }
+                                                />
+                                            ))}
+                                        </div>
+                                    </TooltipProvider>
+                                    {fieldError("tag") ? (
+                                        <p className="text-sm text-destructive">
+                                            {fieldError("tag")}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            )}
                         />
 
                         <Textarea
                             label="Notes"
                             rows={3}
-                            placeholder="Interest, preferences, follow-up notes..."
+                            placeholder="Needs a lot of attention and patience"
                             error={fieldError("notes")}
                             {...register("notes")}
                         />
                     </div>
-
-                    <DialogFooter className="sticky bottom-0 -mx-6 mt-6 border-t border-border bg-background px-6 py-4">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleClose}
-                            disabled={processing}
-                        >
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={processing}>
-                            {processing
-                                ? "Saving..."
-                                : isEditing
-                                  ? "Save changes"
-                                  : "Create lead"}
-                        </Button>
-                    </DialogFooter>
                 </form>
+
+                <DialogFooter className="shrink-0 border-t border-border bg-popover px-6 py-4 sm:justify-end">
+                    <Button type="button" variant="outline" onClick={handleClose}>
+                        Cancel
+                    </Button>
+                    <Button
+                        type="button"
+                        loading={processing}
+                        onClick={handleSubmit(onSubmit)}
+                    >
+                        {isEditing ? "Save changes" : "Create lead"}
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

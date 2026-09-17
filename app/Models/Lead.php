@@ -5,11 +5,13 @@ namespace App\Models;
 use App\Traits\LogUserActivity;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 #[Fillable([
     'code',
@@ -27,6 +29,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'tag',
     'budget',
     'contacted_at',
+    'archived_at',
     'attributes',
     'notes',
     'group',
@@ -46,6 +49,14 @@ class Lead extends Model
 
     public const TAG_VERY_COLD = 'VERY COLD';
 
+    public const NEXT_ACTION_FOLLOW_UP = 'Follow-up';
+
+    public const NEXT_ACTION_ARRANGE_SITE_VISIT = 'Arrange Site Visit';
+
+    public const NEXT_ACTION_ARRANGE_MEETING = 'Arrange Meeting';
+
+    public const NEXT_ACTION_DO_NOTHING = 'Do Nothing';
+
     /**
      * @return list<string>
      */
@@ -57,6 +68,19 @@ class Lead extends Model
             self::TAG_MODERATE,
             self::TAG_COLD,
             self::TAG_VERY_COLD,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function nextActions(): array
+    {
+        return [
+            self::NEXT_ACTION_FOLLOW_UP,
+            self::NEXT_ACTION_ARRANGE_SITE_VISIT,
+            self::NEXT_ACTION_ARRANGE_MEETING,
+            self::NEXT_ACTION_DO_NOTHING,
         ];
     }
 
@@ -75,6 +99,7 @@ class Lead extends Model
             'budget' => 'decimal:2',
             'due_date' => 'datetime',
             'contacted_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
     }
 
@@ -95,6 +120,47 @@ class Lead extends Model
                 ?? 0;
             $model->code = 'l'.$tenantId.$datePart.$numberPart;
         });
+    }
+
+    /**
+     * @param  Builder<Lead>  $query
+     * @return Builder<Lead>
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    /**
+     * @param  Builder<Lead>  $query
+     * @return Builder<Lead>
+     */
+    public function scopeArchived(Builder $query): Builder
+    {
+        return $query->whereNotNull('archived_at');
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    public function archive(?Carbon $at = null): void
+    {
+        $this->forceFill([
+            'archived_at' => $at ?? now(),
+        ])->save();
+    }
+
+    public function restoreFromArchive(?int $fallbackStageId = null): void
+    {
+        if ($this->lead_stage_id === null && $fallbackStageId !== null) {
+            $this->lead_stage_id = $fallbackStageId;
+        }
+
+        $this->forceFill([
+            'archived_at' => null,
+        ])->save();
     }
 
     /**

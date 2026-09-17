@@ -26,11 +26,11 @@ function SHCheckbox({
 
 function Checkbox({children, className, ...props}) {
     return (
-        <label className={cn("flex text-base flex-row select-none items-center space-x-2", props?.disabled && 'opacity-45')}>
+        <label className={cn("flex flex-row items-center space-x-2 text-sm select-none", props?.disabled && 'opacity-45')}>
             <SHCheckbox className={className} {...props} />
             {children}            
         </label>
     )
 }
-export { Checkbox }
+export { Checkbox, SHCheckbox as CheckboxControl }
 

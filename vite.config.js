@@ -54,7 +54,12 @@ export default defineConfig({
             // Published package mixes ESM + CJS require and breaks React hooks under Vite.
             'use-input-mask': path.resolve(__dirname, './resources/js/hooks/use-input-mask.js'),
         },
-        dedupe: ['react', 'react-dom'],
+        dedupe: ['react', 'react-dom', 'es-toolkit'],
+    },
+    optimizeDeps: {
+        // Recharts + es-toolkit@1.47 CJS interop crashes Vite 8 (`require_isUnsafeProperty`).
+        // Pin es-toolkit via resolutions and prebundle recharts against it.
+        include: ['recharts', 'es-toolkit'],
     },
     esbuild: {
         jsx: 'automatic',

@@ -85,9 +85,9 @@ function MultiSelect({
   return (
     <div className={cn("space-y-0.5", className)}>
       {label ? (
-        <Label className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground">
+        <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
           {label}
-          {required ? <span className="text-sm text-destructive">*</span> : null}
+          {required ? <span className="text-xs text-destructive">*</span> : null}
         </Label>
       ) : null}
 
@@ -96,7 +96,7 @@ function MultiSelect({
           disabled={disabled}
           aria-invalid={Boolean(error) || undefined}
           className={cn(
-            "flex min-h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 py-1.5 text-base shadow-xs transition-[color,box-shadow] outline-none",
+            "flex min-h-control w-full items-center gap-2 rounded-md border border-input bg-transparent px-2.5 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none",
             "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
             "disabled:cursor-not-allowed disabled:opacity-50",
             "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20",
@@ -106,7 +106,7 @@ function MultiSelect({
         >
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-left">
             {selectedOptions.length === 0 ? (
-              <span className="text-base text-muted-foreground">{placeholder}</span>
+              <span className="text-sm text-muted-foreground">{placeholder}</span>
             ) : (
               selectedOptions.map((option) => (
                 <Badge

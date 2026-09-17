@@ -45,4 +45,9 @@ class Domain
     {
         return self::url('portal', $path);
     }
+
+    public static function app(string $path = '/'): string
+    {
+        return self::url('app', $path);
+    }
 }

@@ -25,6 +25,7 @@ class TenantLoginTest extends TestCase
         ]);
 
         $this->migrateLandlord();
+        $this->migrateTenant();
     }
 
     public function test_login_page_is_available_on_auth_domain(): void
@@ -137,7 +138,11 @@ class TenantLoginTest extends TestCase
 
         $this->get(Domain::portal())
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->component('welcome', false));
+            ->assertInertia(fn ($page) => $page->component('dashboard/index', false));
+
+        $this->get(Domain::portal('/dashboard'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('dashboard/index', false));
     }
 
     public function test_authenticated_user_can_logout_and_is_sent_to_auth(): void

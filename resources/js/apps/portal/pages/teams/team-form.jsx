@@ -354,7 +354,7 @@ export default function TeamForm({
                         />
 
                         <div className="space-y-0.5">
-                            <Label className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground">
+                            <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
                                 Description
                             </Label>
                             <Textarea
@@ -427,7 +427,7 @@ export default function TeamForm({
                         />
 
                         <div className="space-y-3">
-                            <Label className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground">
+                            <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
                                 Members
                                 <span className="text-sm text-destructive">*</span>
                             </Label>

@@ -1,0 +1,244 @@
+<?php
+
+namespace App\Http\Controllers\Portal;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Portal\UpdateConfigurationSettingsRequest;
+use App\Http\Requests\Portal\UpdateGeneralSettingsRequest;
+use App\Http\Requests\Portal\UpdatePipelineRulesRequest;
+use App\Models\CampaignGoalType;
+use App\Models\LeadStage;
+use App\Models\MetaData;
+use App\Models\Setting;
+use App\Models\Tenant;
+use App\Support\AssetManager;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class SettingsController extends Controller
+{
+    /**
+     * @var list<string>
+     */
+    public const SECTIONS = [
+        'general',
+        'meta-data',
+        'pipeline',
+        'campaigns',
+        'integrations',
+        'custom-fields',
+        'import-export',
+        'developer',
+    ];
+
+    public function __construct(protected AssetManager $assets) {}
+
+    public function index(Request $request, ?string $section = null): Response|RedirectResponse
+    {
+        $section = $section ?: 'general';
+
+        if ($section === 'pipeline-rules') {
+            return redirect()->route('portal.settings.index', ['section' => 'pipeline']);
+        }
+
+        if ($section === 'configuration') {
+            return redirect()->route('portal.settings.index', ['section' => 'general']);
+        }
+
+        if (! in_array($section, self::SECTIONS, true)) {
+            abort(404);
+        }
+
+        return Inertia::render('settings/index', [
+            'section' => $section,
+            'sections' => $this->sectionNav(),
+            'general' => $this->generalSettings(),
+            'configuration' => $this->configurationSettings(),
+            'pipelineRules' => $this->pipelineRules(),
+            'metaTypes' => $this->metaTypesPayload(),
+            'stages' => LeadStage::query()
+                ->withCount('activeLeads as leads_count')
+                ->orderBy('priority')
+                ->get(['id', 'label', 'title', 'priority', 'color'])
+                ->map(fn (LeadStage $stage): array => [
+                    'id' => $stage->id,
+                    'label' => $stage->label,
+                    'title' => $stage->title,
+                    'priority' => $stage->priority,
+                    'color' => $stage->color,
+                    'leads_count' => (int) $stage->leads_count,
+                ])
+                ->values()
+                ->all(),
+            'campaignGoalTypes' => CampaignGoalType::catalog(),
+        ]);
+    }
+
+    public function updateGeneral(UpdateGeneralSettingsRequest $request): RedirectResponse
+    {
+        $validated = $request->validated();
+        $current = $this->generalSettings();
+
+        if ($request->boolean('remove_logo') && filled($current['logo_path'] ?? null)) {
+            $this->deleteLogoFile((string) $current['logo_path']);
+            $current['logo_path'] = null;
+            $current['logo_url'] = null;
+        }
+
+        if ($request->hasFile('logo')) {
+            if (filled($current['logo_path'] ?? null)) {
+                $this->deleteLogoFile((string) $current['logo_path']);
+            }
+
+            $asset = $this->assets->storeOnly($request->file('logo'), AssetManager::KIND_MEDIA, 'logos');
+            $current['logo_path'] = $asset->path;
+        }
+
+        $data = [
+            'business_name' => $validated['business_name'],
+            'tagline' => $validated['tagline'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'whatsapp' => $validated['whatsapp'] ?? null,
+            'email' => $validated['email'] ?? null,
+            'website' => $validated['website'] ?? null,
+            'address' => $validated['address'] ?? null,
+            'city' => $validated['city'] ?? null,
+            'state' => $validated['state'] ?? null,
+            'tax_id' => $validated['tax_id'] ?? null,
+            'logo_path' => $current['logo_path'] ?? null,
+        ];
+
+        Setting::putGroup(Setting::GROUP_GENERAL, 'General', $data);
+
+        $tenant = Tenant::current();
+        if ($tenant && filled($data['business_name'])) {
+            $tenant->forceFill(['name' => $data['business_name']])->save();
+        }
+
+        return back();
+    }
+
+    public function updateConfiguration(UpdateConfigurationSettingsRequest $request): RedirectResponse
+    {
+        Setting::putGroup(Setting::GROUP_CONFIGURATION, 'Configuration', $request->validated());
+
+        return back();
+    }
+
+    public function updatePipelineRules(UpdatePipelineRulesRequest $request): RedirectResponse
+    {
+        Setting::putGroup(Setting::GROUP_PIPELINE_RULES, 'Pipeline rules', $request->validated());
+
+        return back();
+    }
+
+    /**
+     * @return list<array{id: string, label: string, icon: string, coming_soon?: bool}>
+     */
+    protected function sectionNav(): array
+    {
+        return [
+            ['id' => 'general', 'label' => 'General', 'icon' => 'building-line'],
+            ['id' => 'meta-data', 'label' => 'Meta data', 'icon' => 'database-2-line'],
+            ['id' => 'pipeline', 'label' => 'Lead pipeline', 'icon' => 'flow-chart'],
+            ['id' => 'campaigns', 'label' => 'Campaigns', 'icon' => 'megaphone-line'],
+            ['id' => 'integrations', 'label' => 'Integrations', 'icon' => 'plug-line', 'coming_soon' => true],
+            ['id' => 'custom-fields', 'label' => 'Custom fields', 'icon' => 'input-field', 'coming_soon' => true],
+            ['id' => 'import-export', 'label' => 'Import / Export', 'icon' => 'swap-line', 'coming_soon' => true],
+            ['id' => 'developer', 'label' => 'Developer', 'icon' => 'code-s-slash-line', 'coming_soon' => true],
+        ];
+    }
+
+    /**
+     * @return list<array{type: string, label: string, items: list<array{id: int, type: string, value: string}>}>
+     */
+    protected function metaTypesPayload(): array
+    {
+        $grouped = MetaData::query()
+            ->orderBy('value')
+            ->get(['id', 'type', 'value'])
+            ->groupBy(fn (MetaData $meta): string => strtoupper((string) $meta->type));
+
+        return collect(MetaData::types())
+            ->map(fn (string $type): array => [
+                'type' => $type,
+                'label' => ucwords(strtolower(str_replace('_', ' ', $type))),
+                'items' => ($grouped->get($type) ?? collect())
+                    ->map(fn (MetaData $meta): array => [
+                        'id' => $meta->id,
+                        'type' => $meta->type,
+                        'value' => $meta->value,
+                    ])
+                    ->values()
+                    ->all(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function generalSettings(): array
+    {
+        $data = Setting::group(Setting::GROUP_GENERAL, [
+            'business_name' => Tenant::current()?->name,
+            'tagline' => null,
+            'phone' => null,
+            'whatsapp' => null,
+            'email' => null,
+            'website' => null,
+            'address' => null,
+            'city' => null,
+            'state' => null,
+            'tax_id' => null,
+            'logo_path' => null,
+        ]);
+
+        $data['logo_url'] = filled($data['logo_path'] ?? null)
+            ? url('assets/'.$data['logo_path'])
+            : null;
+
+        return $data;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function configurationSettings(): array
+    {
+        return Setting::group(Setting::GROUP_CONFIGURATION, [
+            'currency_code' => 'USD',
+            'currency_symbol' => '$',
+            'country' => null,
+            'timezone' => config('app.timezone', 'UTC'),
+            'date_format' => 'DD MMM YYYY',
+            'time_format' => 'HH:mm',
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function pipelineRules(): array
+    {
+        return Setting::group(Setting::GROUP_PIPELINE_RULES, [
+            'auto_assign' => false,
+            'require_notes_on_stage_change' => false,
+            'flag_stale_leads' => false,
+            'stale_after_days' => 14,
+        ]);
+    }
+
+    protected function deleteLogoFile(string $path): void
+    {
+        $fullPath = public_path('assets/'.$path);
+
+        if (File::exists($fullPath)) {
+            File::delete($fullPath);
+        }
+    }
+}

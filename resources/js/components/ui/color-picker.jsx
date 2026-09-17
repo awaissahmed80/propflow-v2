@@ -70,16 +70,16 @@ export const ColorPicker = ({
   return (
     <div className={cn("w-full space-y-0.5", className)}>
       {label ? (
-        <Label className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground">
+        <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
           {label}
-          {required ? <span className="text-sm text-destructive">*</span> : null}
+          {required ? <span className="text-xs text-destructive">*</span> : null}
         </Label>
       ) : null}
 
       <Popover open={isOpen} onOpenChange={setOpen}>
         <PopoverTrigger
           className={cn(
-            "inline-flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-2.5 text-sm shadow-xs transition-[color,box-shadow] outline-none",
+            "inline-flex h-control w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-2.5 text-sm shadow-xs transition-[color,box-shadow] outline-none",
             "hover:bg-accent/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
             "dark:bg-input/30 dark:hover:bg-input/50"
           )}

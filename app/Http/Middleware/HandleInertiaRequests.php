@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Domain;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -43,6 +44,15 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'auth' => [
                 'user' => $request->user(),
+            ],
+            'urls' => [
+                'home' => Domain::url(null, '/'),
+                'auth' => Domain::auth(),
+                'portal' => Domain::portal(),
+                'contact_email' => 'hello@'.Domain::base(),
+            ],
+            'flash' => [
+                'contact_reused' => fn () => $request->session()->get('contact_reused'),
             ],
         ];
     }

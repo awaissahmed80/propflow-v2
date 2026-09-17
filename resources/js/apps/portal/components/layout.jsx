@@ -74,7 +74,7 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem>
-                                <BreadcrumbLink render={<Link href='/'><Icon name="home-line" /></Link>} / >                                                                    
+                                <BreadcrumbLink render={<Link href="/dashboard" preserveState={false} preserveScroll={false}><Icon name="home-line" /></Link>} />
                             </BreadcrumbItem>
                             <BreadcrumbSeparator />
                         

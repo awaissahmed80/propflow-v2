@@ -29,7 +29,7 @@ class LeadFactory extends Factory
             'assigned_to' => null,
             'source' => fake()->randomElement(['Website', 'Referral', 'Walk-in', 'Facebook', 'Call']),
             'score' => fake()->numberBetween(0, 100),
-            'next_action' => fake()->optional()->sentence(3),
+            'next_action' => fake()->randomElement(Lead::nextActions()),
             'due_date' => fake()->optional()->dateTimeBetween('now', '+30 days'),
             'lead_stage_id' => LeadStage::factory()->newLead(),
             'tag' => Lead::TAG_MODERATE,
@@ -52,6 +52,13 @@ class LeadFactory extends Factory
     {
         return $this->state(fn (): array => [
             'tag' => Lead::TAG_HOT,
+        ]);
+    }
+
+    public function archived(): static
+    {
+        return $this->state(fn (): array => [
+            'archived_at' => now(),
         ]);
     }
 }

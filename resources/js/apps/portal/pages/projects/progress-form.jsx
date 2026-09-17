@@ -251,7 +251,7 @@ export default function ProgressForm({
                         </div>
 
                         <div className="space-y-0.5">
-                            <label className="mb-0.5 flex text-base font-medium text-muted-foreground">
+                            <label className="mb-1 flex text-label font-medium text-muted-foreground">
                                 Description
                             </label>
                             <Textarea

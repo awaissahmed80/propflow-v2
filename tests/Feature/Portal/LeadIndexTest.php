@@ -57,13 +57,55 @@ class LeadIndexTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('leads/index', false)
+            ->where('view', 'table')
             ->has('leads', 1)
             ->where('leads.0.code', $lead->code)
             ->where('leads.0.source', 'Website')
             ->where('leads.0.project.title', 'Marina Residences')
+            ->has('board', 0)
+            ->where('pagination.total', 1)
             ->has('formOptions.projects')
             ->has('formOptions.stages')
             ->has('formOptions.tags')
+        );
+    }
+
+    public function test_leads_are_paginated(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_leads_pagination');
+
+        $tenant->makeCurrent();
+        $stage = LeadStage::factory()->newLead()->create();
+        Lead::factory()->count(21)->create([
+            'lead_stage_id' => $stage->id,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $firstPage = $this->get(Domain::portal('/leads?view=table'));
+        $firstPage->assertOk();
+        $firstPage->assertInertia(fn ($page) => $page
+            ->component('leads/index', false)
+            ->where('view', 'table')
+            ->has('leads', 20)
+            ->where('pagination.total', 21)
+            ->where('pagination.current_page', 1)
+            ->where('pagination.last_page', 2)
+            ->where('pagination.from', 1)
+            ->where('pagination.to', 20)
+        );
+
+        $secondPage = $this->get(Domain::portal('/leads?view=table&page=2'));
+        $secondPage->assertOk();
+        $secondPage->assertInertia(fn ($page) => $page
+            ->component('leads/index', false)
+            ->where('view', 'table')
+            ->has('leads', 1)
+            ->where('pagination.current_page', 2)
+            ->where('pagination.from', 21)
+            ->where('pagination.to', 21)
         );
     }
 
@@ -103,7 +145,8 @@ class LeadIndexTest extends TestCase
             ->component('leads/index', false)
             ->has('leads', 1)
             ->where('leads.0.contact.first_name', 'Marina')
-            ->where('filters.project', $marina->code)
+            ->where('filters.project.0', $marina->code)
+            ->has('filters.project', 1)
         );
     }
 
@@ -118,6 +161,11 @@ class LeadIndexTest extends TestCase
             'title' => 'Closed Won',
             'priority' => 6,
         ]);
+        $qualifiedStage = LeadStage::factory()->create([
+            'label' => 'qualified',
+            'title' => 'Qualified',
+            'priority' => 3,
+        ]);
         $project = Project::factory()->create();
         Lead::factory()->create([
             'project_id' => $project->id,
@@ -127,19 +175,23 @@ class LeadIndexTest extends TestCase
             'project_id' => $project->id,
             'lead_stage_id' => $wonStage->id,
         ]);
+        Lead::factory()->create([
+            'project_id' => $project->id,
+            'lead_stage_id' => $qualifiedStage->id,
+        ]);
         Tenant::forgetCurrent();
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $response = $this->get(Domain::portal('/leads?stage=closed_won'));
+        $response = $this->get(Domain::portal('/leads?stage=qualified,closed_won'));
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('leads/index', false)
-            ->has('leads', 1)
-            ->where('leads.0.stage.label', 'closed_won')
-            ->where('filters.stage', 'closed_won')
+            ->has('leads', 2)
+            ->where('filters.stage.0', 'qualified')
+            ->where('filters.stage.1', 'closed_won')
         );
     }
 

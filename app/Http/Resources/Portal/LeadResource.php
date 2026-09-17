@@ -27,6 +27,7 @@ class LeadResource extends JsonResource
             'unit_id' => $this->unit_id,
             'assigned_to' => $this->assigned_to,
             'source' => $this->source,
+            'campaign_id' => $this->campaign_id,
             'score' => $this->score,
             'next_action' => $this->next_action,
             'due_date' => $this->due_date?->toIso8601String(),
@@ -35,12 +36,15 @@ class LeadResource extends JsonResource
             'budget' => $this->budget !== null ? (float) $this->budget : null,
             'notes' => $this->notes,
             'contacted_at' => $this->contacted_at?->toIso8601String(),
+            'archived_at' => $this->archived_at?->toIso8601String(),
+            'last_activity_at' => ($this->contacted_at ?? $this->updated_at)?->toIso8601String(),
             'contact' => $contact ? [
                 'id' => $contact->id,
                 'first_name' => $contact->first_name,
                 'last_name' => $contact->last_name,
                 'email_address' => $contact->email_address,
                 'phone_number' => $contact->phone_number,
+                'reference' => $contact->reference,
                 'display_name' => trim(implode(' ', array_filter([
                     $contact->first_name,
                     $contact->last_name,
@@ -50,6 +54,7 @@ class LeadResource extends JsonResource
                 'id' => $this->project->id,
                 'title' => $this->project->title,
                 'code' => $this->project->code,
+                'thumbnail' => $this->project->getAttribute('thumbnail_url'),
             ] : null),
             'unit' => $this->whenLoaded('unit', fn () => $this->unit ? [
                 'id' => $this->unit->id,
@@ -63,11 +68,17 @@ class LeadResource extends JsonResource
                 'color' => $this->stage->color,
                 'priority' => $this->stage->priority,
             ] : null),
+            'campaign' => $this->whenLoaded('campaign', fn () => $this->campaign ? [
+                'id' => $this->campaign->id,
+                'title' => $this->campaign->title,
+                'public_id' => $this->campaign->public_id,
+            ] : null),
             'assignee' => $this->when(
                 $this->relationLoaded('assignee'),
                 fn () => $this->assignee ? [
                     'id' => $this->assignee->id,
                     'display_name' => $this->assignee->display_name,
+                    'avatar' => $this->assignee->getAttribute('avatar'),
                 ] : null,
             ),
             'created_at' => $this->created_at?->toIso8601String(),

@@ -253,7 +253,7 @@ export default function ProjectForm({
 
                         {isEditing ? (
                             <div className="space-y-0.5">
-                                <Label className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground">
+                                <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
                                     Description
                                 </Label>
                                 <Textarea
@@ -350,7 +350,7 @@ export default function ProjectForm({
                                     />
 
                                     <div className="space-y-0.5">
-                                        <Label className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground">
+                                        <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
                                             Total Area
                                         </Label>
                                         <InputGroup>

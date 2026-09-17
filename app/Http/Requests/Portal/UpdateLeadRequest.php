@@ -34,6 +34,7 @@ class UpdateLeadRequest extends FormRequest
             'contact.last_name' => ['nullable', 'string', 'max:150'],
             'contact.phone_number' => ['nullable', 'string', 'max:50'],
             'contact.email_address' => ['nullable', 'email', 'max:150'],
+            'contact.reference' => ['nullable', 'string', 'max:255'],
             'project_id' => ['sometimes', 'nullable', 'integer', Rule::exists(Project::class, 'id')],
             'unit_id' => ['sometimes', 'nullable', 'integer', Rule::exists(Unit::class, 'id')],
             'assigned_to' => ['sometimes', 'nullable', 'integer', Rule::exists(User::class, 'id')],

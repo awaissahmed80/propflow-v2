@@ -104,15 +104,15 @@ function PhoneInput({
   return (
     <div className={cn("space-y-0.5", className)}>
       {label ? (
-        <Label className="mb-0.5 flex flex-row items-center text-base font-medium text-muted-foreground">
+        <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
           {label}
-          {required ? <span className="text-sm text-destructive">*</span> : null}
+          {required ? <span className="text-xs text-destructive">*</span> : null}
         </Label>
       ) : null}
 
       <div
         className={cn(
-          "flex h-9 w-full items-center rounded-md border border-input bg-transparent px-3 shadow-xs transition-[color,box-shadow]",
+          "flex h-control w-full items-center rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow]",
           "has-[input:focus-within]:border-ring has-[input:focus-within]:ring-[1px] has-[input:focus-within]:ring-ring/50",
           "dark:bg-input/30",
           error &&
@@ -134,8 +134,8 @@ function PhoneInput({
           onChange={handleMaskedChange}
           onBlur={onBlur}
           className={cn(
-            "min-w-0 grow bg-transparent text-base outline-none",
-            "placeholder:text-base placeholder:text-muted-foreground disabled:cursor-not-allowed"
+            "min-w-0 grow bg-transparent text-sm outline-none",
+            "placeholder:text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
           )}
         />
       </div>

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\MetaData;
+use App\Models\Setting;
 use App\Models\Tenant;
 use App\Services\TenantContext;
 use App\Support\Domain;
@@ -57,6 +58,33 @@ class HandlePortalRequests extends Middleware
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // Always included so partial reloads keep meta lists fresh.
             'meta' => Inertia::always(fn (): array => $this->sharedMeta()),
+            'currency' => Inertia::always(fn (): array => $this->sharedCurrency()),
+        ];
+    }
+
+    /**
+     * @return array{code: string, symbol: string}
+     */
+    protected function sharedCurrency(): array
+    {
+        if (! Tenant::current()) {
+            return [
+                'code' => 'USD',
+                'symbol' => '$',
+            ];
+        }
+
+        $configuration = Setting::group(Setting::GROUP_CONFIGURATION, [
+            'currency_code' => 'USD',
+            'currency_symbol' => '$',
+        ]);
+
+        $code = strtoupper(trim((string) ($configuration['currency_code'] ?? 'USD')));
+        $symbol = trim((string) ($configuration['currency_symbol'] ?? '$'));
+
+        return [
+            'code' => $code !== '' ? $code : 'USD',
+            'symbol' => $symbol !== '' ? $symbol : '$',
         ];
     }
 

@@ -47,6 +47,7 @@ class LeadStoreTest extends TestCase
                 'last_name' => 'Ahmed',
                 'phone_number' => '03001234567',
                 'email_address' => 'sara@example.com',
+                'reference' => 'Acme Corp',
             ],
             'project_id' => $project->id,
             'lead_stage_id' => $stage->id,
@@ -70,6 +71,119 @@ class LeadStoreTest extends TestCase
         $this->assertSame('Sara', $lead->contact->first_name);
         $this->assertSame('03001234567', $lead->contact->phone_number);
         $this->assertSame(1, Contact::query()->count());
+        Tenant::forgetCurrent();
+    }
+
+    public function test_lead_reuses_existing_contact_matched_by_email(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_lead_reuse_email');
+
+        $tenant->makeCurrent();
+        $existing = Contact::factory()->create([
+            'first_name' => 'Existing',
+            'last_name' => 'Contact',
+            'email_address' => 'sonia@hollandtrix.io',
+            'phone_number' => '03001110000',
+            'type' => 'LEAD',
+        ]);
+        $stage = LeadStage::factory()->newLead()->create();
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->post(Domain::portal('/leads'), [
+            'contact' => [
+                'first_name' => 'Sonia',
+                'last_name' => 'Koll',
+                'phone_number' => '+91 12354 16548',
+                'email_address' => 'Sonia@Hollandtrix.io',
+                'reference' => 'Holland Trix',
+            ],
+            'lead_stage_id' => $stage->id,
+            'source' => 'Google',
+            'tag' => Lead::TAG_MODERATE,
+            'budget' => 16100,
+        ]);
+
+        $response->assertRedirect(Domain::portal('/leads'));
+        $response->assertSessionHas('contact_reused', true);
+
+        $tenant->makeCurrent();
+        $this->assertSame(1, Contact::query()->count());
+        $lead = Lead::query()->with('contact')->first();
+        $this->assertNotNull($lead);
+        $this->assertSame($existing->id, $lead->contact_id);
+        $this->assertSame('Sonia', $lead->contact->first_name);
+        $this->assertSame('Holland Trix', $lead->contact->reference);
+        $this->assertSame('+91 12354 16548', $lead->contact->phone_number);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_lead_reuses_existing_contact_matched_by_normalized_phone(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_lead_reuse_phone');
+
+        $tenant->makeCurrent();
+        $existing = Contact::factory()->create([
+            'first_name' => 'Phone',
+            'last_name' => 'Match',
+            'email_address' => null,
+            'phone_number' => '03001234567',
+            'type' => 'LEAD',
+        ]);
+        $stage = LeadStage::factory()->newLead()->create();
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->post(Domain::portal('/leads'), [
+            'contact' => [
+                'first_name' => 'Phone',
+                'last_name' => 'Match',
+                'phone_number' => '+92 300 1234567',
+            ],
+            'lead_stage_id' => $stage->id,
+        ]);
+
+        $response->assertRedirect(Domain::portal('/leads'));
+        $response->assertSessionHas('contact_reused', true);
+
+        $tenant->makeCurrent();
+        $this->assertSame(1, Contact::query()->count());
+        $lead = Lead::query()->first();
+        $this->assertNotNull($lead);
+        $this->assertSame($existing->id, $lead->contact_id);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_lead_requires_phone_or_email_when_creating_contact(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_lead_store_contact');
+
+        $tenant->makeCurrent();
+        $stage = LeadStage::factory()->newLead()->create();
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->from(Domain::portal('/leads'))
+            ->post(Domain::portal('/leads'), [
+                'contact' => [
+                    'first_name' => 'No',
+                    'last_name' => 'Channel',
+                ],
+                'lead_stage_id' => $stage->id,
+            ]);
+
+        $response->assertRedirect(Domain::portal('/leads'));
+        $response->assertSessionHasErrors(['contact.phone_number', 'contact.email_address']);
+
+        $tenant->makeCurrent();
+        $this->assertSame(0, Lead::query()->count());
+        $this->assertSame(0, Contact::query()->count());
         Tenant::forgetCurrent();
     }
 

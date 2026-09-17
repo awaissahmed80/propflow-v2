@@ -1,69 +1,452 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
+import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { HeatIconButton } from "@/components/ui/heat-icon"
 import { Icon } from "@/components/ui/icon"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Slider } from "@/components/ui/slider"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import { heatMeta } from "@/lib/heat"
 import { cn } from "@/lib/utils"
 
 /**
- * Accordion filter popover with Clear / Apply.
- *
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function toSelectedList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).filter(Boolean)
+  }
+
+  if (value == null || value === "") {
+    return []
+  }
+
+  return String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+/**
+ * @param {{ min?: number, max?: number }} section
+ * @returns {[number, number]}
+ */
+function sectionBounds(section) {
+  const min = Number(section.min ?? 0)
+  const max = Number(section.max ?? 100)
+
+  return [min, Math.max(min, max)]
+}
+
+/**
+ * @param {unknown} value
+ * @param {{ min?: number, max?: number }} section
+ * @returns {[number, number]}
+ */
+function toRangeValue(value, section) {
+  const [min, max] = sectionBounds(section)
+
+  if (Array.isArray(value) && value.length >= 2) {
+    const start = Number(value[0])
+    const end = Number(value[1])
+
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      return [
+        Math.min(Math.max(start, min), max),
+        Math.min(Math.max(end, min), max),
+      ]
+    }
+  }
+
+  return [min, max]
+}
+
+/**
+ * @param {[number, number]} range
+ * @param {{ min?: number, max?: number }} section
+ * @returns {boolean}
+ */
+function isRangeActive(range, section) {
+  const [min, max] = sectionBounds(section)
+
+  return range[0] > min || range[1] < max
+}
+
+/**
+ * @param {number} value
+ * @returns {string}
+ */
+function formatRangeMoney(value) {
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(Number(value) || 0)
+}
+
+/**
+ * @param {[number, number]} range
+ * @returns {string}
+ */
+function formatRangeLabel(range) {
+  return `${formatRangeMoney(range[0])} – ${formatRangeMoney(range[1])}`
+}
+
+/**
+ * @param {string[]} list
+ * @param {string} next
+ * @returns {boolean}
+ */
+function isSelected(list, next) {
+  return list.includes(String(next))
+}
+
+/**
+ * @param {Array<object>} sections
+ * @param {Record<string, unknown>} value
+ * @returns {Record<string, string[] | [number, number]>}
+ */
+function normalizeFilterValue(sections, value = {}) {
+  const next = {}
+
+  sections.forEach((section) => {
+    if (section.type === "range") {
+      next[section.key] = toRangeValue(value[section.key], section)
+    } else {
+      next[section.key] = toSelectedList(value[section.key])
+    }
+  })
+
+  return next
+}
+
+/**
+ * @param {Array<object>} sections
+ * @returns {Record<string, string[] | [number, number]>}
+ */
+function emptyFilterValue(sections) {
+  const next = {}
+
+  sections.forEach((section) => {
+    if (section.type === "range") {
+      next[section.key] = sectionBounds(section)
+    } else {
+      next[section.key] = []
+    }
+  })
+
+  return next
+}
+
+/**
+ * @param {Record<string, string[] | [number, number]>} value
+ * @param {Array<object>} sections
+ * @returns {number}
+ */
+function countActiveFilters(value, sections) {
+  return sections.reduce((total, section) => {
+    if (section.type === "range") {
+      return (
+        total +
+        (isRangeActive(toRangeValue(value[section.key], section), section)
+          ? 1
+          : 0)
+      )
+    }
+
+    return total + toSelectedList(value[section.key]).length
+  }, 0)
+}
+
+/**
  * @param {object} props
- * @param {Array<{ key: string, label: string, options: Array<{ value: string, label: string }> }>} props.sections
- * @param {Record<string, string>} props.value Applied filter values
- * @param {(next: Record<string, string>) => void} props.onApply
+ * @param {boolean} props.selected
+ * @param {() => void} props.onClick
  * @param {string} [props.className]
+ * @param {import("react").ReactNode} props.children
+ */
+function FilterChip({ selected, onClick, className, children }) {
+  return (
+    <button
+      type="button"
+      data-selected={selected ? "true" : "false"}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-xs transition-colors",
+        selected
+          ? "border-primary/40 bg-primary/10 text-primary"
+          : "border-border bg-background text-foreground hover:bg-muted/50",
+        className
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * @param {object} props
+ * @param {object} props.section
+ * @param {string[] | [number, number]} props.value
+ * @param {(next: string) => void} props.onToggle
+ * @param {(next: [number, number]) => void} props.onRangeChange
+ */
+function FilterSectionOptions({ section, value, onToggle, onRangeChange }) {
+  const type = section.type || "chips"
+
+  if (type === "range") {
+    const [min, max] = sectionBounds(section)
+    const range = toRangeValue(value, section)
+
+    return (
+      <div className="space-y-2 pt-0.5">
+        <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
+          <span>{formatRangeMoney(range[0])}</span>
+          <span>{formatRangeMoney(range[1])}</span>
+        </div>
+        <Slider
+          value={range}
+          min={min}
+          max={max}
+          step={section.step ?? Math.max(1, Math.round((max - min) / 100))}
+          onValueChange={(next) => {
+            const resolved = Array.isArray(next) ? next : [min, max]
+            onRangeChange([
+              Number(resolved[0]) || min,
+              Number(resolved[1]) || max,
+            ])
+          }}
+        />
+      </div>
+    )
+  }
+
+  const selectedValues = toSelectedList(value)
+
+  if (type === "people") {
+    return (
+      <div className="space-y-0.5">
+        {section.options.map((option) => {
+          const selected = isSelected(selectedValues, option.value)
+
+          return (
+            <button
+              key={`${section.key}-${option.value}`}
+              type="button"
+              onClick={() => onToggle(option.value)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md border px-1.5 py-1 text-left text-xs transition-colors",
+                selected
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-transparent text-foreground hover:bg-muted/50"
+              )}
+            >
+              <Avatar
+                name={option.label}
+                src={option.avatar || undefined}
+                size="sm"
+                className="size-5"
+                textClass="text-[9px]"
+              />
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              {selected ? (
+                <Icon name="check-line" className="shrink-0 text-sm text-primary" />
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (type === "projects") {
+    return (
+      <div className="space-y-0.5">
+        {section.options.map((option) => {
+          const selected = isSelected(selectedValues, option.value)
+
+          return (
+            <button
+              key={`${section.key}-${option.value}`}
+              type="button"
+              onClick={() => onToggle(option.value)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md border px-1.5 py-1 text-left text-xs transition-colors",
+                selected
+                  ? "border-primary/40 bg-primary/10"
+                  : "border-transparent hover:bg-muted/50"
+              )}
+            >
+              {option.thumbnail ? (
+                <img
+                  src={option.thumbnail}
+                  alt=""
+                  className="size-5 shrink-0 rounded-md object-cover"
+                />
+              ) : (
+                <span
+                  className={cn(
+                    "flex size-5 shrink-0 items-center justify-center rounded-md",
+                    selected
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  <Icon name="community-line" className="text-sm" />
+                </span>
+              )}
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate",
+                  selected ? "font-medium text-primary" : "text-foreground"
+                )}
+              >
+                {option.label}
+              </span>
+              {selected ? (
+                <Icon name="check-line" className="shrink-0 text-sm text-primary" />
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (type === "heat") {
+    return (
+      <TooltipProvider delay={200}>
+        <div className="flex flex-wrap gap-1.5">
+          {section.options.map((option) => {
+            const selected = isSelected(selectedValues, option.value)
+
+            return (
+              <HeatIconButton
+                key={`${section.key}-${option.value}`}
+                tag={option.value}
+                selected={selected}
+                onClick={() => onToggle(option.value)}
+              />
+            )
+          })}
+        </div>
+      </TooltipProvider>
+    )
+  }
+
+  if (type === "stage" || type === "status") {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {section.options.map((option) => {
+          const selected = isSelected(selectedValues, option.value)
+
+          return (
+            <FilterChip
+              key={`${section.key}-${option.value}`}
+              selected={selected}
+              onClick={() => onToggle(option.value)}
+            >
+              <span
+                className="size-1.5 shrink-0 rounded-sm"
+                style={{
+                  backgroundColor: option.color || "var(--muted-foreground)",
+                }}
+                aria-hidden
+              />
+              {option.label}
+            </FilterChip>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {(section.options || []).map((option) => {
+        const selected = isSelected(selectedValues, option.value)
+
+        return (
+          <FilterChip
+            key={`${section.key}-${option.value}`}
+            selected={selected}
+            onClick={() => onToggle(option.value)}
+          >
+            {option.label}
+          </FilterChip>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Multi-select typed filter popover with optional range sliders.
  */
 function FilterMenu({ sections = [], value = {}, onApply, className }) {
+  const normalizedValue = useMemo(
+    () => normalizeFilterValue(sections, value),
+    [sections, value]
+  )
+
   const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState(value)
+  const [draft, setDraft] = useState(normalizedValue)
 
   useEffect(() => {
     if (open) {
-      setDraft(value)
+      setDraft(normalizedValue)
     }
-  }, [open, value])
+  }, [open, normalizedValue])
 
   const activeCount = useMemo(
-    () =>
-      Object.values(value).filter((item) => item != null && String(item) !== "")
-        .length,
-    [value]
+    () => countActiveFilters(normalizedValue, sections),
+    [normalizedValue, sections]
   )
 
-  const triggerLabel =
-    activeCount > 0 ? `Filter (${activeCount})` : "Filter..."
+  const toggleSectionValue = (key, next) => {
+    const incoming = String(next ?? "")
 
-  const setSectionValue = (key, next) => {
+    setDraft((current) => {
+      const existing = toSelectedList(current[key])
+      const hasValue = existing.includes(incoming)
+
+      return {
+        ...current,
+        [key]: hasValue
+          ? existing.filter((item) => item !== incoming)
+          : [...existing, incoming],
+      }
+    })
+  }
+
+  const setRangeValue = (key, next) => {
     setDraft((current) => ({
       ...current,
-      [key]: next ?? "",
+      [key]: next,
     }))
   }
 
-  const handleClear = () => {
-    const cleared = Object.fromEntries(
-      sections.map((section) => [section.key, ""])
-    )
+  const handleClearAll = () => {
+    const cleared = emptyFilterValue(sections)
+
     setDraft(cleared)
     onApply?.(cleared)
     setOpen(false)
   }
 
+  const handleCancel = () => {
+    setDraft(normalizedValue)
+    setOpen(false)
+  }
+
   const handleApply = () => {
-    onApply?.(draft)
+    onApply?.(normalizeFilterValue(sections, draft))
     setOpen(false)
   }
 
@@ -71,70 +454,59 @@ function FilterMenu({ sections = [], value = {}, onApply, className }) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className={cn(
-          "inline-flex h-9 min-w-40 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm text-muted-foreground shadow-xs transition-colors outline-none",
-          "hover:bg-muted/40 hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-          "data-popup-open:border-ring data-popup-open:text-foreground",
+          "inline-flex h-control items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 text-sm text-foreground shadow-xs transition-colors outline-none",
+          "hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+          "data-popup-open:border-ring",
           className
         )}
       >
-        <Icon name="filter-3-line" className="text-base" />
-        <span className="flex-1 text-left">{triggerLabel}</span>
-        <Icon name="arrow-down-s-line" className="text-base opacity-70" />
+        <Icon name="filter-3-line" className="text-base text-muted-foreground" />
+        <span>Filters</span>
+        {activeCount > 0 ? (
+          <span className="flex size-4 items-center justify-center rounded-md bg-primary text-[10px] font-semibold text-primary-foreground">
+            {activeCount}
+          </span>
+        ) : null}
       </PopoverTrigger>
 
       <PopoverContent
         align="start"
         sideOffset={6}
-        className="w-72 gap-0 overflow-hidden p-0"
+        className="w-72 gap-0 overflow-hidden rounded-md p-0 sm:w-80"
       >
-        <Accordion defaultValue={["status"]} className="max-h-80 overflow-y-auto">
-          {sections.map((section) => (
-            <AccordionItem key={section.key} value={section.key} className="px-1">
-              <AccordionTrigger className="px-3 py-3 text-sm font-semibold hover:no-underline">
-                {section.label}
-              </AccordionTrigger>
-              <AccordionContent className="px-3 pb-3">
-                <RadioGroup
-                  value={draft[section.key] || null}
-                  onValueChange={(next) => setSectionValue(section.key, next)}
-                  className="gap-1"
-                >
-                  {section.options.map((option) => {
-                    const selected =
-                      String(draft[section.key] || "") === String(option.value)
-
-                    return (
-                      <label
-                        key={`${section.key}-${option.value}`}
-                        className={cn(
-                          "flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1.5 text-sm text-muted-foreground transition-colors",
-                          "hover:bg-muted/40 hover:text-foreground",
-                          selected && "text-foreground"
-                        )}
-                      >
-                        <RadioGroupItem value={option.value} />
-                        <span>{option.label}</span>
-                      </label>
-                    )
-                  })}
-                </RadioGroup>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
-
-        <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2.5">
-          <Button
+        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+          <h3 className="text-xs font-semibold text-foreground">Filters</h3>
+          <button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="px-2"
-            onClick={handleClear}
+            className="text-xs font-medium text-primary transition-opacity hover:opacity-80"
+            onClick={handleClearAll}
           >
-            Clear
+            Clear all
+          </button>
+        </div>
+
+        <div className="max-h-72 space-y-3 overflow-y-auto px-3 py-2.5">
+          {sections.map((section) => (
+            <div key={section.key} className="space-y-1.5">
+              <div className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                {section.label}
+              </div>
+              <FilterSectionOptions
+                section={section}
+                value={draft[section.key]}
+                onToggle={(next) => toggleSectionValue(section.key, next)}
+                onRangeChange={(next) => setRangeValue(section.key, next)}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-1.5 border-t border-border p-2">
+          <Button type="button" variant="outline" size="sm" onClick={handleCancel}>
+            Cancel
           </Button>
           <Button type="button" size="sm" onClick={handleApply}>
-            Apply
+            Apply filters
           </Button>
         </div>
       </PopoverContent>
@@ -142,4 +514,151 @@ function FilterMenu({ sections = [], value = {}, onApply, className }) {
   )
 }
 
-export { FilterMenu }
+/**
+ * Removable chips showing currently applied filter selections.
+ * Multi-select groups are combined, e.g. "Stage: New, Contacted".
+ */
+function ActiveFilters({ sections = [], value = {}, onChange, onClear, className }) {
+  const chips = useMemo(() => {
+    const items = []
+
+    sections.forEach((section) => {
+      if (section.type === "range") {
+        const range = toRangeValue(value[section.key], section)
+
+        if (!isRangeActive(range, section)) {
+          return
+        }
+
+        items.push({
+          key: section.key,
+          values: [`${range[0]}-${range[1]}`],
+          sectionLabel: section.label,
+          optionLabel: formatRangeLabel(range),
+          kind: "range",
+        })
+
+        return
+      }
+
+      const selected = toSelectedList(value[section.key])
+
+      if (selected.length === 0) {
+        return
+      }
+
+      const labels = selected.map((selectedValue) => {
+        const option = (section.options || []).find(
+          (entry) => String(entry.value) === String(selectedValue)
+        )
+
+        return option?.label || String(selectedValue)
+      })
+
+      items.push({
+        key: section.key,
+        values: selected,
+        sectionLabel: section.label,
+        optionLabel: labels.join(", "),
+        kind: section.type === "heat" ? "heat" : "list",
+      })
+    })
+
+    return items
+  }, [sections, value])
+
+  if (chips.length === 0) {
+    return null
+  }
+
+  const removeChip = (chip) => {
+    const next = normalizeFilterValue(sections, value)
+
+    if (chip.kind === "range") {
+      const section = sections.find((entry) => entry.key === chip.key)
+      next[chip.key] = sectionBounds(section || {})
+    } else {
+      next[chip.key] = []
+    }
+
+    onChange?.(next)
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-1.5 border-b border-border bg-muted/20 px-6 py-2",
+        className
+      )}
+    >
+      <span className="mr-1 text-[11px] font-medium text-muted-foreground">
+        Showing
+      </span>
+      {chips.map((chip) => (
+        <button
+          key={chip.key}
+          type="button"
+          onClick={() => removeChip(chip)}
+          className="inline-flex h-6 max-w-72 items-center gap-1 rounded-md border border-border bg-background px-2 text-xs text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/5"
+          title={`Remove ${chip.sectionLabel}: ${chip.optionLabel}`}
+        >
+          {chip.kind === "heat" ? (
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <span className="text-muted-foreground">{chip.sectionLabel}:</span>
+              <span className="inline-flex items-center gap-0.5">
+                {chip.values.map((value) => {
+                  const meta = heatMeta(value)
+
+                  if (!meta) {
+                    return (
+                      <span key={value} className="truncate">
+                        {value}
+                      </span>
+                    )
+                  }
+
+                  return (
+                    <Icon
+                      key={value}
+                      name={meta.icon}
+                      className={cn("text-sm", meta.className)}
+                      title={meta.label}
+                    />
+                  )
+                })}
+              </span>
+            </span>
+          ) : (
+            <span className="truncate">
+              <span className="text-muted-foreground">{chip.sectionLabel}:</span>{" "}
+              {chip.optionLabel}
+            </span>
+          )}
+          <Icon
+            name="close-line"
+            className="shrink-0 text-sm text-muted-foreground"
+          />
+        </button>
+      ))}
+      {onClear ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="ml-1 text-xs font-medium text-primary transition-opacity hover:opacity-80"
+        >
+          Clear all
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+export {
+  FilterMenu,
+  ActiveFilters,
+  toSelectedList,
+  toRangeValue,
+  isRangeActive,
+  sectionBounds,
+  emptyFilterValue,
+}

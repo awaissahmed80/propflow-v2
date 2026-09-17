@@ -26,7 +26,12 @@ export function AppSidebar () {
                                             <div className="text-xs font-semibold uppercase mb-3 text-sidebar-foreground/30 px-3 ">{group?.title}</div>
                                             {
                                                 group?.items?.map((item, i) =>
-                                                    <NavLink href={item?.to} end={item?.to === '/'} key={i} className="flex px-3 text-sm font-medium rounded-md flex-row items-center py-1 hover:bg-card">
+                                                    <NavLink
+                                                        href={item?.to}
+                                                        end={Boolean(item?.end)}
+                                                        key={`${item?.label}-${item?.to}`}
+                                                        className="flex flex-row items-center rounded-md px-3 py-1 text-sm font-medium hover:bg-card"
+                                                    >
                                                         <Icon name={item?.icon} className="w-8 text-lg" />
                                                         {item?.label}
                                                     </NavLink>

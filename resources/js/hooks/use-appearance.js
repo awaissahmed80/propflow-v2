@@ -12,8 +12,8 @@ const setCookie = (name, value, days = 365) => {
     if (typeof document === 'undefined') {
         return;
     }
-    console.log('Cookie value', value)
-    const host = window.location.hostname.split('.').slice(-2).join('.');        
+
+    const host = window.location.hostname.split('.').slice(-2).join('.');
     const maxAge = days * 24 * 60 * 60;
     document.cookie = `${name}=${value};path=/;max-age=${maxAge};SameSite=Lax;domain=.${host}`;
 };
@@ -23,22 +23,25 @@ const getCookie = (name) => {
         return null;
     }
 
-    // Match the cookie name followed by '=' and capture the value
-    const nameEQ = name + "=";
-    const ca = document.cookie.split(';');
+    const nameEQ = `${name}=`;
+    const cookies = document.cookie.split(';');
 
-    for (let i = 0; i < ca.length; i++) {
-        let c = ca[i].trim(); // Remove leading spaces
-        if (c.indexOf(nameEQ) === 0) {
-            return c.substring(nameEQ.length, c.length);
+    for (let i = 0; i < cookies.length; i += 1) {
+        const cookie = cookies[i].trim();
+
+        if (cookie.indexOf(nameEQ) === 0) {
+            return cookie.substring(nameEQ.length);
         }
     }
-    
-    return null; // Return null if the cookie doesn't exist
+
+    return null;
 };
 
+const resolveAppearance = () => getCookie('appearance') || 'system';
+
 const applyTheme = (appearance) => {
-    const isDark = appearance === 'dark' || (appearance === 'system' && prefersDark());
+    const mode = appearance || 'system';
+    const isDark = mode === 'dark' || (mode === 'system' && prefersDark());
 
     document.documentElement.classList.toggle('dark', isDark);
 };
@@ -52,53 +55,35 @@ const mediaQuery = () => {
 };
 
 const handleSystemThemeChange = () => {
-    const currentAppearance = localStorage.getItem('appearance');
-    applyTheme(currentAppearance || 'system');
+    applyTheme(resolveAppearance());
 };
 
-
 export function initializeTheme() {
-    const cookie_theme = getCookie('appearance');
-    // console.log('Cookie theme', cookie_theme)
-    // const savedAppearance = localStorage.getItem('appearance') || 'system';
-    // console.log('Saved appearance', savedAppearance)
-    // const savedAppearance = 'light'
-    // applyTheme(savedAppearance);
-    // localStorage.setItem('appearance', savedAppearance);
-    setCookie('appearance', cookie_theme || 'system');
+    applyTheme(resolveAppearance());
     mediaQuery()?.addEventListener('change', handleSystemThemeChange);
 }
 
 export function useAppearance() {
-    const [appearance, setAppearance] = useState('system');
+    const [appearance, setAppearance] = useState(() => resolveAppearance());
 
     const updateAppearance = useCallback((mode) => {
-        setAppearance(mode);        
+        setAppearance(mode);
         setCookie('appearance', mode);
         applyTheme(mode);
-    }, [setAppearance]);
+    }, []);
 
     useEffect(() => {
+        const savedAppearance = resolveAppearance();
+        setAppearance(savedAppearance);
+        applyTheme(savedAppearance);
+
         const mq = mediaQuery();
         mq?.addEventListener('change', handleSystemThemeChange);
 
         return () => {
             mq?.removeEventListener('change', handleSystemThemeChange);
         };
-    }, []); // Empty dependency array means this only runs once on mount.
-
-    // useEffect(() => {
-    //     const savedAppearance = localStorage.getItem('appearance');
-    //     updateAppearance(savedAppearance || 'system');
-
-    //     return () => {
-    //         const mq = mediaQuery();
-
-    //         if (mq) {
-    //             mq.removeEventListener('change', handleSystemThemeChange);
-    //         }
-    //     };
-    // }, [updateAppearance]);
+    }, []);
 
     return { appearance, updateAppearance };
 }

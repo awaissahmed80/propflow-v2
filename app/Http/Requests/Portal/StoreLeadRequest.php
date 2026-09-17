@@ -38,12 +38,24 @@ class StoreLeadRequest extends FormRequest
             ],
             'contact.last_name' => ['nullable', 'string', 'max:150'],
             'contact.phone_number' => [
-                Rule::requiredIf(fn (): bool => blank($this->input('contact_id'))),
                 'nullable',
                 'string',
                 'max:50',
+                Rule::requiredIf(function (): bool {
+                    return blank($this->input('contact_id'))
+                        && blank($this->input('contact.email_address'));
+                }),
             ],
-            'contact.email_address' => ['nullable', 'email', 'max:150'],
+            'contact.email_address' => [
+                'nullable',
+                'email',
+                'max:150',
+                Rule::requiredIf(function (): bool {
+                    return blank($this->input('contact_id'))
+                        && blank($this->input('contact.phone_number'));
+                }),
+            ],
+            'contact.reference' => ['nullable', 'string', 'max:255'],
             'project_id' => ['nullable', 'integer', Rule::exists(Project::class, 'id')],
             'unit_id' => ['nullable', 'integer', Rule::exists(Unit::class, 'id')],
             'assigned_to' => ['nullable', 'integer', Rule::exists(User::class, 'id')],

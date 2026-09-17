@@ -58,8 +58,47 @@ class InventoryIndexTest extends TestCase
             ->where('units.0.name', '1201')
             ->where('units.0.code', $unit->code)
             ->where('units.0.project.title', 'Marina Residences')
+            ->where('pagination.total', 1)
+            ->where('pagination.per_page', 20)
             ->has('formOptions.projects')
             ->has('formOptions.statuses')
+        );
+    }
+
+    public function test_inventory_is_paginated(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_inventory_pagination');
+
+        $tenant->makeCurrent();
+        $project = Project::factory()->create();
+        Unit::factory()->count(21)->create([
+            'project_id' => $project->id,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $firstPage = $this->get(Domain::portal('/inventory'));
+        $firstPage->assertOk();
+        $firstPage->assertInertia(fn ($page) => $page
+            ->component('inventory/index', false)
+            ->has('units', 20)
+            ->where('pagination.total', 21)
+            ->where('pagination.current_page', 1)
+            ->where('pagination.last_page', 2)
+            ->where('pagination.from', 1)
+            ->where('pagination.to', 20)
+        );
+
+        $secondPage = $this->get(Domain::portal('/inventory?page=2'));
+        $secondPage->assertOk();
+        $secondPage->assertInertia(fn ($page) => $page
+            ->component('inventory/index', false)
+            ->has('units', 1)
+            ->where('pagination.current_page', 2)
+            ->where('pagination.from', 21)
+            ->where('pagination.to', 21)
         );
     }
 
@@ -90,7 +129,8 @@ class InventoryIndexTest extends TestCase
             ->component('inventory/index', false)
             ->has('units', 1)
             ->where('units.0.name', 'Sold Unit')
-            ->where('filters.status', 'SOLD')
+            ->where('filters.status.0', 'SOLD')
+            ->has('filters.status', 1)
         );
     }
 
@@ -121,7 +161,42 @@ class InventoryIndexTest extends TestCase
             ->component('inventory/index', false)
             ->has('units', 1)
             ->where('units.0.name', 'Marina Unit')
-            ->where('filters.project', $marina->code)
+            ->where('filters.project.0', $marina->code)
+            ->has('filters.project', 1)
+        );
+    }
+
+    public function test_inventory_can_be_filtered_by_price_range(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_inventory_price_filter');
+
+        $tenant->makeCurrent();
+        $project = Project::factory()->create();
+        Unit::factory()->create([
+            'project_id' => $project->id,
+            'name' => 'Budget Unit',
+            'price' => 500000,
+        ]);
+        Unit::factory()->create([
+            'project_id' => $project->id,
+            'name' => 'Premium Unit',
+            'price' => 5000000,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->get(Domain::portal('/inventory?price_min=1000000&price_max=5000000'));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('inventory/index', false)
+            ->has('units', 1)
+            ->where('units.0.name', 'Premium Unit')
+            ->where('filters.price.0', 1000000)
+            ->where('filters.price.1', 5000000)
+            ->has('formOptions.price')
         );
     }
 
