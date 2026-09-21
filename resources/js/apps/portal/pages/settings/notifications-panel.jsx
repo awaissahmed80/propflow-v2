@@ -34,7 +34,7 @@ function SettingRow({ title, description, checked, onCheckedChange, disabled = f
         <div className={cn("px-5 py-4", !last && "border-b border-border/60")}>
             <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-foreground">{title}</p>
+                    <p className="text-base font-bold tracking-tight text-foreground">{title}</p>
                     <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
                 </div>
                 <Switch
@@ -114,7 +114,7 @@ export default function NotificationsPanel({
             {notificationCatalog.map((group) => (
                 <section key={group.id} className="space-y-3">
                     <div>
-                        <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                        <h3 className="text-base font-bold tracking-tight text-foreground">
                             {group.label}
                         </h3>
                         {group.description ? (

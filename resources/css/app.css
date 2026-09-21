@@ -61,13 +61,13 @@
   --spacing: 0.25rem;
 
   /* Shared control density tokens */
-  --control-height: 2rem; /* 32px — h-8 */
-  --control-height-sm: 1.75rem; /* 28px — h-7 */
-  --control-height-lg: 2.25rem; /* 36px — h-9 */
-  --control-height-icon: 2rem;
+  --control-height: 2.125rem; /* 34px */
+  --control-height-sm: 1.875rem; /* 30px */
+  --control-height-lg: 2.5rem; /* 40px */
+  --control-height-icon: 2.125rem;
   --control-px: 0.75rem;
-  --control-text: 0.875rem; /* text-sm */
-  --label-text: 0.8125rem; /* ~13px */
+  --control-text: 0.9375rem; /* 15px */
+  --label-text: 0.875rem; /* 14px */
 }
 
 .dark {
@@ -182,6 +182,20 @@
   --tracking-wider: calc(var(--tracking-normal) + 0.05em);
   --tracking-widest: calc(var(--tracking-normal) + 0.1em);
 
+  /* Slightly larger type scale for portal readability */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: calc(1.125 / 0.8125);
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: calc(1.375 / 0.9375);
+  --text-base: 1rem;
+  --text-base--line-height: calc(1.5 / 1);
+  --text-lg: 1.125rem;
+  --text-lg--line-height: calc(1.75 / 1.125);
+  --text-xl: 1.375rem;
+  --text-xl--line-height: calc(1.75 / 1.375);
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: calc(2 / 1.625);
+
   --text-control: var(--control-text);
   --text-label: var(--label-text);
   --height-control: var(--control-height);
@@ -202,8 +216,18 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground text-sm;
+    @apply bg-background text-foreground text-base;
     letter-spacing: var(--tracking-normal);
+  }
+  h1 {
+    @apply text-2xl font-bold tracking-tight text-foreground;
+  }
+  h2 {
+    @apply text-lg font-bold tracking-tight text-foreground;
+  }
+  h3,
+  h4 {
+    @apply text-base font-bold tracking-tight text-foreground;
   }
 }
 

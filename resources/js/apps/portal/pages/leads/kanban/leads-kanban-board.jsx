@@ -83,7 +83,7 @@ function toBoardFilterParams(filters = {}) {
         params.q = String(filters.q);
     }
 
-    ["project", "tag", "assigned_to"].forEach((key) => {
+    ["project", "tag", "assigned_to", "next_action"].forEach((key) => {
         const value = filters[key];
         if (Array.isArray(value) && value.length > 0) {
             params[key] = value.join(",");
@@ -108,6 +108,7 @@ export function LeadsKanbanBoard({
     filters = {},
     selectedLeadId = null,
     onOpenLead,
+    doNothingTitle = "Do Nothing",
 }) {
     const [columns, setColumns] = useState(board);
     const filterParams = useMemo(() => toBoardFilterParams(filters), [filters]);
@@ -135,7 +136,7 @@ export function LeadsKanbanBoard({
 
             const lead = sourceColumn.leads.find((item) => Number(item.id) === Number(leadId));
 
-            if (!lead?.code) {
+            if (!lead?.code || lead.deal_locked || lead.active_order) {
                 return;
             }
 
@@ -201,6 +202,7 @@ export function LeadsKanbanBoard({
                         column={column}
                         selectedLeadId={selectedLeadId}
                         filterParams={filterParams}
+                        doNothingTitle={doNothingTitle}
                         onOpenLead={onOpenLead}
                         onDropLead={handleDropLead}
                         onColumnPage={handleColumnPage}

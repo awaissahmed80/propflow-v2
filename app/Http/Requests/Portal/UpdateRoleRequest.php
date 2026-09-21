@@ -21,10 +21,11 @@ class UpdateRoleRequest extends FormRequest
     public function rules(): array
     {
         $role = $this->route('role');
+        $toggleOnly = $this->boolean('toggle_only');
 
         return [
             'name' => [
-                'required',
+                Rule::requiredIf(! $toggleOnly),
                 'string',
                 'max:255',
                 Rule::unique(Role::class, 'name')
@@ -34,6 +35,8 @@ class UpdateRoleRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:1000'],
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['string', Rule::in(TenantPermissions::names())],
+            'is_enabled' => ['sometimes', 'boolean'],
+            'toggle_only' => ['sometimes', 'boolean'],
         ];
     }
 }

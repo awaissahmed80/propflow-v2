@@ -120,7 +120,7 @@ function TeamCard({ team, onOpen, onEdit, onDelete }) {
                         <div className="flex items-center gap-3">
                             <MemberAvatar member={team.leader} />
                             <div className="min-w-0">
-                                <div className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                                <div className="text-sm font-bold tracking-tight text-muted-foreground">
                                     Team Lead
                                 </div>
                                 <div className="truncate text-sm font-medium text-foreground">
@@ -404,7 +404,7 @@ function TeamsIndex({
             <Layout.Header metaTitle="Teams" breadcrumbs={[{ label: "Teams" }]} />
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar>
-                    <h1 className="shrink-0 text-xl font-bold tracking-tight text-foreground">Teams</h1>
+                    <h1 className="shrink-0 text-2xl font-bold tracking-tight text-foreground">Teams</h1>
                     <FilterInput
                         value={search}
                         onChange={handleSearchChange}

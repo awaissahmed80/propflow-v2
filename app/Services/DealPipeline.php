@@ -10,6 +10,7 @@ use App\Models\OrderPayment;
 use App\Models\OrderTransfer;
 use App\Models\PaymentInstallment;
 use App\Models\PaymentPlan;
+use App\Models\PaymentPlanTemplate;
 use App\Models\Unit;
 use App\Support\AssetManager;
 use App\Support\Deals\PaymentSchedule;
@@ -89,8 +90,39 @@ class DealPipeline
             }
 
             $net = $this->netCents($order);
-            $down = $this->cents($data['down_payment'] ?? 0);
-            $percent = (float) $data['handover_percent'];
+            $down = array_key_exists('down_payment', $data) ? $this->cents($data['down_payment']) : null;
+            $percent = array_key_exists('handover_percent', $data) ? (float) $data['handover_percent'] : null;
+
+            $templateId = $data['template_id'] ?? null;
+            $dbTemplate = null;
+
+            if ($templateId !== null && $templateId !== '' && $templateId !== 'custom') {
+                $dbTemplate = PaymentPlanTemplate::query()
+                    ->enabled()
+                    ->whereKey((int) $templateId)
+                    ->first();
+            }
+
+            if ($dbTemplate !== null) {
+                $frequency = $dbTemplate->frequency === 'quarterly' ? 'quarterly' : 'monthly';
+                $count = max(1, (int) $dbTemplate->installment_count);
+                $balloonEvery = $dbTemplate->balloon_every !== null ? (int) $dbTemplate->balloon_every : null;
+                $templateKey = 'template:'.$dbTemplate->id;
+                $percent ??= (float) $dbTemplate->handover_percent;
+                $down ??= (int) round($net * ((float) $dbTemplate->down_payment_percent) / 100);
+                $data['late_fee_basis'] ??= $dbTemplate->late_fee_basis;
+                $data['late_fee_rate'] ??= $dbTemplate->late_fee_rate ?? 0;
+            } else {
+                [$frequency, $count, $balloonEvery] = PaymentSchedule::resolve(
+                    (string) ($data['template'] ?? PaymentSchedule::TEMPLATE_CUSTOM),
+                    $data['frequency'] ?? null,
+                    isset($data['installment_count']) ? (int) $data['installment_count'] : null,
+                );
+                $templateKey = (string) ($data['template'] ?? PaymentSchedule::TEMPLATE_CUSTOM);
+                $percent ??= 0.0;
+                $down ??= 0;
+            }
+
             $handover = (int) round($net * $percent / 100);
 
             if ($down + $handover > $net) {
@@ -99,17 +131,11 @@ class DealPipeline
                 ]);
             }
 
-            [$frequency, $count, $balloonEvery] = PaymentSchedule::resolve(
-                (string) $data['template'],
-                $data['frequency'] ?? null,
-                isset($data['installment_count']) ? (int) $data['installment_count'] : null,
-            );
-
             $plan = $order->paymentPlan()->firstOrFail();
             $plan->installments()->delete();
             $plan->forceFill([
                 'agreed_price' => $this->money($net),
-                'template' => $data['template'],
+                'template' => $templateKey,
                 'down_payment' => $this->money($down),
                 'handover_percent' => $percent,
                 'frequency' => $frequency,
@@ -324,7 +350,7 @@ class DealPipeline
                 'handover_ready',
                 'Ready for handover',
                 $body,
-                '/orders/'.$order->code,
+                '/bookings/'.$order->code,
                 WorkspaceNotifier::userOrMembers($order->assigned_to),
             );
             $this->sendWhatsApp($order->contact?->phone_number, $body);
@@ -401,7 +427,7 @@ class DealPipeline
                 'installment_due',
                 'Installment due',
                 $body,
-                '/orders/'.$order->code,
+                '/bookings/'.$order->code,
                 WorkspaceNotifier::userOrMembers($order->assigned_to),
             );
             $this->sendWhatsApp($order->contact?->phone_number, $body);
@@ -448,6 +474,8 @@ class DealPipeline
             ],
             'plan' => $plan ? [
                 'template' => $plan->template,
+                'title' => $this->planTitle($plan->template),
+                'summary' => $this->planSummary($plan),
                 'down_payment' => (float) $plan->down_payment,
                 'handover_percent' => (float) $plan->handover_percent,
                 'frequency' => $plan->frequency,
@@ -455,7 +483,7 @@ class DealPipeline
                 'late_fee_basis' => $plan->late_fee_basis,
                 'late_fee_rate' => (float) $plan->late_fee_rate,
             ] : null,
-            'templates' => PaymentSchedule::templates(),
+            'templates' => $this->planTemplates($order),
             'categories' => [
                 ['id' => 'standard', 'label' => 'Standard'],
                 ['id' => 'corner', 'label' => 'Corner'],
@@ -498,6 +526,103 @@ class DealPipeline
             'handover_ready_at' => $order->handover_ready_at?->toIso8601String(),
             'delivered_at' => $order->delivered_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * @return list<array{id: string|int, label: string, frequency: string, count: int, balloon_every: ?int, down_payment_percent: ?float, handover_percent: ?float}>
+     */
+    protected function planTemplates(Order $order): array
+    {
+        PaymentPlanTemplate::ensureDefaults();
+
+        $projectId = $order->project_id;
+
+        $rows = PaymentPlanTemplate::query()
+            ->enabled()
+            ->where(function ($query) use ($projectId): void {
+                $query->whereNull('project_id');
+
+                if ($projectId) {
+                    $query->orWhere('project_id', $projectId);
+                }
+            })
+            ->orderByRaw('CASE WHEN project_id IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('title')
+            ->get()
+            ->map(fn (PaymentPlanTemplate $template): array => [
+                'id' => $template->id,
+                'label' => $template->title,
+                'frequency' => $template->frequency,
+                'count' => (int) $template->installment_count,
+                'balloon_every' => $template->balloon_every !== null ? (int) $template->balloon_every : null,
+                'down_payment_percent' => (float) $template->down_payment_percent,
+                'handover_percent' => (float) $template->handover_percent,
+            ])
+            ->values()
+            ->all();
+
+        $rows[] = [
+            'id' => 'custom',
+            'label' => 'Custom',
+            'frequency' => 'monthly',
+            'count' => 12,
+            'balloon_every' => null,
+            'down_payment_percent' => null,
+            'handover_percent' => null,
+        ];
+
+        return $rows;
+    }
+
+    protected function planTitle(?string $templateKey): string
+    {
+        if ($templateKey === null || $templateKey === '') {
+            return 'Payment plan';
+        }
+
+        if (str_starts_with($templateKey, 'template:')) {
+            $id = (int) substr($templateKey, 9);
+            $title = PaymentPlanTemplate::query()->whereKey($id)->value('title');
+
+            if (is_string($title) && $title !== '') {
+                return $title;
+            }
+        }
+
+        foreach (PaymentSchedule::templates() as $template) {
+            if ($template['id'] === $templateKey) {
+                return $template['label'];
+            }
+        }
+
+        if ($templateKey === PaymentSchedule::TEMPLATE_CUSTOM || $templateKey === 'custom') {
+            return 'Custom plan';
+        }
+
+        return 'Payment plan';
+    }
+
+    protected function planSummary(PaymentPlan $plan): string
+    {
+        $parts = [];
+
+        if ($plan->frequency) {
+            $parts[] = ucfirst((string) $plan->frequency);
+        }
+
+        if ($plan->installment_count) {
+            $parts[] = (int) $plan->installment_count.' installments';
+        }
+
+        if ($plan->down_payment !== null && (float) $plan->down_payment > 0) {
+            $parts[] = $this->money($this->cents($plan->down_payment)).' down';
+        }
+
+        if ($plan->handover_percent !== null && (float) $plan->handover_percent > 0) {
+            $parts[] = rtrim(rtrim(number_format((float) $plan->handover_percent, 2, '.', ''), '0'), '.').'% handover';
+        }
+
+        return $parts !== [] ? implode(' · ', $parts) : 'No schedule details yet';
     }
 
     /**

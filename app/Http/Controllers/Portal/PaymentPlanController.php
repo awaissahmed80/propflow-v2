@@ -25,7 +25,7 @@ class PaymentPlanController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        return Inertia::render('payment-plans/index', [
+        return Inertia::render('receivables/installments', [
             'installments' => $paginator->getCollection()->map(function (PaymentInstallment $row): array {
                 $order = $row->plan?->order;
                 $contact = $order?->contact;

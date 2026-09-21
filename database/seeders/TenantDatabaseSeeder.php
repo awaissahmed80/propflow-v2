@@ -3,8 +3,11 @@
 namespace Database\Seeders;
 
 use App\Models\CampaignGoalType;
+use App\Models\LeadActionType;
 use App\Models\LeadStage;
 use App\Models\MetaData;
+use App\Models\OrderStage;
+use App\Models\PaymentPlanTemplate;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
@@ -34,7 +37,10 @@ class TenantDatabaseSeeder extends Seeder
         }
 
         $this->seedDefaultLeadStages();
+        $this->seedDefaultOrderStages();
+        $this->seedDefaultLeadActionTypes();
         $this->seedDefaultCampaignGoalTypes();
+        $this->seedDefaultPaymentPlanTemplates();
         $this->seedDefaultAreaUnits();
         $this->seedDefaultUnitTypes();
     }
@@ -60,6 +66,8 @@ class TenantDatabaseSeeder extends Seeder
             $role = Role::findOrCreate($roleData['name'], 'web');
             $role->forceFill([
                 'description' => $roleData['description'],
+                'is_system' => true,
+                'is_enabled' => true,
             ])->save();
             $role->syncPermissions($roleData['permissions']);
 
@@ -73,28 +81,27 @@ class TenantDatabaseSeeder extends Seeder
 
     protected function seedDefaultLeadStages(): void
     {
-        if (LeadStage::query()->exists()) {
-            return;
-        }
+        LeadStage::ensureDefaults();
+    }
 
-        $stages = [
-            ['label' => 'new', 'title' => 'New', 'priority' => 1, 'color' => '#3B82F6'],
-            ['label' => 'contacted', 'title' => 'Contacted', 'priority' => 2, 'color' => '#8B5CF6'],
-            ['label' => 'qualified', 'title' => 'Qualified', 'priority' => 3, 'color' => '#06B6D4'],
-            ['label' => 'site_visit', 'title' => 'Site Visit', 'priority' => 4, 'color' => '#F59E0B'],
-            ['label' => 'negotiation', 'title' => 'Negotiation', 'priority' => 5, 'color' => '#F97316'],
-            ['label' => 'closed_won', 'title' => 'Closed Won', 'priority' => 6, 'color' => '#059669'],
-            ['label' => 'closed_lost', 'title' => 'Closed Lost', 'priority' => 7, 'color' => '#EF4444'],
-        ];
+    protected function seedDefaultOrderStages(): void
+    {
+        OrderStage::ensureDefaults();
+    }
 
-        foreach ($stages as $stage) {
-            LeadStage::query()->create($stage);
-        }
+    protected function seedDefaultLeadActionTypes(): void
+    {
+        LeadActionType::ensureDefaults();
     }
 
     protected function seedDefaultCampaignGoalTypes(): void
     {
         CampaignGoalType::ensureDefaults();
+    }
+
+    protected function seedDefaultPaymentPlanTemplates(): void
+    {
+        PaymentPlanTemplate::ensureDefaults();
     }
 
     protected function seedDefaultAreaUnits(): void

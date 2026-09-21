@@ -218,7 +218,7 @@ function WebhookSection({
                 </div>
 
                 <div className="space-y-2 border-t border-border/60 pt-5">
-                    <p className="text-xs font-medium text-muted-foreground">Campaign codes</p>
+                    <p className="text-xs font-medium text-muted-foreground">Campaign Codes</p>
                     <p className="text-xs text-muted-foreground">
                         Send an active campaign’s public id as{" "}
                         <span className="font-mono">campaign_code</span>. An unknown code is rejected.
@@ -249,7 +249,7 @@ function WebhookSection({
 
                 <div className="space-y-2 border-t border-border/60 pt-5">
                     <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs font-medium text-muted-foreground">Example payload</p>
+                        <p className="text-xs font-medium text-muted-foreground">Example Payload</p>
                         <IconButton
                             type="button"
                             size="sm"

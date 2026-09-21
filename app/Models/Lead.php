@@ -78,12 +78,12 @@ class Lead extends Model
      */
     public static function nextActions(): array
     {
-        return [
-            self::NEXT_ACTION_FOLLOW_UP,
-            self::NEXT_ACTION_ARRANGE_SITE_VISIT,
-            self::NEXT_ACTION_ARRANGE_MEETING,
-            self::NEXT_ACTION_DO_NOTHING,
-        ];
+        return LeadActionType::titles(LeadActionType::KIND_NEXT_ACTION);
+    }
+
+    public static function doNothingNextAction(): string
+    {
+        return LeadActionType::doNothingTitle();
     }
 
     protected function casts(): array
@@ -241,6 +241,15 @@ class Lead extends Model
                 $query->whereIn('status', Order::activeStatuses());
             },
         );
+    }
+
+    public function hasActiveDeal(): bool
+    {
+        if ($this->relationLoaded('activeOrder')) {
+            return $this->activeOrder !== null;
+        }
+
+        return $this->activeOrder()->exists();
     }
 
     /**

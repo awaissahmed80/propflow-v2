@@ -14,6 +14,8 @@ import IntegrationsPanel from "./integrations-panel";
 import MetaDataPanel from "./meta-data-panel";
 import NotificationsPanel from "./notifications-panel";
 import PipelinePanel from "./pipeline-panel";
+import BookingsPanel from "./bookings-panel";
+import RolesPanel from "./roles-panel";
 
 function pathFrom(url) {
     const raw = String(url || "/");
@@ -35,7 +37,9 @@ const PANEL_BY_SECTION = {
     general: GeneralPanel,
     "meta-data": MetaDataPanel,
     pipeline: PipelinePanel,
+    bookings: BookingsPanel,
     campaigns: CampaignsPanel,
+    roles: RolesPanel,
     integrations: IntegrationsPanel,
     notifications: NotificationsPanel,
     developer: DeveloperPanel,
@@ -49,12 +53,17 @@ export default function SettingsIndex({
     pipelineRules = {},
     metaTypes = [],
     stages = [],
+    orderStages = [],
+    activityActionTypes = [],
+    nextActionTypes = [],
     campaignGoalTypes = [],
     campaignFormFields = [],
     integrations = [],
     notifications = {},
     notificationCatalog = [],
     assignees = [],
+    roles = [],
+    permissionGroups = [],
     leadWebhook = null,
 }) {
     const pending = isPagePending(sectionsProp);
@@ -75,7 +84,7 @@ export default function SettingsIndex({
 
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar>
-                    <h1 className="shrink-0 text-xl font-bold tracking-tight text-foreground">
+                    <h1 className="shrink-0 text-2xl font-bold tracking-tight text-foreground">
                         Settings
                     </h1>
                 </Layout.Toolbar>
@@ -155,7 +164,7 @@ export default function SettingsIndex({
 
                         <ScrollArea className="min-h-0 flex-1">
                             <div className="w-full px-6 py-4 text-left">
-                                {!["general", "meta-data", "pipeline", "campaigns", "integrations", "notifications", "developer"].includes(section) ? (
+                                {!["general", "meta-data", "pipeline", "bookings", "campaigns", "roles", "integrations", "notifications", "developer"].includes(section) ? (
                                     <div className="mb-5 flex items-center gap-2.5">
                                         <span className="flex size-8 items-center justify-center rounded-md bg-background shadow-xs ring-1 ring-border/70">
                                             <Icon
@@ -176,12 +185,17 @@ export default function SettingsIndex({
                                     pipelineRules={pipelineRules}
                                     metaTypes={metaTypes}
                                     stages={stages}
+                                    orderStages={orderStages}
+                                    activityActionTypes={activityActionTypes}
+                                    nextActionTypes={nextActionTypes}
                                     campaignGoalTypes={campaignGoalTypes}
                                     campaignFormFields={campaignFormFields}
                                     integrations={integrations}
                                     notifications={notifications}
                                     notificationCatalog={notificationCatalog}
                                     assignees={assignees}
+                                    roles={roles}
+                                    permissionGroups={permissionGroups}
                                     leadWebhook={leadWebhook}
                                 />
                             </div>

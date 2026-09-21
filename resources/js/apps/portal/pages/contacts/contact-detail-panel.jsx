@@ -390,7 +390,7 @@ export default function ContactDetailPanel({
                 className="flex max-h-[min(92vh,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
             >
                 <DialogHeader className="sr-only">
-                    <DialogTitle>Contact details</DialogTitle>
+                    <DialogTitle>Contact Details</DialogTitle>
                     <DialogDescription>View and edit contact profile.</DialogDescription>
                 </DialogHeader>
 

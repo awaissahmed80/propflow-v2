@@ -9,6 +9,7 @@ use App\Http\Requests\Portal\StoreLeadRequest;
 use App\Http\Requests\Portal\UpdateLeadRequest;
 use App\Http\Resources\Portal\LeadResource;
 use App\Models\Lead;
+use App\Models\LeadActionType;
 use App\Models\LeadStage;
 use App\Models\Project;
 use App\Models\Task;
@@ -93,8 +94,7 @@ class LeadController extends Controller
         }
 
         $stageId = $validated['lead_stage_id']
-            ?? LeadStage::query()->where('label', 'new')->value('id')
-            ?? LeadStage::query()->orderBy('priority')->value('id');
+            ?? LeadStage::defaultStageId();
 
         Lead::query()->create([
             'contact_id' => $contact->id,
@@ -116,13 +116,25 @@ class LeadController extends Controller
 
     public function convert(ConvertLeadRequest $request, Lead $lead): RedirectResponse
     {
+        if ($lead->hasActiveDeal()) {
+            return back()->withErrors([
+                'lead' => 'This lead already has an active booking. Cancel the booking to reopen sales work.',
+            ]);
+        }
+
         $order = $this->orders->book($lead, $request->validated(), $request->user()?->id);
 
-        return to_route('portal.orders.show', $order);
+        return redirect('/bookings?booking='.$order->code);
     }
 
     public function update(UpdateLeadRequest $request, Lead $lead): RedirectResponse
     {
+        if ($lead->hasActiveDeal()) {
+            return back()->withErrors([
+                'lead' => 'This lead is locked while its booking is active. Cancel the booking to make changes.',
+            ]);
+        }
+
         $validated = $request->validated();
 
         $previousStageId = $lead->lead_stage_id;
@@ -192,6 +204,12 @@ class LeadController extends Controller
 
     public function archive(Lead $lead): RedirectResponse
     {
+        if ($lead->hasActiveDeal()) {
+            return back()->withErrors([
+                'lead' => 'This lead is locked while its booking is active. Cancel the booking first.',
+            ]);
+        }
+
         if ($lead->isArchived()) {
             return back();
         }
@@ -211,8 +229,7 @@ class LeadController extends Controller
         $fallbackStageId = null;
 
         if ($lead->lead_stage_id === null || ! LeadStage::query()->whereKey($lead->lead_stage_id)->exists()) {
-            $fallbackStageId = LeadStage::query()->where('label', 'new')->value('id')
-                ?? LeadStage::query()->orderBy('priority')->value('id');
+            $fallbackStageId = LeadStage::defaultStageId();
         }
 
         $lead->restoreFromArchive($fallbackStageId !== null ? (int) $fallbackStageId : null);
@@ -242,9 +259,10 @@ class LeadController extends Controller
         $action = $validated['action'];
 
         $leads = Lead::query()->whereIn('id', $ids)->get();
+        $mutable = $leads->reject(fn (Lead $lead): bool => $lead->hasActiveDeal())->values();
 
         if ($action === 'archive') {
-            $leads->each(function (Lead $lead): void {
+            $mutable->each(function (Lead $lead): void {
                 if (! $lead->isArchived()) {
                     $lead->archive();
                 }
@@ -254,8 +272,7 @@ class LeadController extends Controller
         }
 
         if ($action === 'restore') {
-            $fallbackStageId = LeadStage::query()->where('label', 'new')->value('id')
-                ?? LeadStage::query()->orderBy('priority')->value('id');
+            $fallbackStageId = LeadStage::defaultStageId();
 
             $leads->each(function (Lead $lead) use ($fallbackStageId): void {
                 if (! $lead->isArchived()) {
@@ -275,7 +292,7 @@ class LeadController extends Controller
         }
 
         if ($action === 'destroy') {
-            $leads->each(function (Lead $lead): void {
+            $mutable->each(function (Lead $lead): void {
                 if ($lead->isArchived()) {
                     $lead->delete();
                 }
@@ -287,7 +304,7 @@ class LeadController extends Controller
         if ($action === 'assign') {
             $assignedTo = $validated['assigned_to'] ?? null;
 
-            $leads->each(function (Lead $lead) use ($assignedTo): void {
+            $mutable->each(function (Lead $lead) use ($assignedTo): void {
                 $lead->update(['assigned_to' => $assignedTo]);
             });
 
@@ -297,7 +314,7 @@ class LeadController extends Controller
         if ($action === 'stage') {
             $stageId = (int) $validated['lead_stage_id'];
 
-            $leads->filter(fn (Lead $lead): bool => ! $lead->isArchived())
+            $mutable->filter(fn (Lead $lead): bool => ! $lead->isArchived())
                 ->each(function (Lead $lead) use ($stageId): void {
                     $lead->update(['lead_stage_id' => $stageId]);
                 });
@@ -320,7 +337,7 @@ class LeadController extends Controller
      */
     protected function kanbanIndex(Request $request, Builder $leadsQuery, array $filters): Response
     {
-        $stagesQuery = LeadStage::query()->orderBy('priority');
+        $stagesQuery = LeadStage::query()->enabled()->orderBy('priority');
 
         if ($filters['stage'] !== []) {
             $stagesQuery->whereIn('label', $filters['stage']);
@@ -471,7 +488,8 @@ class LeadController extends Controller
      *         project: list<string>,
      *         stage: list<string>,
      *         tag: list<string>,
-     *         assigned_to: list<string>
+     *         assigned_to: list<string>,
+     *         next_action: list<string>
      *     },
      *     1: Builder<Lead>
      * }
@@ -485,6 +503,7 @@ class LeadController extends Controller
         $projectCodes = $this->listParam($request, 'project');
         $stageLabels = $this->listParam($request, 'stage');
         $tags = $this->listParam($request, 'tag');
+        $nextActions = $this->listParam($request, 'next_action');
         $assignedTo = collect($this->listParam($request, 'assigned_to'))
             ->map(fn (string $value): int => (int) $value)
             ->filter(fn (int $value): bool => $value > 0)
@@ -504,6 +523,9 @@ class LeadController extends Controller
                 ->whereIn('label', $stageLabels)
                 ->pluck('id')
                 ->all();
+
+        $allowedNextActions = Lead::nextActions();
+        $nextActions = array_values(array_intersect($nextActions, $allowedNextActions));
 
         $leadsQuery = Lead::query()
             ->when($archived, fn (Builder $builder) => $builder->archived(), fn (Builder $builder) => $builder->active())
@@ -541,6 +563,7 @@ class LeadController extends Controller
                 $builder->whereIn('lead_stage_id', $stageIds);
             })
             ->when($tags !== [], fn ($builder) => $builder->whereIn('tag', $tags))
+            ->when($nextActions !== [], fn ($builder) => $builder->whereIn('next_action', $nextActions))
             ->when($assignedTo !== [], fn ($builder) => $builder->whereIn('assigned_to', $assignedTo))
             ->when(
                 $archived,
@@ -555,6 +578,7 @@ class LeadController extends Controller
                 'stage' => $stageLabels,
                 'tag' => $tags,
                 'assigned_to' => array_map('strval', $assignedTo),
+                'next_action' => $nextActions,
             ],
             $leadsQuery,
         ];
@@ -687,6 +711,8 @@ class LeadController extends Controller
      *     units: list<array{id: int, project_id: int, code: string, name: ?string, price: ?float, status: ?string}>,
      *     stages: list<array{id: int, label: string, title: string, color: ?string}>,
      *     tags: list<string>,
+     *     activity_types: list<array{id: int, kind: string, label: string, title: string, priority: int, icon: ?string, is_system: bool, is_enabled: bool}>,
+     *     next_actions: list<array{id: int, kind: string, label: string, title: string, priority: int, icon: ?string, is_system: bool, is_enabled: bool}>,
      *     assignees: list<array{id: int, display_name: string, title: ?string, avatar: ?string}>,
      *     sources: list<string>
      * }
@@ -703,6 +729,7 @@ class LeadController extends Controller
             ->get(['id', 'project_id', 'code', 'name', 'price', 'status']);
 
         $stages = LeadStage::query()
+            ->enabled()
             ->orderBy('priority')
             ->get(['id', 'label', 'title', 'color']);
 
@@ -776,6 +803,8 @@ class LeadController extends Controller
                 ->values()
                 ->all(),
             'tags' => Lead::tags(),
+            'activity_types' => LeadActionType::catalog(LeadActionType::KIND_ACTIVITY, enabledOnly: true),
+            'next_actions' => LeadActionType::catalog(LeadActionType::KIND_NEXT_ACTION, enabledOnly: true),
             'assignees' => $assignees,
             'sources' => $sources,
         ];

@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import { cancel } from "@/actions/App/Http/Controllers/Portal/OrderController";
 import {
     ballot,
-    booking,
-    bookingForm,
+    storeBooking as booking,
+    showBookingForm as bookingForm,
     deliver,
     handover,
     payment,
@@ -80,13 +80,13 @@ export default function OrderShow({ order, deal }) {
         <Layout>
             <Layout.Header
                 metaTitle={order?.code ? `${order.code} · Deal` : "Deal"}
-                breadcrumbs={[{ label: "Orders", href: "/orders" }, { label: order?.code || "Deal" }]}
+                breadcrumbs={[{ label: "Bookings", href: "/bookings" }, { label: order?.code || "Deal" }]}
             />
             <Layout.Content className="min-h-0 flex-1 overflow-auto">
                 <div className="mx-auto w-full max-w-4xl space-y-6 py-2">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <h1 className="text-xl font-bold tracking-tight text-foreground">{order.code}</h1>
+                            <h1 className="text-2xl font-bold tracking-tight text-foreground">{order.code}</h1>
                             <p className="mt-1 text-sm text-muted-foreground">
                                 {order.contact?.display_name || "Buyer"}
                                 {order.unit?.code ? ` · ${order.unit.code}` : ""}
@@ -375,7 +375,7 @@ function TransferStep({ order, deal, errors }) {
                     post(ballot.url(order.code), ballotForm, "Plot recorded");
                 }}
             >
-                <h2 className="text-sm font-semibold">Balloting</h2>
+                <h2 className="text-base font-bold tracking-tight">Balloting</h2>
                 <p className="text-sm text-muted-foreground">Turn the file into a physical plot once the society ballots it.</p>
                 <div className="grid gap-3 sm:grid-cols-2">
                     <Input label="Plot number" required value={ballotForm.plot_number} error={errors.plot_number} onChange={(event) => setBallotForm((current) => ({ ...current, plot_number: event.target.value }))} />
@@ -390,7 +390,7 @@ function TransferStep({ order, deal, errors }) {
                     post(transfer.url(order.code), { ...buyer, ndc_cleared: buyer.ndc_cleared ? 1 : 0 }, "File transferred");
                 }}
             >
-                <h2 className="text-sm font-semibold">Transfer</h2>
+                <h2 className="text-base font-bold tracking-tight">Transfer</h2>
                 <p className="text-sm text-muted-foreground">
                     The payment history stays on this file. Outstanding dues and the NDC are recorded against the outgoing buyer.
                 </p>

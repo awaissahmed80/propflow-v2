@@ -14,8 +14,10 @@ import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import PipelineRulesPanel from "./pipeline-rules-panel";
+import { LeadActionTypesSection } from "./lead-action-types-section";
 
 function pathFrom(url) {
     const raw = String(url || "/");
@@ -94,11 +96,13 @@ function SortableStageCard({
     onUpdate,
     onDuplicate,
     onRemove,
+    onToggleEnabled,
     onDragEnd,
 }) {
     const ref = useRef(null);
     const [editing, setEditing] = useState(false);
     const [title, setTitle] = useState(stage.title);
+    const enabled = stage.is_enabled !== false;
 
     useEffect(() => {
         if (!editing) {
@@ -180,7 +184,8 @@ function SortableStageCard({
             className={cn(
                 "flex items-center gap-3 rounded-xl border border-border/60 bg-background px-3 py-3 shadow-xs transition-shadow",
                 isDragging && "opacity-40 shadow-none",
-                !isDragging && "hover:border-border hover:shadow-sm"
+                !isDragging && "hover:border-border hover:shadow-sm",
+                !enabled && "opacity-60"
             )}
         >
             <button
@@ -220,12 +225,12 @@ function SortableStageCard({
                                 setEditing(false);
                             }
                         }}
-                        className="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-sm font-semibold text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+                        className="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-base font-bold tracking-tight text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
                     />
                 ) : (
                     <button
                         type="button"
-                        className="min-w-0 truncate text-left text-sm font-semibold text-foreground"
+                        className="min-w-0 truncate text-left text-base font-bold tracking-tight text-foreground"
                         onClick={() => setEditing(true)}
                     >
                         {stage.title}
@@ -237,7 +242,7 @@ function SortableStageCard({
                 </span>
             </div>
 
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div className="flex shrink-0 items-center gap-1">
                 <IconButton
                     type="button"
                     size="sm"
@@ -247,16 +252,25 @@ function SortableStageCard({
                     disabled={processing}
                     onClick={() => onDuplicate(stage)}
                 />
-                <IconButton
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    icon="delete-bin-line"
-                    aria-label="Delete stage"
-                    disabled={processing}
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={() => onRemove(stage)}
-                />
+                {stage.is_system ? (
+                    <Switch
+                        checked={enabled}
+                        disabled={processing}
+                        aria-label={`${enabled ? "Disable" : "Enable"} ${stage.title}`}
+                        onCheckedChange={(next) => onToggleEnabled(stage, Boolean(next))}
+                    />
+                ) : (
+                    <IconButton
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        icon="delete-bin-line"
+                        aria-label="Delete stage"
+                        disabled={processing}
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => onRemove(stage)}
+                    />
+                )}
             </div>
         </div>
     );
@@ -265,6 +279,8 @@ function SortableStageCard({
 export default function PipelinePanel({
     stages = [],
     pipelineRules = {},
+    activityActionTypes = [],
+    nextActionTypes = [],
 }) {
     const [items, setItems] = useState(stages);
     const itemsRef = useRef(stages);
@@ -348,7 +364,8 @@ export default function PipelinePanel({
                     stage.id === id ? { ...stage, ...payload } : stage
                 ),
             }),
-            onError: (errors) => toast.error(errors.title || errors.message || "Unable to update"),
+            onError: (errors) =>
+                toast.error(errors.title || errors.stage || errors.message || "Unable to update"),
             onFinish: () => setProcessing(false),
         });
     };
@@ -386,13 +403,17 @@ export default function PipelinePanel({
     };
 
     const removeStage = async (stage) => {
-        if (processing) {
+        if (processing || stage.is_system) {
             return;
         }
 
-        if (items.length <= 1) {
+        const enabledRemaining = items.filter(
+            (item) => item.id !== stage.id && item.is_enabled !== false
+        ).length;
+
+        if (enabledRemaining < 1) {
             await alert(
-                "At least one pipeline stage is required.",
+                "At least one enabled pipeline stage is required.",
                 "Cannot delete stage"
             );
             return;
@@ -428,15 +449,42 @@ export default function PipelinePanel({
         });
     };
 
+    const toggleStageEnabled = (stage, nextEnabled) => {
+        if (processing || !stage.is_system) {
+            return;
+        }
+
+        if (!nextEnabled) {
+            const enabledCount = items.filter((item) => item.is_enabled !== false).length;
+
+            if (enabledCount <= 1) {
+                toast.error("At least one enabled pipeline stage is required.");
+                return;
+            }
+        }
+
+        setItems((prev) =>
+            prev.map((item) =>
+                item.id === stage.id ? { ...item, is_enabled: nextEnabled } : item
+            )
+        );
+
+        updateStageInline(stage.id, {
+            title: stage.title,
+            color: stage.color,
+            is_enabled: nextEnabled,
+        });
+    };
+
     return (
         <div className="space-y-8">
                 <section className="space-y-4">
                     <div>
-                        <h3 className="text-base font-semibold tracking-tight text-foreground">
-                            Pipe stages
+                        <h3 className="text-base font-bold tracking-tight text-foreground">
+                            Pipe Stages
                         </h3>
                         <p className="mt-0.5 text-sm text-muted-foreground">
-                            Lead pipeline — drag to reorder.
+                            Lead pipeline — drag to reorder. Default stages can be turned off, not deleted.
                         </p>
                     </div>
 
@@ -457,6 +505,7 @@ export default function PipelinePanel({
                                         onUpdate={updateStageInline}
                                         onDuplicate={duplicateStage}
                                         onRemove={removeStage}
+                                        onToggleEnabled={toggleStageEnabled}
                                         onDragEnd={handleDragEnd}
                                     />
                                 ))
@@ -537,10 +586,26 @@ export default function PipelinePanel({
                     </DndProvider>
                 </section>
 
+                <LeadActionTypesSection
+                    kind="activity"
+                    propKey="activityActionTypes"
+                    title="Lead Actions"
+                    description="Activity types used when logging an update on a lead — drag to reorder."
+                    items={activityActionTypes}
+                />
+
+                <LeadActionTypesSection
+                    kind="next_action"
+                    propKey="nextActionTypes"
+                    title="What's Next Actions"
+                    description="Next-action options for follow-ups — drag to reorder. The system “Do Nothing” item cannot be deleted."
+                    items={nextActionTypes}
+                />
+
                 <section className="space-y-4">
                     <div>
                         <h3 className="text-base font-semibold tracking-tight text-foreground">
-                            Pipe rules
+                            Pipe Rules
                         </h3>
                         <p className="mt-0.5 text-sm text-muted-foreground">
                             Automation and defaults for this pipeline

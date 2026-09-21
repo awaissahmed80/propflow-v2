@@ -29,13 +29,13 @@ export function SettingsSection({
                                 </span>
                             ) : null}
                             {title ? (
-                                <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                                <h3 className="text-base font-bold tracking-tight text-foreground">
                                     {title}
                                 </h3>
                             ) : null}
                         </div>
                         {description ? (
-                            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+                            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
                         ) : null}
                     </div>
                     {actions}

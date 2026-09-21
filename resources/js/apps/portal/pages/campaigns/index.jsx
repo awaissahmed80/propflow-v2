@@ -98,7 +98,7 @@ export default function CampaignsIndex({
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar>
                     <div className="mr-2 shrink-0">
-                        <h1 className="text-xl font-bold tracking-tight text-foreground">
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">
                             Campaigns
                         </h1>
                         <p className="text-xs text-muted-foreground">

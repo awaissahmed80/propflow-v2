@@ -229,7 +229,7 @@ function IntegrationCard({ integration, onConnect, onConfigure, onDisconnect }) 
                     <Icon name={integration.icon} className="text-xl" />
                 </span>
                 <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-semibold tracking-tight text-foreground">
+                    <h3 className="truncate text-base font-bold tracking-tight text-foreground">
                         {integration.name}
                     </h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
@@ -349,7 +349,7 @@ function ToggleRow({ title, description, checked, onCheckedChange, disabled, las
     return (
         <div className={cn("flex items-start justify-between gap-4 py-4", !last && "border-b border-border/60")}>
             <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">{title}</p>
+                <p className="text-base font-bold tracking-tight text-foreground">{title}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
             </div>
             <Switch
@@ -478,7 +478,7 @@ function MetaConfigureDialog({
 
                     <div className="rounded-lg border border-border/70 px-4">
                         <ToggleRow
-                            title="Notify on new leads"
+                            title="Notify On New Leads"
                             description="Send a Slack/email alert when a lead syncs in"
                             checked={form.notify_on_new_leads}
                             disabled={processing}
@@ -487,7 +487,7 @@ function MetaConfigureDialog({
                             }
                         />
                         <ToggleRow
-                            title="Deduplicate by email"
+                            title="Deduplicate By Email"
                             description="Skip creating a lead if the email already exists"
                             checked={form.deduplicate_by_email}
                             disabled={processing}
@@ -496,7 +496,7 @@ function MetaConfigureDialog({
                             }
                         />
                         <ToggleRow
-                            title="Auto-tag source"
+                            title="Auto-Tag Source"
                             description="Tag every synced lead with this integration's name"
                             checked={form.auto_tag_source}
                             disabled={processing}
@@ -652,7 +652,7 @@ function WhatsAppConfigureDialog({
 
                     <div className="rounded-lg border border-border/70 px-4">
                         <ToggleRow
-                            title="Notify on new leads"
+                            title="Notify On New Leads"
                             description="Send an alert when a WhatsApp lead syncs in"
                             checked={form.notify_on_new_leads}
                             disabled={processing}
@@ -661,7 +661,7 @@ function WhatsAppConfigureDialog({
                             }
                         />
                         <ToggleRow
-                            title="Deduplicate by phone"
+                            title="Deduplicate By Phone"
                             description="Append to an open campaign lead when the same number messages again"
                             checked={form.deduplicate_by_phone}
                             disabled={processing}
@@ -670,7 +670,7 @@ function WhatsAppConfigureDialog({
                             }
                         />
                         <ToggleRow
-                            title="Auto-tag source"
+                            title="Auto-Tag Source"
                             description="Tag every synced lead as WhatsApp"
                             checked={form.auto_tag_source}
                             disabled={processing}

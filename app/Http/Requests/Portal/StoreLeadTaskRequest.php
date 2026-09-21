@@ -4,6 +4,7 @@ namespace App\Http\Requests\Portal;
 
 use App\Models\Asset;
 use App\Models\Lead;
+use App\Models\LeadActionType;
 use App\Models\Task;
 use App\Support\AssetManager;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -30,7 +31,7 @@ class StoreLeadTaskRequest extends FormRequest
             'due_date' => [
                 'nullable',
                 'date',
-                Rule::requiredIf(fn (): bool => $this->input('next_action') !== Lead::NEXT_ACTION_DO_NOTHING),
+                Rule::requiredIf(fn (): bool => ! LeadActionType::isDoNothing($this->input('next_action'))),
             ],
             'media_ids' => ['sometimes', 'array', 'max:20'],
             'media_ids.*' => ['integer', 'distinct', 'min:1'],

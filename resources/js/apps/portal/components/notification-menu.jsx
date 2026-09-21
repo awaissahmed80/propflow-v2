@@ -165,7 +165,7 @@ export function NotificationMenu() {
             </PopoverTrigger>
             <PopoverContent align="end" sideOffset={12} className="w-80 gap-0 p-0">
                 <div className="flex items-center justify-between gap-3 border-b border-border/70 px-3 py-2.5">
-                    <p className="text-sm font-semibold text-foreground">Notifications</p>
+                    <p className="text-base font-bold tracking-tight text-foreground">Notifications</p>
                     <button
                         type="button"
                         className="text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"

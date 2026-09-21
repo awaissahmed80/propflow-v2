@@ -24,6 +24,8 @@ class LeadStageFactory extends Factory
             'title' => fake()->words(2, true),
             'priority' => fake()->numberBetween(1, 20),
             'color' => fake()->hexColor(),
+            'is_system' => false,
+            'is_enabled' => true,
         ];
     }
 
@@ -34,6 +36,16 @@ class LeadStageFactory extends Factory
             'title' => 'New',
             'priority' => 1,
             'color' => '#3B82F6',
+            'is_system' => true,
+            'is_enabled' => true,
+        ]);
+    }
+
+    public function system(): static
+    {
+        return $this->state(fn (): array => [
+            'is_system' => true,
+            'is_enabled' => true,
         ]);
     }
 }

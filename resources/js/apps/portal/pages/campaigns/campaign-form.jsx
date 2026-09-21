@@ -312,7 +312,7 @@ function GoalRow({ label, color, enabled, target, onEnabledChange, onTargetChang
                     !enabled && "pointer-events-none opacity-40"
                 )}
             >
-                <span className="block text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                <span className="block text-sm font-bold tracking-tight text-muted-foreground">
                     Target
                 </span>
                 <NumberInput
@@ -1396,7 +1396,7 @@ export default function CampaignForm({ isOpen, onClose, formOptions = {} }) {
                         <div className="space-y-5">
                             <div className="space-y-3">
                                 <div>
-                                    <h3 className="text-sm font-semibold tracking-tight">
+                                    <h3 className="text-base font-bold tracking-tight">
                                         Set Goals
                                     </h3>
                                     <p className="text-xs text-muted-foreground">
@@ -1440,7 +1440,7 @@ export default function CampaignForm({ isOpen, onClose, formOptions = {} }) {
                                 <>
                                     <div className="space-y-3 border-t border-border pt-5">
                                         <div>
-                                            <h3 className="text-sm font-semibold tracking-tight">
+                                            <h3 className="text-base font-bold tracking-tight">
                                                 Landing page
                                             </h3>
                                             <p className="text-xs text-muted-foreground">
@@ -1484,7 +1484,7 @@ export default function CampaignForm({ isOpen, onClose, formOptions = {} }) {
 
                                     <div className="space-y-3 border-t border-border pt-5">
                                         <div>
-                                            <h3 className="text-sm font-semibold tracking-tight">
+                                            <h3 className="text-base font-bold tracking-tight">
                                                 Attribution
                                             </h3>
                                             <p className="text-xs text-muted-foreground">

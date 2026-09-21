@@ -58,7 +58,7 @@ function ActivityPage({ logs: logsProp, section = "all", sections: sectionsProp,
 
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar className="flex-wrap gap-3">
-                    <h1 className="shrink-0 text-xl font-bold tracking-tight text-foreground">
+                    <h1 className="shrink-0 text-2xl font-bold tracking-tight text-foreground">
                         Activity
                     </h1>
                     <div className="flex flex-wrap gap-1.5">

@@ -1,20 +1,12 @@
+import { configureTransformers, modelConfigExists } from "./assistant-transformers";
+
 const MODEL_ID = "Xenova/whisper-tiny";
 const SAMPLE_RATE = 16000;
-
-function localWasmSuffix() {
-    const agent = navigator.userAgent;
-    const safari = /Safari/i.test(agent) && !/Chrome|Chromium|Edg/i.test(agent);
-    const version = Number((agent.match(/Version\/(\d+)/) || [])[1] || 0);
-
-    return safari && version > 0 && version < 26 ? "" : ".asyncify";
-}
 
 let transcriberPromise = null;
 
 export async function speechModelReady() {
-    const response = await fetch(`/models/${MODEL_ID}/config.json`, { method: "HEAD" });
-
-    return response.ok;
+    return modelConfigExists(MODEL_ID);
 }
 
 export async function transcribeRecording(blob) {
@@ -38,20 +30,7 @@ async function loadTranscriber() {
             throw new Error("Speech model is not installed on this server. Type instead.");
         }
 
-        const { pipeline, env } = await import("@huggingface/transformers");
-        const wasmSuffix = localWasmSuffix();
-
-        env.allowRemoteModels = false;
-        env.allowLocalModels = true;
-        env.localModelPath = "/models/";
-
-        if (env.backends?.onnx?.wasm) {
-            env.backends.onnx.wasm.numThreads = 1;
-            env.backends.onnx.wasm.wasmPaths = {
-                mjs: `/models/onnxruntime/ort-wasm-simd-threaded${wasmSuffix}.mjs`,
-                wasm: `/models/onnxruntime/ort-wasm-simd-threaded${wasmSuffix}.wasm`,
-            };
-        }
+        const { pipeline } = await configureTransformers({ allowRemote: false });
 
         return pipeline("automatic-speech-recognition", MODEL_ID, {
             dtype: "q8",

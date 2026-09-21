@@ -31,6 +31,7 @@ export function KanbanColumn({
     column,
     selectedLeadId = null,
     filterParams = {},
+    doNothingTitle = "Do Nothing",
     onOpenLead,
     onDropLead,
     onColumnPage,
@@ -132,7 +133,7 @@ export function KanbanColumn({
                         style={{ backgroundColor: color }}
                         aria-hidden
                     />
-                    <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+                    <h2 className="min-w-0 flex-1 truncate text-base font-bold tracking-tight text-foreground">
                         {column.stage.title}
                     </h2>
                     <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-border">
@@ -182,6 +183,7 @@ export function KanbanColumn({
                                         <KanbanLeadCard
                                             lead={lead}
                                             selected={selectedLeadId === lead.id}
+                                            doNothingTitle={doNothingTitle}
                                             onOpen={onOpenLead}
                                         />
                                     )}

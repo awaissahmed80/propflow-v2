@@ -214,12 +214,12 @@ function SortableGoalCard({
                                 setEditing(false);
                             }
                         }}
-                        className="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-sm font-semibold text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+                        className="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-base font-bold tracking-tight text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
                     />
                 ) : (
                     <button
                         type="button"
-                        className="min-w-0 truncate text-left text-sm font-semibold text-foreground"
+                        className="min-w-0 truncate text-left text-base font-bold tracking-tight text-foreground"
                         onClick={() => setEditing(true)}
                     >
                         {goal.title}

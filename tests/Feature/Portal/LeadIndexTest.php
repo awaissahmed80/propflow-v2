@@ -223,6 +223,45 @@ class LeadIndexTest extends TestCase
         );
     }
 
+    public function test_leads_can_be_filtered_by_next_action(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_leads_next_action_filter');
+
+        $tenant->makeCurrent();
+        $stage = LeadStage::factory()->newLead()->create();
+        $project = Project::factory()->create();
+        Lead::factory()->create([
+            'project_id' => $project->id,
+            'lead_stage_id' => $stage->id,
+            'next_action' => Lead::NEXT_ACTION_FOLLOW_UP,
+        ]);
+        Lead::factory()->create([
+            'project_id' => $project->id,
+            'lead_stage_id' => $stage->id,
+            'next_action' => Lead::NEXT_ACTION_ARRANGE_MEETING,
+        ]);
+        Lead::factory()->create([
+            'project_id' => $project->id,
+            'lead_stage_id' => $stage->id,
+            'next_action' => Lead::NEXT_ACTION_DO_NOTHING,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->get(Domain::portal('/leads?next_action=Follow-up,Arrange Meeting'));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('leads/index', false)
+            ->has('leads', 2)
+            ->where('filters.next_action.0', 'Follow-up')
+            ->where('filters.next_action.1', 'Arrange Meeting')
+            ->has('formOptions.next_actions')
+        );
+    }
+
     /**
      * @return array{0: User, 1: Tenant}
      */

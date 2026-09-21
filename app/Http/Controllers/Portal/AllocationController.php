@@ -30,7 +30,7 @@ class AllocationController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        return Inertia::render('allocation/index', [
+        return Inertia::render('bookings/allotment', [
             'orders' => OrderResource::collection($paginator->getCollection())->resolve(),
             'pagination' => $this->pagination($paginator),
         ]);

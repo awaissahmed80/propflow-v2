@@ -358,6 +358,7 @@ class CampaignController extends Controller
                 ])
                 ->all(),
             'stages' => LeadStage::query()
+                ->enabled()
                 ->orderBy('priority')
                 ->get(['id', 'label', 'title'])
                 ->map(fn (LeadStage $stage): array => [

@@ -25,14 +25,14 @@ export default function AuthLayout ({ children }) {
                     </div>
                 </div>
             </div>
-            <div className="relative hidden overflow-hidden bg-primary lg:flex lg:flex-1 items-center justify-center px-10 py-12 xl:px-14">
+            <div className="relative hidden overflow-hidden bg-card lg:flex lg:flex-1 items-center justify-center px-10 py-12 xl:px-14">
                 <div
                     aria-hidden="true"
                     className="pointer-events-none absolute -top-28 -right-20 size-80 rounded-full bg-white/10 blur-3xl"
                 />
                 <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute -bottom-32 -left-24 size-96 rounded-full bg-ring/30 blur-3xl"
+                    className="pointer-events-none absolute -bottom-32 -left-24 size-96 rounded-full bg-slate-300/10 blur-3xl"
                 />
 
                 <div className="relative z-10 flex h-full w-full max-w-3xl flex-col justify-center">

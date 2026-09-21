@@ -24,6 +24,8 @@ class LeadStageController extends Controller
             'title' => $validated['title'],
             'color' => $validated['color'] ?? '#64748B',
             'priority' => $maxPriority + 1,
+            'is_system' => false,
+            'is_enabled' => true,
         ]);
 
         return back();
@@ -33,10 +35,32 @@ class LeadStageController extends Controller
     {
         $validated = $request->validated();
 
+        if (array_key_exists('is_enabled', $validated)) {
+            $nextEnabled = (bool) $validated['is_enabled'];
+
+            if (
+                ! $nextEnabled
+                && $stage->is_enabled
+                && LeadStage::query()
+                    ->enabled()
+                    ->whereKeyNot($stage->id)
+                    ->doesntExist()
+            ) {
+                return back()->withErrors([
+                    'stage' => 'At least one enabled pipeline stage is required.',
+                ]);
+            }
+        }
+
         $stage->forceFill([
-            'title' => $validated['title'],
-            'color' => $validated['color'] ?? $stage->color,
-            'label' => $validated['label'] ?? $stage->label,
+            'title' => $validated['title'] ?? $stage->title,
+            'color' => array_key_exists('color', $validated) ? ($validated['color'] ?? $stage->color) : $stage->color,
+            'label' => $stage->is_system
+                ? $stage->label
+                : ($validated['label'] ?? $stage->label),
+            'is_enabled' => array_key_exists('is_enabled', $validated)
+                ? (bool) $validated['is_enabled']
+                : $stage->is_enabled,
         ])->save();
 
         return back();
@@ -59,9 +83,15 @@ class LeadStageController extends Controller
 
     public function destroy(LeadStage $stage): RedirectResponse
     {
-        if (LeadStage::query()->count() <= 1) {
+        if ($stage->is_system) {
             return back()->withErrors([
-                'stage' => 'At least one pipeline stage is required.',
+                'stage' => 'Default stages cannot be deleted. Turn them off instead.',
+            ]);
+        }
+
+        if (LeadStage::query()->enabled()->whereKeyNot($stage->id)->doesntExist()) {
+            return back()->withErrors([
+                'stage' => 'At least one enabled pipeline stage is required.',
             ]);
         }
 

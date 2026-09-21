@@ -6,6 +6,7 @@ import { show as showOrder } from "@/actions/App/Http/Controllers/Portal/OrderCo
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { formatMoney } from "@/lib/currency";
 import { SelectBox } from "@/components/ui/select";
 
 function pathFrom(url) {
@@ -88,18 +89,46 @@ export default function CloseDealForm({ lead, projects = [], units = [], onLost 
             }));
     }, [units, projectId]);
 
-    if (lead?.active_order) {
+    if (lead?.active_order || lead?.deal_locked) {
+        const order = lead.active_order;
+
         return (
-            <div className="space-y-3 rounded-md border border-border bg-muted/20 px-4 py-6 text-center">
-                <p className="text-sm text-muted-foreground">
-                    This lead is booked on order {lead.active_order.code}.
-                </p>
-                <Button
-                    type="button"
-                    onClick={() => router.visit(pathFrom(showOrder.url(lead.active_order.code)))}
-                >
-                    Open order
-                </Button>
+            <div className="space-y-4 rounded-md border border-border bg-muted/20 px-4 py-5">
+                <div>
+                    <p className="text-sm font-medium text-foreground">Deal closed — booking in progress</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Sales fields are read-only while booking {order?.code || "is active"}. Cancel the
+                        booking to unlock this lead.
+                    </p>
+                </div>
+                <dl className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                        <dt className="text-xs text-muted-foreground">Booking</dt>
+                        <dd className="text-sm font-medium">{order?.code || "—"}</dd>
+                    </div>
+                    <div>
+                        <dt className="text-xs text-muted-foreground">Booking kind</dt>
+                        <dd className="text-sm font-medium capitalize">{order?.booking_kind || "—"}</dd>
+                    </div>
+                    <div>
+                        <dt className="text-xs text-muted-foreground">Sale / agreed price</dt>
+                        <dd className="text-sm font-semibold tabular-nums">
+                            {order?.agreed_price != null ? formatMoney(order.agreed_price) : "—"}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt className="text-xs text-muted-foreground">Status</dt>
+                        <dd className="text-sm font-medium capitalize">{order?.status || "booked"}</dd>
+                    </div>
+                </dl>
+                {order?.code ? (
+                    <Button
+                        type="button"
+                        onClick={() => router.visit(pathFrom(showOrder.url(order.code)))}
+                    >
+                        Open booking
+                    </Button>
+                ) : null}
             </div>
         );
     }

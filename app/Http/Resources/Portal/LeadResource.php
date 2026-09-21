@@ -82,7 +82,15 @@ class LeadResource extends JsonResource
                 'id' => $this->activeOrder->id,
                 'code' => $this->activeOrder->code,
                 'status' => $this->activeOrder->status,
+                'booking_kind' => $this->activeOrder->booking_kind,
+                'agreed_price' => $this->activeOrder->agreed_price !== null
+                    ? (float) $this->activeOrder->agreed_price
+                    : null,
+                'booked_at' => $this->activeOrder->booked_at?->toIso8601String(),
             ] : null),
+            'deal_locked' => $this->relationLoaded('activeOrder')
+                ? $this->activeOrder !== null
+                : false,
             'assignee' => $this->when(
                 $this->relationLoaded('assignee'),
                 fn () => $this->assignee ? [

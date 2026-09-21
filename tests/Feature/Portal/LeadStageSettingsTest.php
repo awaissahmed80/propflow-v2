@@ -127,6 +127,80 @@ class LeadStageSettingsTest extends TestCase
         Tenant::forgetCurrent();
     }
 
+    public function test_default_stage_cannot_be_deleted(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_stage_delete_default');
+
+        $tenant->makeCurrent();
+        LeadStage::ensureDefaults();
+        $stage = LeadStage::query()->where('label', 'new')->firstOrFail();
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->from(Domain::portal('/settings/pipeline'))
+            ->delete(Domain::portal('/settings/stages/'.$stage->label))
+            ->assertRedirect(Domain::portal('/settings/pipeline'))
+            ->assertSessionHasErrors('stage');
+
+        $tenant->makeCurrent();
+        $this->assertNotNull(LeadStage::query()->find($stage->id));
+        Tenant::forgetCurrent();
+    }
+
+    public function test_default_stage_can_be_toggled_off(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_stage_toggle');
+
+        $tenant->makeCurrent();
+        LeadStage::ensureDefaults();
+        $stage = LeadStage::query()->where('label', 'contacted')->firstOrFail();
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->put(Domain::portal('/settings/stages/'.$stage->label), [
+            'is_enabled' => false,
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $stage->refresh();
+        $this->assertFalse($stage->is_enabled);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_last_enabled_stage_cannot_be_disabled(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_stage_last_toggle');
+
+        $tenant->makeCurrent();
+        LeadStage::query()->delete();
+        $stage = LeadStage::factory()->system()->create([
+            'title' => 'Only',
+            'label' => 'only',
+            'priority' => 1,
+            'is_enabled' => true,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->from(Domain::portal('/settings/pipeline'))
+            ->put(Domain::portal('/settings/stages/'.$stage->label), [
+                'is_enabled' => false,
+            ])
+            ->assertRedirect(Domain::portal('/settings/pipeline'))
+            ->assertSessionHasErrors('stage');
+
+        $tenant->makeCurrent();
+        $stage->refresh();
+        $this->assertTrue($stage->is_enabled);
+        Tenant::forgetCurrent();
+    }
+
     public function test_last_pipeline_stage_cannot_be_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_stage_delete_last');

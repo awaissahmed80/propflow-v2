@@ -9,8 +9,12 @@ use App\Http\Requests\Portal\UpdateNotificationSettingsRequest;
 use App\Http\Requests\Portal\UpdatePipelineRulesRequest;
 use App\Models\CampaignGoalType;
 use App\Models\CustomField;
+use App\Models\LeadActionType;
 use App\Models\LeadStage;
 use App\Models\MetaData;
+use App\Models\Order;
+use App\Models\OrderStage;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\Tenant;
 use App\Models\TenantUser;
@@ -19,6 +23,7 @@ use App\Support\AssetManager;
 use App\Support\Integrations\IntegrationCatalog;
 use App\Support\LeadWebhooks\LeadWebhookSettings;
 use App\Support\Notifications\NotificationSettings;
+use App\Support\TenantPermissions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -34,7 +39,9 @@ class SettingsController extends Controller
         'general',
         'meta-data',
         'pipeline',
+        'bookings',
         'campaigns',
+        'roles',
         'integrations',
         'notifications',
         'import-export',
@@ -73,23 +80,30 @@ class SettingsController extends Controller
             'stages' => LeadStage::query()
                 ->withCount('activeLeads as leads_count')
                 ->orderBy('priority')
-                ->get(['id', 'label', 'title', 'priority', 'color'])
+                ->get(['id', 'label', 'title', 'priority', 'color', 'is_system', 'is_enabled'])
                 ->map(fn (LeadStage $stage): array => [
                     'id' => $stage->id,
                     'label' => $stage->label,
                     'title' => $stage->title,
                     'priority' => $stage->priority,
                     'color' => $stage->color,
+                    'is_system' => (bool) $stage->is_system,
+                    'is_enabled' => (bool) $stage->is_enabled,
                     'leads_count' => (int) $stage->leads_count,
                 ])
                 ->values()
                 ->all(),
+            'orderStages' => $this->orderStagesPayload(),
+            'activityActionTypes' => LeadActionType::catalog(LeadActionType::KIND_ACTIVITY),
+            'nextActionTypes' => LeadActionType::catalog(LeadActionType::KIND_NEXT_ACTION),
             'campaignGoalTypes' => CampaignGoalType::catalog(),
             'campaignFormFields' => CustomField::campaignFormCatalog(),
             'integrations' => IntegrationCatalog::forTenant(),
             'notifications' => $this->notificationSettings(),
             'notificationCatalog' => NotificationSettings::catalog(),
             'assignees' => $this->assigneesPayload(),
+            'roles' => $this->rolesPayload(),
+            'permissionGroups' => TenantPermissions::groupedForForm(),
             'leadWebhook' => $section === 'developer' ? LeadWebhookSettings::forCurrent() : null,
         ]);
     }
@@ -172,9 +186,11 @@ class SettingsController extends Controller
     {
         return [
             ['id' => 'general', 'label' => 'General', 'icon' => 'building-line'],
-            ['id' => 'meta-data', 'label' => 'Meta data', 'icon' => 'database-2-line'],
-            ['id' => 'pipeline', 'label' => 'Lead pipeline', 'icon' => 'flow-chart'],
+            ['id' => 'meta-data', 'label' => 'Meta Data', 'icon' => 'database-2-line'],
+            ['id' => 'pipeline', 'label' => 'Lead Pipeline', 'icon' => 'flow-chart'],
+            ['id' => 'bookings', 'label' => 'Orders / Bookings', 'icon' => 'book-2-line'],
             ['id' => 'campaigns', 'label' => 'Campaigns', 'icon' => 'megaphone-line'],
+            ['id' => 'roles', 'label' => 'Roles', 'icon' => 'checkbox-multiple-line'],
             ['id' => 'integrations', 'label' => 'Integrations', 'icon' => 'plug-line'],
             ['id' => 'notifications', 'label' => 'Notifications', 'icon' => 'notification-3-line'],
             ['id' => 'import-export', 'label' => 'Import / Export', 'icon' => 'swap-line', 'coming_soon' => true],
@@ -251,6 +267,36 @@ class SettingsController extends Controller
     }
 
     /**
+     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool, orders_count: int}>
+     */
+    protected function orderStagesPayload(): array
+    {
+        OrderStage::ensureDefaults();
+
+        $counts = Order::query()
+            ->selectRaw('stage, count(*) as aggregate')
+            ->where('status', '!=', Order::STATUS_CANCELLED)
+            ->groupBy('stage')
+            ->pluck('aggregate', 'stage');
+
+        return OrderStage::query()
+            ->orderBy('priority')
+            ->get(['id', 'label', 'title', 'priority', 'color', 'is_system', 'is_enabled'])
+            ->map(fn (OrderStage $stage): array => [
+                'id' => $stage->id,
+                'label' => $stage->label,
+                'title' => $stage->title,
+                'priority' => $stage->priority,
+                'color' => $stage->color,
+                'is_system' => (bool) $stage->is_system,
+                'is_enabled' => (bool) $stage->is_enabled,
+                'orders_count' => (int) ($counts->get($stage->label) ?? 0),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function pipelineRules(): array
@@ -276,6 +322,36 @@ class SettingsController extends Controller
         }
 
         return $settings;
+    }
+
+    /**
+     * @return list<array{id: int, name: string, description: ?string, is_system: bool, is_enabled: bool, permissions: list<array{id: int, name: string, label: ?string, group: ?string}>}>
+     */
+    protected function rolesPayload(): array
+    {
+        return Role::query()
+            ->with(['permissions:id,name,label,group'])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Role $role): array => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'description' => $role->description,
+                'is_system' => (bool) $role->is_system,
+                'is_enabled' => (bool) $role->is_enabled,
+                'permissions' => $role->permissions
+                    ->sortBy('name')
+                    ->values()
+                    ->map(fn ($permission): array => [
+                        'id' => $permission->id,
+                        'name' => $permission->name,
+                        'label' => $permission->label,
+                        'group' => $permission->group,
+                    ])
+                    ->all(),
+            ])
+            ->values()
+            ->all();
     }
 
     /**

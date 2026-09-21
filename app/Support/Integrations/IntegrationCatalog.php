@@ -76,8 +76,7 @@ class IntegrationCatalog
                 $webhookUrl = null;
                 $billingDisclaimer = null;
 
-                $fallbackStageId = LeadStage::query()->where('label', 'new')->value('id')
-                    ?? LeadStage::query()->orderBy('priority')->value('id');
+                $fallbackStageId = LeadStage::defaultStageId();
 
                 if ($definition['provider'] === Integration::PROVIDER_META) {
                     $leadSettings = MetaLeadSettings::normalize(

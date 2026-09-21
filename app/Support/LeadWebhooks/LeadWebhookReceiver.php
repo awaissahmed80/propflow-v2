@@ -115,8 +115,7 @@ class LeadWebhookReceiver
 
             $stageId = $campaign?->default_lead_stage_id
                 ?? $webhook->default_lead_stage_id
-                ?? LeadStage::query()->where('label', 'new')->value('id')
-                ?? LeadStage::query()->orderBy('priority')->value('id');
+                ?? LeadStage::defaultStageId();
 
             $source = filled($validated['source'] ?? null)
                 ? trim((string) $validated['source'])

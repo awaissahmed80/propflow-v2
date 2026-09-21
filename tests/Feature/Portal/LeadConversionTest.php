@@ -52,7 +52,7 @@ class LeadConversionTest extends TestCase
         $this->assertNotNull($order);
         Tenant::forgetCurrent();
 
-        $response->assertRedirect(Domain::portal('/orders/'.$order->code));
+        $response->assertRedirect(Domain::portal('/bookings?booking='.$order->code));
 
         $this->get(Domain::portal('/leads'))
             ->assertOk()
@@ -169,7 +169,7 @@ class LeadConversionTest extends TestCase
         $order = Order::query()->first();
         Tenant::forgetCurrent();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/cancel'))->assertRedirect();
+        $this->post(Domain::portal('/bookings/'.$order->code.'/cancel'))->assertRedirect();
 
         $tenant->makeCurrent();
         $order->refresh();
@@ -184,7 +184,7 @@ class LeadConversionTest extends TestCase
         );
         Tenant::forgetCurrent();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/allocate'))
+        $this->post(Domain::portal('/bookings/'.$order->code.'/allocate'))
             ->assertSessionHasErrors('order');
 
         $this->post(Domain::portal('/leads/'.$lead->code.'/convert'), $this->payload($unit->id))
@@ -210,40 +210,43 @@ class LeadConversionTest extends TestCase
         $installment = $order->paymentPlan->installments->first();
         Tenant::forgetCurrent();
 
-        $this->get(Domain::portal('/orders'))
+        $this->get(Domain::portal('/bookings'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('orders/index', false)
+                ->component('bookings/index', false)
                 ->has('orders', 1)
                 ->where('orders.0.code', $order->code)
                 ->where('orders.0.status', Order::STATUS_BOOKED)
             );
 
-        $this->get(Domain::portal('/orders/'.$order->code))
+        $this->get(Domain::portal('/bookings/'.$order->code))
+            ->assertRedirect('/bookings?booking='.$order->code);
+
+        $this->get(Domain::portal('/bookings?booking='.$order->code))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('orders/show', false)
-                ->where('order.code', $order->code)
-                ->has('order.installments', 2)
+                ->component('bookings/index', false)
+                ->where('openedBooking.order.code', $order->code)
+                ->has('openedBooking.order.installments')
             );
 
-        $this->get(Domain::portal('/payment-plans'))
+        $this->get(Domain::portal('/receivables/installments'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('payment-plans/index', false)
+                ->component('receivables/installments', false)
                 ->has('installments', 2)
                 ->where('installments.0.status', PaymentInstallment::STATUS_PENDING)
             );
 
-        $this->get(Domain::portal('/allocation'))
+        $this->get(Domain::portal('/bookings/allotment'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('allocation/index', false)
+                ->component('bookings/allotment', false)
                 ->has('orders', 1)
                 ->where('orders.0.id', $order->id)
             );
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/installments/'.$installment->sequence.'/pay'))
+        $this->post(Domain::portal('/bookings/'.$order->code.'/installments/'.$installment->sequence.'/pay'))
             ->assertRedirect();
 
         $tenant->makeCurrent();
@@ -252,10 +255,10 @@ class LeadConversionTest extends TestCase
         $this->assertNotNull($installment->paid_at);
         Tenant::forgetCurrent();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/installments/'.$installment->sequence.'/pay'))
+        $this->post(Domain::portal('/bookings/'.$order->code.'/installments/'.$installment->sequence.'/pay'))
             ->assertSessionHasErrors('installment');
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/allocate'))->assertRedirect();
+        $this->post(Domain::portal('/bookings/'.$order->code.'/allocate'))->assertRedirect();
 
         $tenant->makeCurrent();
         $order->refresh();
@@ -268,10 +271,10 @@ class LeadConversionTest extends TestCase
         );
         Tenant::forgetCurrent();
 
-        $this->get(Domain::portal('/allocation'))
+        $this->get(Domain::portal('/bookings/allotment'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('allocation/index', false)
+                ->component('bookings/allotment', false)
                 ->has('orders', 0)
             );
 

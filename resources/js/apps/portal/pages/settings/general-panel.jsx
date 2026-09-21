@@ -246,7 +246,7 @@ export default function GeneralPanel({
                         </div>
                     </div>
                     <Button type="submit" disabled={processing} className="shrink-0">
-                        {processing ? "Saving…" : "Save changes"}
+                        {processing ? "Saving…" : "Save Changes"}
                     </Button>
                 </div>
             </div>

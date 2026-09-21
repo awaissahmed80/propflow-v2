@@ -225,7 +225,7 @@ function ProjectListRow({ project, onDelete }) {
 
             <div className="relative min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="truncate text-sm font-semibold text-foreground">
+                    <div className="truncate text-base font-bold tracking-tight text-foreground">
                         {project.title}
                     </div>
                     {project.code ? (
@@ -351,7 +351,7 @@ function ProjectsIndex({ projects: projectsProp, filters = { q: "" } }) {
             <Layout.Header metaTitle="Projects" breadcrumbs={[{ label: "Projects" }]} />
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar>
-                    <h1 className="shrink-0 text-xl font-bold tracking-tight text-foreground">
+                    <h1 className="shrink-0 text-2xl font-bold tracking-tight text-foreground">
                         Projects
                     </h1>
                     <FilterInput

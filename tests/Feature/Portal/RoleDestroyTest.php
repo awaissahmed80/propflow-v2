@@ -41,23 +41,70 @@ class RoleDestroyTest extends TestCase
         unset($user, $tenant);
     }
 
-    public function test_authenticated_tenant_user_can_destroy_role(): void
+    public function test_authenticated_tenant_user_can_destroy_custom_role(): void
     {
         [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_destroy_test');
-        $role = Role::query()->where('name', 'Manager')->firstOrFail();
+
+        $tenant->makeCurrent();
+        $role = Role::query()->create([
+            'name' => 'Temp Role',
+            'guard_name' => 'web',
+            'description' => 'Custom',
+            'is_system' => false,
+            'is_enabled' => true,
+        ]);
         $roleId = $role->id;
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->from(Domain::portal('/settings/roles'))
+            ->delete(Domain::portal('/user-roles/'.$role->name))
+            ->assertRedirect(route('portal.settings.index', ['section' => 'roles']));
+
+        $tenant->makeCurrent();
+        $this->assertDatabaseMissing('roles', ['id' => $roleId], 'tenant');
+
+        Tenant::forgetCurrent();
+    }
+
+    public function test_default_role_cannot_be_deleted(): void
+    {
+        [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_destroy_default');
+        $role = Role::query()->where('name', 'Manager')->firstOrFail();
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
         Tenant::forgetCurrent();
 
-        $this->from(Domain::portal('/user-roles'))
+        $this->from(Domain::portal('/settings/roles'))
             ->delete(Domain::portal('/user-roles/'.$role->name))
-            ->assertRedirect(Domain::portal('/user-roles'));
+            ->assertRedirect(Domain::portal('/settings/roles'))
+            ->assertSessionHasErrors('role');
 
         $tenant->makeCurrent();
-        $this->assertDatabaseMissing('roles', ['id' => $roleId], 'tenant');
+        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Manager'], 'tenant');
+        Tenant::forgetCurrent();
+    }
 
+    public function test_default_role_can_be_toggled_off(): void
+    {
+        [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_toggle');
+        $role = Role::query()->where('name', 'Sales Executive')->firstOrFail();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+        Tenant::forgetCurrent();
+
+        $this->put(Domain::portal('/user-roles/'.$role->name), [
+            'toggle_only' => true,
+            'is_enabled' => false,
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $role->refresh();
+        $this->assertFalse((bool) $role->is_enabled);
         Tenant::forgetCurrent();
     }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Fragment } from "react/jsx-runtime"
 import { cn } from "@/lib/utils"
-import { Head, Link } from "@inertiajs/react"
+import { Head, Link, usePage } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Icon } from "@/components/ui/icon"
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -36,6 +36,9 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
     const os = useOS();
     const [ isOpen, setOpen ] = useState(false)
     const { user } = useAuth()
+    const workspaceName = usePage().props?.tenant?.current?.name
+        || user?.display_name
+        || "your workspace"
     
     useEffect(() => {
         const down = (e) => {
@@ -66,9 +69,8 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
                     (breadcrumbs?.length === 0) &&
                     <div className="text-foreground/50">
                         It's {dayjs().format('dddd')}
-                        <span className="font-semibold text-foreground/80"> {`${user?.display_name}`}</span>
+                        <span className="font-semibold text-foreground/80"> {workspaceName}</span>
                         — let's make it count!
-                        {/* {`It's Wednesday, Awais — let's make it count!`} <span className="font-semibold text-foreground/80">{`${user?.first_name}`}</span> */}
                     </div>
                 }   
                 {
@@ -119,10 +121,10 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
             </div>            
             <div className="flex shrink-0 items-center gap-3">
                 <IconButton size="sm" variant="outline" icon="discuss-line" />
-                <AssistantModal />
                 <div className="relative size-6 min-w-6 shrink-0">
                     <NotificationMenu />
                 </div>
+                <AssistantModal />
             </div>
         </div>
         <SpotlightSearch isOpen={isOpen} onClose={() => setOpen(false)} />

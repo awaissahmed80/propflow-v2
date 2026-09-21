@@ -21,6 +21,7 @@ import { FilterInput } from "@/components/ui/filter-input";
 import { ActiveFilters, FilterMenu, toSelectedList } from "@/components/ui/filter-menu";
 import { Avatar } from "@/components/ui/avatar";
 import { HeatIcon } from "@/components/ui/heat-icon";
+import { StageBadge } from "@/components/ui/stage-badge";
 import { Icon } from "@/components/ui/icon";
 import {
     Pagination,
@@ -137,6 +138,11 @@ function LeadRow({
     onOpen,
 }) {
     const contactName = lead.contact?.display_name || "—";
+    const contactDetail =
+        lead.contact?.phone_number ||
+        lead.contact?.email_address ||
+        lead.source ||
+        null;
 
     return (
         <tr
@@ -170,9 +176,9 @@ function LeadRow({
                 <div className="flex min-w-0 items-center gap-3">
                     <Avatar
                         name={contactName === "—" ? "" : contactName}
-                        size="sm"
-                        className="size-9 shrink-0"
-                        textClass="text-[10px]"
+                        size="default"
+                        className="size-10 shrink-0"
+                        textClass="text-xs"
                     />
                     <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
@@ -181,9 +187,9 @@ function LeadRow({
                             </span>
                             {!compact ? <HeatIcon tag={lead.tag} /> : null}
                         </div>
-                        {!compact && lead.code ? (
+                        {contactDetail ? (
                             <div className="truncate text-xs text-muted-foreground">
-                                {lead.code}
+                                {contactDetail}
                             </div>
                         ) : null}
                     </div>
@@ -222,17 +228,10 @@ function LeadRow({
             ) : null}
             <td className="px-4 py-3 align-middle">
                 {lead.stage ? (
-                    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground">
-                        <span
-                            className="size-2 shrink-0 rounded-full"
-                            style={{
-                                backgroundColor:
-                                    lead.stage.color || "var(--muted-foreground)",
-                            }}
-                            aria-hidden
-                        />
-                        <span className="truncate">{lead.stage.title}</span>
-                    </span>
+                    <StageBadge
+                        label={lead.stage.title}
+                        color={lead.stage.color}
+                    />
                 ) : (
                     <span className="text-sm text-muted-foreground">—</span>
                 )}
@@ -314,8 +313,9 @@ function Leads({
             stage: toSelectedList(filters.stage),
             tag: toSelectedList(filters.tag),
             assigned_to: toSelectedList(filters.assigned_to),
+            next_action: toSelectedList(filters.next_action),
         }),
-        [filters.project, filters.stage, filters.tag, filters.assigned_to]
+        [filters.project, filters.stage, filters.tag, filters.assigned_to, filters.next_action]
     );
 
     useEffect(() => {
@@ -399,7 +399,7 @@ function Leads({
 
     useEffect(() => {
         setCheckedIds([]);
-    }, [currentView, currentPage, filters.q, filters.project, filters.stage, filters.tag, filters.assigned_to]);
+    }, [currentView, currentPage, filters.q, filters.project, filters.stage, filters.tag, filters.assigned_to, filters.next_action]);
 
     useEffect(() => {
         return () => {
@@ -448,10 +448,25 @@ function Leads({
             avatar: user.avatar || undefined,
         }));
 
+        const nextActionOptions = (formOptions.next_actions || []).map((item) => {
+            const title = typeof item === "string" ? item : item.title;
+
+            return {
+                value: title,
+                label: title,
+            };
+        });
+
         return [
             { key: "stage", label: "Stage", type: "stage", options: stageOptions },
             { key: "project", label: "Project", type: "projects", options: projectOptions },
             { key: "tag", label: "Heat", type: "heat", options: tagOptions },
+            {
+                key: "next_action",
+                label: "Next Action",
+                type: "chips",
+                options: nextActionOptions,
+            },
             ...(assigneeOptions.length > 0
                 ? [{
                     key: "assigned_to",
@@ -461,7 +476,7 @@ function Leads({
                 }]
                 : []),
         ];
-    }, [formOptions.projects, formOptions.stages, formOptions.tags, formOptions.assignees]);
+    }, [formOptions.projects, formOptions.stages, formOptions.tags, formOptions.next_actions, formOptions.assignees]);
 
     const visitLeads = (next = {}) => {
         const page = Object.prototype.hasOwnProperty.call(next, "page")
@@ -498,6 +513,11 @@ function Leads({
                 Object.prototype.hasOwnProperty.call(next, "assigned_to")
                     ? next.assigned_to
                     : appliedFilters.assigned_to
+            ),
+            next_action: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "next_action")
+                    ? next.next_action
+                    : appliedFilters.next_action
             ),
             page:
                 (nextView === "table" || nextView === "archive") && page > 1
@@ -665,6 +685,7 @@ function Leads({
             stage: next.stage || [],
             tag: next.tag || [],
             assigned_to: next.assigned_to || [],
+            next_action: next.next_action || [],
             page: 1,
         });
     };
@@ -675,6 +696,7 @@ function Leads({
             stage: [],
             tag: [],
             assigned_to: [],
+            next_action: [],
         });
     };
 
@@ -724,7 +746,8 @@ function Leads({
         appliedFilters.project.length > 0 ||
         appliedFilters.stage.length > 0 ||
         appliedFilters.tag.length > 0 ||
-        appliedFilters.assigned_to.length > 0;
+        appliedFilters.assigned_to.length > 0 ||
+        appliedFilters.next_action.length > 0;
 
     const rangeLabel =
         pagination.total > 0
@@ -743,11 +766,11 @@ function Leads({
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar className="flex-wrap">
                     <div className="mr-2 shrink-0">
-                        <h1 className="text-xl font-bold tracking-tight text-foreground">
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">
                             Leads
                         </h1>
                         <p className="text-xs text-muted-foreground">
-                            {isArchive ? "Archived leads" : "Sales Pipelines"}
+                            {isArchive ? "Archived Leads" : "Sales Pipelines"}
                         </p>
                     </div>
 
@@ -983,6 +1006,11 @@ function Leads({
                                         board={board}
                                         filters={filters}
                                         selectedLeadId={selectedLead?.id ?? null}
+                                        doNothingTitle={
+                                            (formOptions.next_actions || []).find(
+                                                (item) => item?.label === "do_nothing"
+                                            )?.title || "Do Nothing"
+                                        }
                                         onOpenLead={openLead}
                                     />
                                 )}
@@ -1184,6 +1212,8 @@ function Leads({
                                     projects={formOptions.projects || []}
                                     units={formOptions.units || []}
                                     assignees={formOptions.assignees || []}
+                                    activityTypes={formOptions.activity_types || []}
+                                    nextActionTypes={formOptions.next_actions || []}
                                     onClose={clearSelection}
                                     onEdit={openEdit}
                                 />

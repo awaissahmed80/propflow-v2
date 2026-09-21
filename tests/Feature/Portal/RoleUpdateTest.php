@@ -57,7 +57,7 @@ class RoleUpdateTest extends TestCase
             'permissions' => ['view users', 'view teams'],
         ]);
 
-        $response->assertRedirect(Domain::portal('/user-roles'));
+        $response->assertRedirect(route('portal.settings.index', ['section' => 'roles']));
 
         $tenant->makeCurrent();
         $role->refresh();

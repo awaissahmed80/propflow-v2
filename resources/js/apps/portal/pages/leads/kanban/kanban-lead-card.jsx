@@ -13,8 +13,9 @@ import { LEAD_DND_TYPE, sourceBadge } from "./utils";
  *   onOpen: (lead: object) => void,
  * }} props
  */
-export function KanbanLeadCard({ lead, selected = false, onOpen }) {
+export function KanbanLeadCard({ lead, selected = false, onOpen, doNothingTitle = "Do Nothing" }) {
     const { formatMoney } = useCurrency();
+    const locked = Boolean(lead?.deal_locked || lead?.active_order);
     const [{ isDragging }, drag] = useDrag(
         () => ({
             type: LEAD_DND_TYPE,
@@ -22,16 +23,20 @@ export function KanbanLeadCard({ lead, selected = false, onOpen }) {
                 id: lead.id,
                 lead_stage_id: lead.lead_stage_id,
             },
+            canDrag: !locked,
             collect: (monitor) => ({
                 isDragging: monitor.isDragging(),
             }),
         }),
-        [lead.id, lead.lead_stage_id],
+        [lead.id, lead.lead_stage_id, locked],
     );
 
     const name = lead.contact?.display_name || "Untitled lead";
     const source = sourceBadge(lead.source);
-    const dueSoon = Boolean(lead.due_date) && lead.next_action && lead.next_action !== "Do Nothing";
+    const dueSoon =
+        Boolean(lead.due_date) &&
+        lead.next_action &&
+        lead.next_action !== doNothingTitle;
     const relative = formatRelativeTime(lead.last_activity_at || lead.updated_at || lead.created_at);
 
     return (
@@ -54,7 +59,7 @@ export function KanbanLeadCard({ lead, selected = false, onOpen }) {
             )}
         >
             <div className="flex items-start justify-between gap-2">
-                <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+                <h3 className="min-w-0 flex-1 truncate text-base font-bold tracking-tight text-foreground">
                     {name}
                 </h3>
                 {source ? (

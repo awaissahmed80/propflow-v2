@@ -21,7 +21,7 @@ class NotificationSettings
                 'items' => [
                     [
                         'key' => 'in_app',
-                        'title' => 'In-app',
+                        'title' => 'In-App',
                         'description' => 'Show alerts in the portal',
                         'default' => true,
                     ],
@@ -40,31 +40,31 @@ class NotificationSettings
                 'items' => [
                     [
                         'key' => 'lead_created',
-                        'title' => 'New lead',
+                        'title' => 'New Lead',
                         'description' => 'When a lead is added from any source',
                         'default' => true,
                     ],
                     [
                         'key' => 'lead_assigned',
-                        'title' => 'Lead assigned',
+                        'title' => 'Lead Assigned',
                         'description' => 'When a lead is given to someone',
                         'default' => true,
                     ],
                     [
                         'key' => 'lead_stage_changed',
-                        'title' => 'Stage change',
+                        'title' => 'Stage Change',
                         'description' => 'When a lead moves to another stage',
                         'default' => false,
                     ],
                     [
                         'key' => 'follow_up_due',
-                        'title' => 'Follow-up due',
+                        'title' => 'Follow-Up Due',
                         'description' => 'When a follow-up date is today',
                         'default' => true,
                     ],
                     [
                         'key' => 'follow_up_overdue',
-                        'title' => 'Follow-up overdue',
+                        'title' => 'Follow-Up Overdue',
                         'description' => 'When a follow-up date has passed',
                         'default' => true,
                     ],
@@ -77,13 +77,13 @@ class NotificationSettings
                 'items' => [
                     [
                         'key' => 'task_assigned',
-                        'title' => 'Task assigned',
+                        'title' => 'Task Assigned',
                         'description' => 'When a task is given to someone',
                         'default' => true,
                     ],
                     [
                         'key' => 'task_due',
-                        'title' => 'Task due',
+                        'title' => 'Task Due',
                         'description' => 'When a task due date is reached',
                         'default' => true,
                     ],
@@ -96,13 +96,13 @@ class NotificationSettings
                 'items' => [
                     [
                         'key' => 'installment_due',
-                        'title' => 'Installment due',
+                        'title' => 'Installment Due',
                         'description' => 'Seven days before an installment is due',
                         'default' => true,
                     ],
                     [
                         'key' => 'handover_ready',
-                        'title' => 'Ready for handover',
+                        'title' => 'Ready For Handover',
                         'description' => 'When a file is cleared for possession',
                         'default' => true,
                     ],

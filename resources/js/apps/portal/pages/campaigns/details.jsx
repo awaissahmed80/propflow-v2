@@ -175,7 +175,7 @@ function GoalRow({ label, color, enabled, target, onEnabledChange, onTargetChang
                     !enabled && "pointer-events-none opacity-40"
                 )}
             >
-                <span className="block text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                <span className="block text-sm font-bold tracking-tight text-muted-foreground">
                     Target
                 </span>
                 <NumberInput
@@ -529,7 +529,7 @@ export default function CampaignShow({
                 <Layout.Toolbar className="flex-wrap">
                     <div className="mr-2 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                            <h1 className="truncate text-xl font-bold tracking-tight text-foreground">
+                            <h1 className="truncate text-2xl font-bold tracking-tight text-foreground">
                                 {campaign.title}
                             </h1>
                             <span
@@ -582,7 +582,7 @@ export default function CampaignShow({
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                                     <InsightCard
-                                        label="Total leads"
+                                        label="Total Leads"
                                         value={leadsCount}
                                         hint={`${activeLeadsCount} active`}
                                     />
@@ -606,8 +606,8 @@ export default function CampaignShow({
 
                             <section className="space-y-3 rounded-xl border border-border/70 bg-background p-4 shadow-xs">
                                 <div>
-                                    <h3 className="text-sm font-semibold tracking-tight text-foreground">
-                                        Goal progress
+                                    <h3 className="text-base font-bold tracking-tight text-foreground">
+                                        Goal Progress
                                     </h3>
                                     <p className="text-xs text-muted-foreground">
                                         Enabled targets from campaign goals
@@ -646,7 +646,7 @@ export default function CampaignShow({
                             </section>
 
                             <section className="space-y-3 rounded-xl border border-border/70 bg-background p-4 shadow-xs">
-                                <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                                <h3 className="text-base font-bold tracking-tight text-foreground">
                                     Overview
                                 </h3>
                                 <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -708,8 +708,8 @@ export default function CampaignShow({
                                     name="bar-chart-2-line"
                                     className="mx-auto text-2xl text-muted-foreground"
                                 />
-                                <h3 className="mt-3 text-sm font-semibold text-foreground">
-                                    Analytics coming soon
+                                <h3 className="mt-3 text-base font-bold tracking-tight text-foreground">
+                                    Analytics Coming Soon
                                 </h3>
                                 <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
                                     Charts for conversion, channel mix, and daily lead volume will
@@ -721,7 +721,7 @@ export default function CampaignShow({
 
                     <aside className="flex min-h-0 flex-col border-t border-border bg-background xl:border-t-0">
                         <div className="shrink-0 border-b border-border px-4 py-3.5">
-                            <h2 className="text-sm font-semibold tracking-tight text-foreground">
+                            <h2 className="text-base font-bold tracking-tight text-foreground">
                                 Campaign Tools
                             </h2>
                             <p className="mt-0.5 text-xs text-muted-foreground">

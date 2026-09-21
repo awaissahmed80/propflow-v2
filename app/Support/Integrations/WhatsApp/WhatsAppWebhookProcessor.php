@@ -253,8 +253,7 @@ class WhatsAppWebhookProcessor
             ?? $this->resolveAssignee($settings['default_owner']);
         $stageId = $campaign?->default_lead_stage_id
             ?? $settings['default_lead_stage_id']
-            ?? LeadStage::query()->where('label', 'new')->value('id')
-            ?? LeadStage::query()->orderBy('priority')->value('id');
+            ?? LeadStage::defaultStageId();
 
         $source = $settings['auto_tag_source']
             ? 'WhatsApp'

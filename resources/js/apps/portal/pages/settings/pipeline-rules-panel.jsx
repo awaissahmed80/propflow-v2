@@ -27,7 +27,7 @@ function RuleRow({ title, description, checked, onCheckedChange, disabled = fals
         <div className={cn("px-5 py-4", !last && "border-b border-border/60")}>
             <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-foreground">{title}</p>
+                    <p className="text-base font-bold tracking-tight text-foreground">{title}</p>
                     <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
                     {children}
                 </div>
@@ -153,7 +153,7 @@ export default function PipelineRulesPanel({ pipelineRules = {} }) {
     return (
         <div>
             <RuleRow
-                title="Auto-assign new lead"
+                title="Auto-Assign New Lead"
                 description="Round-robin assignment across active reps"
                 checked={autoAssign}
                 disabled={processing}
@@ -161,7 +161,7 @@ export default function PipelineRulesPanel({ pipelineRules = {} }) {
             />
 
             <RuleRow
-                title="Require notes before stage change"
+                title="Require Notes Before Stage Change"
                 description="Agents must leave a note before moving a lead"
                 checked={requireNotes}
                 disabled={processing}
@@ -169,7 +169,7 @@ export default function PipelineRulesPanel({ pipelineRules = {} }) {
             />
 
             <RuleRow
-                title="Flag stale leads"
+                title="Flag Stale Leads"
                 description="Highlight leads with no activity after a set number of days"
                 checked={flagStale}
                 disabled={processing}

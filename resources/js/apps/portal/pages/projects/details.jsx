@@ -342,9 +342,9 @@ function LocationMapPanel({ project, onSave }) {
     return (
         <Card className="gap-0 overflow-hidden rounded-md py-0 shadow-[0_16px_48px_-24px_rgba(0,0,0,0.12)] ring-border/60 dark:shadow-[0_16px_48px_-24px_rgba(0,0,0,0.45)]">
             <CardHeader className="border-b border-border px-4 py-3 [.border-b]:pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <CardTitle className="flex items-center gap-2 text-base font-bold">
                     <Icon name="map-2-line" className="text-base text-muted-foreground" />
-                    Location map
+                    Location Map
                 </CardTitle>
                 {mapSrc && !editing ? (
                     <CardAction>
@@ -555,7 +555,7 @@ function SidebarSection({ title, icon = "flag-line", onAdd, action, children }) 
             className="gap-0 rounded-md py-0 shadow-[0_16px_48px_-24px_rgba(0,0,0,0.12)] ring-border/60 dark:shadow-[0_16px_48px_-24px_rgba(0,0,0,0.45)]"
         >
             <CardHeader className="border-b border-border px-4 py-3 [.border-b]:pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <CardTitle className="flex items-center gap-2 text-base font-bold">
                     <Icon name={icon} className="text-base text-muted-foreground" />
                     {title}
                 </CardTitle>
@@ -860,8 +860,8 @@ function ProjectDetails({ project }) {
                         <div className="flex flex-col gap-5">
                             <Card className="gap-0 overflow-hidden rounded-md py-0 shadow-[0_16px_48px_-24px_rgba(0,0,0,0.12)] ring-border/60 dark:shadow-[0_16px_48px_-24px_rgba(0,0,0,0.45)]">
                                 <CardHeader className="border-b border-border px-4 py-3 [.border-b]:pb-3">
-                                    <CardTitle className="text-sm font-semibold">
-                                        Project gallery
+                                    <CardTitle className="text-base font-bold">
+                                        Project Gallery
                                     </CardTitle>
                                     <CardAction>
                                         <Button
@@ -1044,7 +1044,7 @@ function ProjectDetails({ project }) {
                 assetableId={project.id}
                 linkage="DOCUMENT"
                 selectedIds={documentIds}
-                title="Project documents"
+                title="Project Documents"
                 description="Select files for this project."
                 onApplied={reloadProject}
             />

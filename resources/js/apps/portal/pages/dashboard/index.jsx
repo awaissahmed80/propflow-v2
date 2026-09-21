@@ -249,7 +249,7 @@ function Dashboard({
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar>
                     <div className="min-w-0">
-                        <h1 className="shrink-0 text-xl font-bold tracking-tight text-foreground">
+                        <h1 className="shrink-0 text-2xl font-bold tracking-tight text-foreground">
                             Dashboard
                         </h1>
                         <p className="text-sm text-muted-foreground">
@@ -262,14 +262,14 @@ function Dashboard({
                     <div className="space-y-6 px-6 py-6">
                         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                             <StatCard
-                                label="Open leads"
+                                label="Open Leads"
                                 value={formatCount(stats.leads_total)}
                                 hint={`+${formatCount(stats.leads_this_week)} this week`}
                                 icon="user-star-line"
                                 href={leadsIndex.url()}
                             />
                             <StatCard
-                                label="Hot pipeline"
+                                label="Hot Pipeline"
                                 value={formatCount(stats.hot_leads)}
                                 hint="Very hot + hot tags"
                                 icon="fire-line"
@@ -277,7 +277,7 @@ function Dashboard({
                                 href={leadsIndex.url({ query: { tag: "HOT,VERY HOT" } })}
                             />
                             <StatCard
-                                label="Available units"
+                                label="Available Units"
                                 value={formatCount(stats.available_units)}
                                 hint={`${formatCount(stats.units_total)} total inventory`}
                                 icon="shape-line"
@@ -285,7 +285,7 @@ function Dashboard({
                                 href={inventoryIndex.url()}
                             />
                             <StatCard
-                                label="Pipeline budget"
+                                label="Pipeline Budget"
                                 value={formatCompactMoney(stats.pipeline_budget)}
                                 hint="Sum of open lead budgets"
                                 icon="funds-line"
@@ -296,7 +296,7 @@ function Dashboard({
                         <div className="grid gap-4 xl:grid-cols-5">
                             <Card size="sm" className="xl:col-span-3">
                                 <CardHeader className="border-b border-border/60">
-                                    <CardTitle>Lead pipeline</CardTitle>
+                                    <CardTitle>Lead Pipeline</CardTitle>
                                     <CardDescription>
                                         {formatCount(pipelineTotal)} leads across stages
                                     </CardDescription>
@@ -360,7 +360,7 @@ function Dashboard({
 
                             <Card size="sm" className="xl:col-span-2">
                                 <CardHeader className="border-b border-border/60">
-                                    <CardTitle>Inventory mix</CardTitle>
+                                    <CardTitle>Inventory Mix</CardTitle>
                                     <CardDescription>
                                         {formatCount(inventoryTotal)} units by status
                                     </CardDescription>
@@ -446,7 +446,7 @@ function Dashboard({
                         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                             <Card size="sm">
                                 <CardHeader className="border-b border-border/60">
-                                    <CardTitle>Lead heat</CardTitle>
+                                    <CardTitle>Lead Heat</CardTitle>
                                     <CardDescription>
                                         Interest intensity across the book
                                     </CardDescription>
@@ -489,7 +489,7 @@ function Dashboard({
 
                             <Card size="sm">
                                 <CardHeader className="border-b border-border/60">
-                                    <CardTitle>Lead sources</CardTitle>
+                                    <CardTitle>Lead Sources</CardTitle>
                                     <CardDescription>Where enquiries come from</CardDescription>
                                 </CardHeader>
                                 <CardContent className="pt-4">
@@ -588,7 +588,7 @@ function Dashboard({
                         <div className="grid gap-4 lg:grid-cols-2">
                             <Card size="sm">
                                 <CardHeader className="border-b border-border/60">
-                                    <CardTitle>Follow-ups</CardTitle>
+                                    <CardTitle>Follow-Ups</CardTitle>
                                     <CardDescription>
                                         {formatCount(stats.overdue)} overdue ·{" "}
                                         {formatCount(stats.due_soon)} due in 7 days
@@ -621,7 +621,7 @@ function Dashboard({
 
                             <Card size="sm">
                                 <CardHeader className="border-b border-border/60">
-                                    <CardTitle>Recent leads</CardTitle>
+                                    <CardTitle>Recent Leads</CardTitle>
                                     <CardDescription>Latest enquiries added</CardDescription>
                                     <CardAction>
                                         <Link

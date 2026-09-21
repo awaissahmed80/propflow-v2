@@ -2,13 +2,14 @@ import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import { pay } from "@/actions/App/Http/Controllers/Portal/PaymentInstallmentController";
 import { show as showOrder } from "@/actions/App/Http/Controllers/Portal/OrderController";
-import { index as plansIndex } from "@/routes/portal/payment-plans";
+import { index as installmentsIndex } from "@/routes/portal/payment-plans";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { OperationsSubnav, RECEIVABLES_SUBNAV } from "../../components/operations-subnav";
 
 function pathFrom(url) {
     const raw = String(url || "/");
@@ -24,11 +25,11 @@ function pathFrom(url) {
     return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
-export default function PaymentPlansIndex({ installments, pagination }) {
+export default function ReceivablesInstallments({ installments, pagination }) {
     const pending = isPagePending(installments);
 
     if (pending) {
-        return <PageSkeleton title="Payment Plans" />;
+        return <PageSkeleton title="Installment Engine" />;
     }
 
     const rows = installments ?? [];
@@ -36,11 +37,25 @@ export default function PaymentPlansIndex({ installments, pagination }) {
 
     return (
         <Layout>
-            <Layout.Header metaTitle="Payment Plans" breadcrumbs={[{ label: "Payment Plans" }]} />
+            <Layout.Header
+                metaTitle="Installment Engine"
+                breadcrumbs={[
+                    { label: "Receivables" },
+                    { label: "Installment Engine" },
+                ]}
+            />
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar>
-                    <h1 className="text-xl font-bold tracking-tight text-foreground">Payment Plans</h1>
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                            Installment Engine
+                        </h1>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                            Upcoming, paid, and overdue milestones across all booking payment plans.
+                        </p>
+                    </div>
                 </Layout.Toolbar>
+                <OperationsSubnav items={RECEIVABLES_SUBNAV} />
                 <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
                     {rows.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-16 text-center text-sm text-muted-foreground">
@@ -61,18 +76,30 @@ export default function PaymentPlansIndex({ installments, pagination }) {
                                 </thead>
                                 <tbody>
                                     {rows.map((row) => (
-                                        <tr key={row.id} className="border-b border-border/60 last:border-b-0">
-                                            <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{row.due_on}</td>
+                                        <tr
+                                            key={row.id}
+                                            className="border-b border-border/60 last:border-b-0"
+                                        >
+                                            <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                                                {row.due_on}
+                                            </td>
                                             <td className="px-4 py-3">{row.buyer || "—"}</td>
                                             <td className="px-4 py-3">
                                                 <button
                                                     type="button"
                                                     className="text-left hover:underline"
-                                                    onClick={() => row.order && router.visit(pathFrom(showOrder.url(row.order.code)))}
+                                                    onClick={() =>
+                                                        row.order &&
+                                                        router.visit(
+                                                            pathFrom(showOrder.url(row.order.code))
+                                                        )
+                                                    }
                                                 >
                                                     {row.label}
                                                     {row.order?.code ? (
-                                                        <span className="ml-2 font-mono text-xs text-muted-foreground">{row.order.code}</span>
+                                                        <span className="ml-2 font-mono text-xs text-muted-foreground">
+                                                            {row.order.code}
+                                                        </span>
                                                     ) : null}
                                                 </button>
                                             </td>
@@ -83,25 +110,43 @@ export default function PaymentPlansIndex({ installments, pagination }) {
                                                         "font-medium",
                                                         row.status === "paid"
                                                             ? "text-emerald-700 dark:text-emerald-400"
-                                                            : "text-muted-foreground",
+                                                            : "text-muted-foreground"
                                                     )}
                                                 >
                                                     {row.status === "paid" ? "Paid" : "Pending"}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-right">
-                                                {row.status === "pending" && row.order?.status !== "cancelled" ? (
+                                                {row.status === "pending" &&
+                                                row.order?.status !== "cancelled" ? (
                                                     <Button
                                                         type="button"
                                                         size="sm"
                                                         variant="outline"
                                                         onClick={() =>
-                                                            router.post(pathFrom(pay.url({ order: row.order.code, sequence: row.sequence })), {}, {
-                                                                preserveScroll: true,
-                                                                onSuccess: () => toast.success("Payment recorded"),
-                                                                onError: (errors) =>
-                                                                    toast.error(Object.values(errors)[0] || "Unable to record payment"),
-                                                            })
+                                                            router.post(
+                                                                pathFrom(
+                                                                    pay.url({
+                                                                        order: row.order.code,
+                                                                        sequence: row.sequence,
+                                                                    })
+                                                                ),
+                                                                {},
+                                                                {
+                                                                    preserveScroll: true,
+                                                                    onSuccess: () =>
+                                                                        toast.success(
+                                                                            "Payment recorded"
+                                                                        ),
+                                                                    onError: (errors) =>
+                                                                        toast.error(
+                                                                            Object.values(
+                                                                                errors
+                                                                            )[0] ||
+                                                                                "Unable to record payment"
+                                                                        ),
+                                                                }
+                                                            )
                                                         }
                                                     >
                                                         Mark paid
@@ -122,7 +167,13 @@ export default function PaymentPlansIndex({ installments, pagination }) {
                                 size="sm"
                                 disabled={pager.current_page <= 1}
                                 onClick={() =>
-                                    router.get(pathFrom(plansIndex.url({ query: { page: pager.current_page - 1 } })))
+                                    router.get(
+                                        pathFrom(
+                                            installmentsIndex.url({
+                                                query: { page: pager.current_page - 1 },
+                                            })
+                                        )
+                                    )
                                 }
                             >
                                 Previous
@@ -133,7 +184,13 @@ export default function PaymentPlansIndex({ installments, pagination }) {
                                 size="sm"
                                 disabled={pager.current_page >= pager.last_page}
                                 onClick={() =>
-                                    router.get(pathFrom(plansIndex.url({ query: { page: pager.current_page + 1 } })))
+                                    router.get(
+                                        pathFrom(
+                                            installmentsIndex.url({
+                                                query: { page: pager.current_page + 1 },
+                                            })
+                                        )
+                                    )
                                 }
                             >
                                 Next
@@ -146,4 +203,4 @@ export default function PaymentPlansIndex({ installments, pagination }) {
     );
 }
 
-PaymentPlansIndex.layout = (page) => <PortalLayout children={page} />;
+ReceivablesInstallments.layout = (page) => <PortalLayout children={page} />;

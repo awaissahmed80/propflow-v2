@@ -11,6 +11,7 @@ use App\Models\CampaignGoalType;
 use App\Models\Contact;
 use App\Models\CustomField;
 use App\Models\Lead;
+use App\Models\LeadActionType;
 use App\Models\LeadStage;
 use App\Models\MetaData;
 use App\Models\Project;
@@ -58,7 +59,7 @@ class ActivityCatalog
         ],
         'settings' => [
             'label' => 'Settings',
-            'types' => [LeadStage::class, CampaignGoalType::class, CustomField::class, MetaData::class, Setting::class],
+            'types' => [LeadStage::class, LeadActionType::class, CampaignGoalType::class, CustomField::class, MetaData::class, Setting::class],
         ],
         'files' => [
             'label' => 'Files',

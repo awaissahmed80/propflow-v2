@@ -44,17 +44,20 @@ export const NavLink = ({
     end = false,
     className,
     component,
+    activeWhen,
     ...rest
 }) => {
     const { url } = usePage();
     const current = normalizePath(url);
     const target = normalizePath(href);
 
-    const isActive = end
-        ? isHomePath(target)
-            ? isHomePath(current)
-            : current === target
-        : current === target || (target !== "/" && current.startsWith(`${target}/`));
+    const isActive = typeof activeWhen === "function"
+        ? Boolean(activeWhen(current))
+        : end
+            ? isHomePath(target)
+                ? isHomePath(current)
+                : current === target
+            : current === target || (target !== "/" && current.startsWith(`${target}/`));
 
     return (
         <Link

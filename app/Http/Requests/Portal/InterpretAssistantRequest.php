@@ -19,6 +19,13 @@ class InterpretAssistantRequest extends FormRequest
     {
         return [
             'transcript' => ['required', 'string', 'max:500'],
+            'intent_hint' => ['nullable', 'string', 'max:50'],
+            'intent_score' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'context' => ['nullable', 'array'],
+            'context.intent' => ['nullable', 'string', 'max:50'],
+            'context.slots' => ['nullable', 'array'],
+            'context.missing' => ['nullable', 'array'],
+            'context.missing.*' => ['string', 'max:50'],
         ];
     }
 }

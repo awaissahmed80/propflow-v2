@@ -52,7 +52,7 @@ class DealPipelineTest extends TestCase
         $this->assertSame(Unit::STATUS_TOKEN, $unit->fresh()->status);
         Tenant::forgetCurrent();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/booking'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
             'identity_kind' => 'cnic',
             'identity_number' => '42101-1234567-1',
             'overseas' => 1,
@@ -65,7 +65,7 @@ class DealPipelineTest extends TestCase
             'discount' => 0,
         ])->assertRedirect();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/plan'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/plan'), [
             'template' => 'quarterly_3y',
             'down_payment' => 1000,
             'handover_percent' => 10,
@@ -90,30 +90,30 @@ class DealPipelineTest extends TestCase
         ));
         Tenant::forgetCurrent();
 
-        $this->get(Domain::portal('/orders/'.$order->code.'/booking-form'))
+        $this->get(Domain::portal('/bookings/'.$order->code.'/booking-form'))
             ->assertOk()
             ->assertSee('Booking form')
             ->assertSee('F-18');
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/handover'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/handover'), [
             'original_files' => 1,
             'allotment_letter' => 1,
             'registry_docs' => 1,
         ])->assertSessionHasErrors('order');
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/payments'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/payments'), [
             'amount' => 9000,
             'method' => 'pay_order',
             'reference' => 'PO-100',
             'paid_on' => '2026-10-02',
         ])->assertRedirect();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/ballot'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/ballot'), [
             'plot_number' => 'P-18',
             'dimensions' => '25x50',
         ])->assertRedirect();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/transfer'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/transfer'), [
             'first_name' => 'Ali',
             'last_name' => 'Khan',
             'phone_number' => '03001234567',
@@ -130,13 +130,13 @@ class DealPipelineTest extends TestCase
         $this->assertSame($order->contact_id, $lead->fresh()->contact_id);
         Tenant::forgetCurrent();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/handover'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/handover'), [
             'original_files' => 1,
             'allotment_letter' => 1,
             'registry_docs' => 1,
         ])->assertRedirect();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/deliver'))->assertRedirect();
+        $this->post(Domain::portal('/bookings/'.$order->code.'/deliver'))->assertRedirect();
 
         $tenant->makeCurrent();
         $order->refresh();
@@ -168,7 +168,7 @@ class DealPipelineTest extends TestCase
         $order = Order::query()->first();
         Tenant::forgetCurrent();
 
-        $this->post(Domain::portal('/orders/'.$order->code.'/booking'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
             'identity_kind' => 'passport',
             'identity_number' => 'AB1234567',
             'nominee_name' => 'Nora',
@@ -177,7 +177,7 @@ class DealPipelineTest extends TestCase
             'plot_or_file' => 'F-2',
             'category' => 'standard',
         ]);
-        $this->post(Domain::portal('/orders/'.$order->code.'/plan'), [
+        $this->post(Domain::portal('/bookings/'.$order->code.'/plan'), [
             'template' => 'custom',
             'down_payment' => 0,
             'handover_percent' => 0,

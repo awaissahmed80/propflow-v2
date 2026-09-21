@@ -23,7 +23,7 @@ class UpdateLeadStageRequest extends FormRequest
         $stage = $this->route('stage');
 
         return [
-            'title' => ['required', 'string', 'max:100'],
+            'title' => ['sometimes', 'required', 'string', 'max:100'],
             'label' => [
                 'nullable',
                 'string',
@@ -31,6 +31,7 @@ class UpdateLeadStageRequest extends FormRequest
                 Rule::unique(LeadStage::class, 'label')->ignore($stage->id),
             ],
             'color' => ['nullable', 'string', 'max:20'],
+            'is_enabled' => ['sometimes', 'boolean'],
         ];
     }
 }

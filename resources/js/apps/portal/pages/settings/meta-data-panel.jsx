@@ -314,7 +314,7 @@ export default function MetaDataPanel({
                         </span>
                         <div className="min-w-0">
                             <h2 className="text-base font-semibold tracking-tight text-foreground">
-                                {section?.label ?? "Meta data"}
+                                {section?.label ?? "Meta Data"}
                             </h2>
                             <p className="truncate text-xs text-muted-foreground">
                                 Shared lists powering forms, filters, and dropdowns
@@ -329,7 +329,7 @@ export default function MetaDataPanel({
                 <div className="grid min-h-[28rem] lg:grid-cols-[15.5rem_minmax(0,1fr)]">
                     <aside className="border-b border-border/60 bg-muted/20 lg:border-r lg:border-b-0">
                         <div className="px-3 py-3">
-                            <p className="px-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                            <p className="px-2 text-sm font-bold tracking-tight text-muted-foreground">
                                 Lists
                             </p>
                             <nav className="mt-1.5 space-y-0.5">
@@ -385,7 +385,7 @@ export default function MetaDataPanel({
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                                        <h3 className="text-base font-bold tracking-tight text-foreground">
                                             {activeGroup?.label ?? "Values"}
                                         </h3>
                                         <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground tabular-nums">

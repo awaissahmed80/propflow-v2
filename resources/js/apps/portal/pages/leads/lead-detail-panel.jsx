@@ -38,25 +38,7 @@ const TABS = [
 const UPDATE_PLACEHOLDER =
     "Have you taken any steps on this lead? Record them here...";
 
-// Short labels aligned with HubSpot / Pipedrive / Salesforce activity types.
-const ACTIVITY_TYPES = [
-    "Call",
-    "Meeting",
-    "Site Visit",
-    "Email",
-    "Message",
-    "WhatsApp Call",
-    "WhatsApp Message",
-    "Note",
-];
-
-const NEXT_ACTION_TYPES = [
-    "Follow-up",
-    "Arrange Site Visit",
-    "Arrange Meeting",
-    "Do Nothing",
-];
-
+// Fallback icons for system log actions and known defaults.
 const ACTIVITY_ICONS = {
     Call: "phone-line",
     Meeting: "team-line",
@@ -69,12 +51,31 @@ const ACTIVITY_ICONS = {
     "Follow-up": "calendar-check-line",
     "Arrange Site Visit": "map-pin-line",
     "Arrange Meeting": "team-line",
+    "Do Nothing": "close-circle-line",
     "Lead created": "user-add-line",
     "Stage changed": "git-commit-line",
     "Assignee changed": "user-shared-line",
     "Lead archived": "archive-line",
     "Lead restored": "arrow-go-back-line",
 };
+
+function actionTitles(items = []) {
+    return items
+        .map((item) => (typeof item === "string" ? item : item?.title))
+        .filter(Boolean);
+}
+
+function actionIcon(title, items = []) {
+    const match = items.find((item) => item?.title === title);
+
+    return match?.icon || ACTIVITY_ICONS[title] || null;
+}
+
+function doNothingTitle(items = []) {
+    const match = items.find((item) => item?.label === "do_nothing");
+
+    return match?.title || "Do Nothing";
+}
 
 function timelineEntries(lead) {
     const tasks = Array.isArray(lead?.tasks) ? lead.tasks : [];
@@ -100,7 +101,7 @@ function timelineEntries(lead) {
     ].sort((left, right) => new Date(right.created_at) - new Date(left.created_at));
 }
 
-function ActivityTimeline({ lead }) {
+function ActivityTimeline({ lead, actionTypes = [] }) {
     const entries = timelineEntries(lead);
     const scheduled = entries.filter((entry) => entry.status === "PENDING");
     const history = entries.filter((entry) => entry.status !== "PENDING");
@@ -117,11 +118,17 @@ function ActivityTimeline({ lead }) {
         <div className="space-y-5">
             {scheduled.length > 0 ? (
                 <div className="space-y-2">
-                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    <p className="text-sm font-bold tracking-tight text-muted-foreground">
                         Scheduled
                     </p>
                     {scheduled.map((entry) => (
-                        <ActivityRow key={entry.id} entry={entry} lead={lead} scheduled />
+                        <ActivityRow
+                            key={entry.id}
+                            entry={entry}
+                            lead={lead}
+                            scheduled
+                            actionTypes={actionTypes}
+                        />
                     ))}
                 </div>
             ) : (
@@ -132,13 +139,17 @@ function ActivityTimeline({ lead }) {
 
             {history.length > 0 ? (
                 <div className="space-y-2">
-                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    <p className="text-sm font-bold tracking-tight text-muted-foreground">
                         Activity
                     </p>
                     <ol className="space-y-3">
                         {history.map((entry) => (
                             <li key={entry.id}>
-                                <ActivityRow entry={entry} lead={lead} />
+                                <ActivityRow
+                                    entry={entry}
+                                    lead={lead}
+                                    actionTypes={actionTypes}
+                                />
                             </li>
                         ))}
                     </ol>
@@ -177,9 +188,12 @@ function ActivityAttachments({ files }) {
     );
 }
 
-function ActivityRow({ entry, lead, scheduled = false }) {
+function ActivityRow({ entry, lead, scheduled = false, actionTypes = [] }) {
     const system = entry.type === "LOG";
-    const icon = ACTIVITY_ICONS[entry.action] || (system ? "history-line" : "checkbox-circle-line");
+    const icon =
+        actionIcon(entry.action, actionTypes) ||
+        ACTIVITY_ICONS[entry.action] ||
+        (system ? "history-line" : "checkbox-circle-line");
     const actor = entry.user?.display_name;
 
     return (
@@ -245,6 +259,11 @@ function telUrl(phone) {
 }
 
 function patchLead(lead, payload, successMessage = "Lead updated") {
+    if (lead?.deal_locked) {
+        toast.error("This lead is locked while its booking is active");
+        return;
+    }
+
     router.patch(update.url(lead.code), payload, {
         preserveScroll: true,
         onSuccess: () => toast.success(successMessage),
@@ -252,7 +271,7 @@ function patchLead(lead, payload, successMessage = "Lead updated") {
     });
 }
 
-function StageMenu({ lead, stages }) {
+function StageMenu({ lead, stages, locked = false }) {
     const color = lead.stage?.color || "var(--muted-foreground)";
 
     return (
@@ -261,7 +280,8 @@ function StageMenu({ lead, stages }) {
                 render={
                     <button
                         type="button"
-                        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors"
+                        disabled={locked}
+                        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                         style={{
                             backgroundColor: `${color}22`,
                             borderColor: `${color}55`,
@@ -281,7 +301,7 @@ function StageMenu({ lead, stages }) {
                     return (
                         <DropdownMenuItem
                             key={stage.id}
-                            disabled={selected}
+                            disabled={selected || locked}
                             onClick={() =>
                                 patchLead(lead, { lead_stage_id: Number(stage.id) })
                             }
@@ -303,14 +323,15 @@ function StageMenu({ lead, stages }) {
     );
 }
 
-function AssigneeMenu({ lead, assignees }) {
+function AssigneeMenu({ lead, assignees, locked = false }) {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger
                 render={
                     <button
                         type="button"
-                        className="inline-flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted/40 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/70"
+                        disabled={locked}
+                        className="inline-flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted/40 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         {lead.assignee ? (
                             <>
@@ -342,7 +363,7 @@ function AssigneeMenu({ lead, assignees }) {
                     return (
                         <DropdownMenuItem
                             key={user.id}
-                            disabled={selected}
+                            disabled={selected || locked}
                             onClick={() =>
                                 patchLead(lead, { assigned_to: Number(user.id) })
                             }
@@ -366,14 +387,15 @@ function AssigneeMenu({ lead, assignees }) {
     );
 }
 
-function ProjectMenu({ lead, projects }) {
+function ProjectMenu({ lead, projects, locked = false }) {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger
                 render={
                     <button
                         type="button"
-                        className="inline-flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted/40 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/70"
+                        disabled={locked}
+                        className="inline-flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted/40 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         {lead.project ? (
                             <>
@@ -407,7 +429,7 @@ function ProjectMenu({ lead, projects }) {
             />
             <DropdownMenuContent align="start" className="min-w-52">
                 <DropdownMenuItem
-                    disabled={!lead.project_id}
+                    disabled={!lead.project_id || locked}
                     onClick={() => patchLead(lead, { project_id: null })}
                 >
                     No project
@@ -418,7 +440,7 @@ function ProjectMenu({ lead, projects }) {
                     return (
                         <DropdownMenuItem
                             key={project.id}
-                            disabled={selected}
+                            disabled={selected || locked}
                             onClick={() =>
                                 patchLead(lead, { project_id: Number(project.id) })
                             }
@@ -449,19 +471,30 @@ function ProjectMenu({ lead, projects }) {
 function DetailField({ label, children }) {
     return (
         <div className="space-y-1">
-            <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <div className="text-sm font-bold tracking-tight text-muted-foreground">
                 {label}
             </div>
-            <div className="text-sm text-foreground">{children}</div>
+            <div className="text-base text-foreground">{children}</div>
         </div>
     );
 }
 
-function UpdateComposer({ leadCode }) {
+function UpdateComposer({
+    leadCode,
+    activityTypes = [],
+    nextActionTypes = [],
+    locked = false,
+}) {
+    const activityTitles = useMemo(() => actionTitles(activityTypes), [activityTypes]);
+    const nextTitles = useMemo(() => actionTitles(nextActionTypes), [nextActionTypes]);
+    const noopTitle = useMemo(() => doNothingTitle(nextActionTypes), [nextActionTypes]);
+    const defaultActivity = activityTitles[0] || "Note";
+    const defaultNext = nextTitles[0] || noopTitle;
+
     const [expanded, setExpanded] = useState(false);
-    const [activityType, setActivityType] = useState(ACTIVITY_TYPES[0]);
+    const [activityType, setActivityType] = useState(defaultActivity);
     const [notes, setNotes] = useState("");
-    const [nextActionType, setNextActionType] = useState(NEXT_ACTION_TYPES[0]);
+    const [nextActionType, setNextActionType] = useState(defaultNext);
     const [nextAt, setNextAt] = useState(() => new Date());
     const [attachments, setAttachments] = useState([]);
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -471,9 +504,9 @@ function UpdateComposer({ leadCode }) {
 
     const reset = () => {
         setExpanded(false);
-        setActivityType(ACTIVITY_TYPES[0]);
+        setActivityType(defaultActivity);
         setNotes("");
-        setNextActionType(NEXT_ACTION_TYPES[0]);
+        setNextActionType(defaultNext);
         setNextAt(new Date());
         setAttachments([]);
         setPickerOpen(false);
@@ -482,6 +515,11 @@ function UpdateComposer({ leadCode }) {
     };
 
     const submitUpdate = () => {
+        if (locked) {
+            toast.error("This lead is locked while its booking is active");
+            return;
+        }
+
         if (!notes.trim() || submitting) {
             return;
         }
@@ -495,7 +533,7 @@ function UpdateComposer({ leadCode }) {
                 comments: notes.trim(),
                 next_action: nextActionType,
                 due_date:
-                    nextActionType === "Do Nothing" ? null : nextAt.toISOString(),
+                    nextActionType === noopTitle ? null : nextAt.toISOString(),
                 media_ids: attachments
                     .filter((file) => file.kind === "media")
                     .map((file) => file.id),
@@ -526,9 +564,17 @@ function UpdateComposer({ leadCode }) {
 
     useEffect(() => {
         reset();
-    }, [leadCode]);
+    }, [leadCode, defaultActivity, defaultNext]);
 
     if (!expanded) {
+        if (locked) {
+            return (
+                <div className="shrink-0 border-t border-border px-4 py-3 text-center text-sm text-muted-foreground">
+                    Updates are paused while the booking is active.
+                </div>
+            );
+        }
+
         return (
             <div className="shrink-0 border-t border-border bg-gradient-to-t from-primary/[0.08] to-transparent px-4 py-4">
                 <button
@@ -544,7 +590,7 @@ function UpdateComposer({ leadCode }) {
                         <Icon name="add-line" className="text-xl" />
                     </span>
                     <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold tracking-tight text-foreground">
+                        <span className="block text-base font-bold tracking-tight text-foreground">
                             Log an update
                         </span>
                         <span className="mt-0.5 block truncate text-sm text-muted-foreground group-hover:text-foreground/80">
@@ -584,7 +630,7 @@ function UpdateComposer({ leadCode }) {
                             }
                         />
                         <DropdownMenuContent align="start" className="w-auto min-w-40">
-                            {ACTIVITY_TYPES.map((type) => (
+                            {activityTitles.map((type) => (
                                 <DropdownMenuItem
                                     key={type}
                                     disabled={activityType === type}
@@ -735,7 +781,7 @@ function UpdateComposer({ leadCode }) {
                         }
                     />
                     <DropdownMenuContent align="start" className="w-auto min-w-40">
-                        {NEXT_ACTION_TYPES.map((type) => (
+                        {nextTitles.map((type) => (
                             <DropdownMenuItem
                                 key={type}
                                 disabled={nextActionType === type}
@@ -754,7 +800,7 @@ function UpdateComposer({ leadCode }) {
                     </DropdownMenuContent>
                 </DropdownMenu>
 
-                {nextActionType !== "Do Nothing" ? (
+                {nextActionType !== noopTitle ? (
                     <DateTimePicker
                         value={nextAt}
                         onChange={(value) => {
@@ -781,6 +827,8 @@ export default function LeadDetailPanel({
     projects = [],
     units = [],
     assignees = [],
+    activityTypes = [],
+    nextActionTypes = [],
     onClose,
     onEdit,
 }) {
@@ -793,6 +841,7 @@ export default function LeadDetailPanel({
     const call = useMemo(() => telUrl(phone), [phone]);
     const stageColor = lead?.stage?.color || "var(--primary)";
     const isArchived = Boolean(lead?.archived_at);
+    const dealLocked = Boolean(lead?.deal_locked || lead?.active_order);
 
     const handleArchive = async () => {
         const confirmed = await confirm(
@@ -877,7 +926,7 @@ export default function LeadDetailPanel({
                     ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                    {!isArchived ? <StageMenu lead={lead} stages={stages} /> : null}
+                    {!isArchived ? <StageMenu lead={lead} stages={stages} locked={dealLocked} /> : null}
                     <IconButton
                         type="button"
                         size="sm"
@@ -888,6 +937,14 @@ export default function LeadDetailPanel({
                     />
                 </div>
             </div>
+
+            {dealLocked && !isArchived ? (
+                <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-5 py-2.5 text-sm text-amber-950 dark:text-amber-100">
+                    Deal closed — booking in progress
+                    {lead.active_order?.code ? ` (${lead.active_order.code})` : ""}. Sales edits are locked until
+                    the booking is cancelled.
+                </div>
+            ) : null}
 
             <div className="shrink-0 space-y-4 border-b border-border px-5 py-4">
                 <div className="flex items-start justify-between gap-3">
@@ -924,8 +981,8 @@ export default function LeadDetailPanel({
                 </div>
 
                 <div className="flex flex-col gap-2 sm:flex-row">
-                    <AssigneeMenu lead={lead} assignees={assignees} />
-                    <ProjectMenu lead={lead} projects={projects} />
+                    <AssigneeMenu lead={lead} assignees={assignees} locked={dealLocked} />
+                    <ProjectMenu lead={lead} projects={projects} locked={dealLocked} />
                 </div>
             </div>
 
@@ -955,7 +1012,12 @@ export default function LeadDetailPanel({
 
             <ScrollArea className="min-h-0 flex-1">
                 <div className="px-5 py-5">
-                    {tab === "tasks" ? <ActivityTimeline lead={lead} /> : null}
+                    {tab === "tasks" ? (
+                        <ActivityTimeline
+                            lead={lead}
+                            actionTypes={[...activityTypes, ...nextActionTypes]}
+                        />
+                    ) : null}
 
                     {tab === "details" ? (
                         <div className="space-y-5">
@@ -966,6 +1028,7 @@ export default function LeadDetailPanel({
                                             type="button"
                                             variant="outline"
                                             size="sm"
+                                            disabled={dealLocked}
                                             onClick={() => onEdit?.(lead)}
                                         >
                                             <Icon name="pencil-line" className="text-base" />
@@ -975,6 +1038,7 @@ export default function LeadDetailPanel({
                                             type="button"
                                             variant="outline"
                                             size="sm"
+                                            disabled={dealLocked}
                                             onClick={handleArchive}
                                         >
                                             <Icon name="archive-line" className="text-base" />
@@ -1049,7 +1113,14 @@ export default function LeadDetailPanel({
                 </div>
             </ScrollArea>
 
-            {tab === "tasks" ? <UpdateComposer leadCode={lead.code} /> : null}
+            {tab === "tasks" ? (
+                <UpdateComposer
+                    leadCode={lead.code}
+                    activityTypes={activityTypes}
+                    nextActionTypes={nextActionTypes}
+                    locked={dealLocked}
+                />
+            ) : null}
         </div>
     );
 }

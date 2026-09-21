@@ -54,8 +54,7 @@ class LeadIntakeService
                 ?? ($settings['project_id'] ?? null);
 
             $stageId = $settings['lead_stage_id']
-                ?? LeadStage::query()->where('label', 'new')->value('id')
-                ?? LeadStage::query()->orderBy('priority')->value('id');
+                ?? LeadStage::defaultStageId();
 
             $source = $channel === 'landing'
                 ? ($settings['landing_source'] ?? 'Campaign landing')

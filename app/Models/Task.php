@@ -39,16 +39,7 @@ class Task extends Model
      */
     public static function activityTypes(): array
     {
-        return [
-            'Call',
-            'Meeting',
-            'Site Visit',
-            'Email',
-            'Message',
-            'WhatsApp Call',
-            'WhatsApp Message',
-            'Note',
-        ];
+        return LeadActionType::titles(LeadActionType::KIND_ACTIVITY);
     }
 
     /**

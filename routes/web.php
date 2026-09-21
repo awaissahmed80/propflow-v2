@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Portal\ActivityLogController;
+use App\Http\Controllers\Portal\AllocationController;
 use App\Http\Controllers\Portal\AssistantController;
+use App\Http\Controllers\Portal\CalendarController;
 use App\Http\Controllers\Portal\CampaignController;
 use App\Http\Controllers\Portal\CampaignFormController;
 use App\Http\Controllers\Portal\CampaignFormFieldController;
@@ -14,6 +16,7 @@ use App\Http\Controllers\Portal\DocumentController;
 use App\Http\Controllers\Portal\DocumentFolderController;
 use App\Http\Controllers\Portal\DocumentLabelController;
 use App\Http\Controllers\Portal\InventoryController;
+use App\Http\Controllers\Portal\LeadActionTypeController;
 use App\Http\Controllers\Portal\LeadController;
 use App\Http\Controllers\Portal\LeadStageController;
 use App\Http\Controllers\Portal\LeadTaskController;
@@ -22,15 +25,20 @@ use App\Http\Controllers\Portal\MediaController;
 use App\Http\Controllers\Portal\MetaDataController;
 use App\Http\Controllers\Portal\MetaIntegrationController;
 use App\Http\Controllers\Portal\NotificationController;
+use App\Http\Controllers\Portal\OperationsController;
 use App\Http\Controllers\Portal\OrderController;
+use App\Http\Controllers\Portal\OrderStageController;
 use App\Http\Controllers\Portal\PaymentInstallmentController;
 use App\Http\Controllers\Portal\PaymentPlanController;
+use App\Http\Controllers\Portal\PaymentPlanTemplateController;
 use App\Http\Controllers\Portal\ProjectBlockController;
 use App\Http\Controllers\Portal\ProjectController;
 use App\Http\Controllers\Portal\ProjectProgressController;
 use App\Http\Controllers\Portal\RoleController;
+use App\Http\Controllers\Portal\SalesController;
 use App\Http\Controllers\Portal\SettingsController;
 use App\Http\Controllers\Portal\TeamController;
+use App\Http\Controllers\Portal\TodoListController;
 use App\Http\Controllers\Portal\UnitController;
 use App\Http\Controllers\Portal\UserController;
 use App\Http\Controllers\Portal\WhatsAppIntegrationController;
@@ -110,12 +118,15 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
 
         Route::get('/', [DashboardController::class, 'index'])->name('portal.home');
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('portal.dashboard');
+        Route::get('/todos', [TodoListController::class, 'index'])->name('portal.todos.index');
         Route::get('/activity', [ActivityLogController::class, 'index'])->name('portal.activity.index');
         Route::get('/notifications', [NotificationController::class, 'index'])->name('portal.notifications.index');
         Route::post('/notifications/read', [NotificationController::class, 'readAll'])->name('portal.notifications.read-all');
         Route::post('/notifications/{notification}/read', [NotificationController::class, 'read'])->name('portal.notifications.read');
         Route::get('/assistant/brief', [AssistantController::class, 'brief'])->name('portal.assistant.brief');
         Route::post('/assistant/interpret', [AssistantController::class, 'interpret'])->name('portal.assistant.interpret');
+        Route::get('/calendar', [CalendarController::class, 'index'])->name('portal.calendar');
+        Route::get('/sales', [SalesController::class, 'overview'])->name('portal.sales.overview');
         Route::get('/leads', [LeadController::class, 'index'])->name('portal.leads.index');
         Route::get('/leads/board/{stage}', [LeadController::class, 'boardColumn'])->name('portal.leads.board-column');
         Route::post('/leads', [LeadController::class, 'store'])->name('portal.leads.store');
@@ -126,21 +137,48 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::post('/leads/{lead}/restore', [LeadController::class, 'restore'])->name('portal.leads.restore');
         Route::post('/leads/{lead}/convert', [LeadController::class, 'convert'])->name('portal.leads.convert');
         Route::delete('/leads/{lead}', [LeadController::class, 'destroy'])->name('portal.leads.destroy');
-        Route::get('/orders', [OrderController::class, 'index'])->name('portal.orders.index');
-        Route::get('/orders/{order}', [OrderController::class, 'show'])->name('portal.orders.show');
-        Route::get('/orders/{order}/booking-form', [DealController::class, 'bookingForm'])->name('portal.orders.booking-form');
-        Route::post('/orders/{order}/booking', [DealController::class, 'booking'])->name('portal.orders.booking');
-        Route::post('/orders/{order}/plan', [DealController::class, 'plan'])->name('portal.orders.plan');
-        Route::post('/orders/{order}/payments', [DealController::class, 'payment'])->name('portal.orders.payments.store');
-        Route::post('/orders/{order}/ballot', [DealController::class, 'ballot'])->name('portal.orders.ballot');
-        Route::post('/orders/{order}/transfer', [DealController::class, 'transfer'])->name('portal.orders.transfer');
-        Route::post('/orders/{order}/handover', [DealController::class, 'handover'])->name('portal.orders.handover');
-        Route::post('/orders/{order}/deliver', [DealController::class, 'deliver'])->name('portal.orders.deliver');
-        Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('portal.orders.cancel');
-        Route::post('/orders/{order}/allocate', [OrderController::class, 'allocate'])->name('portal.orders.allocate');
-        Route::get('/payment-plans', [PaymentPlanController::class, 'index'])->name('portal.payment-plans.index');
-        Route::post('/orders/{order}/installments/{sequence}/pay', [PaymentInstallmentController::class, 'pay'])->name('portal.payment-installments.pay');
-        Route::get('/allocation', [AllocationController::class, 'index'])->name('portal.allocation.index');
+        Route::get('/operations', [OperationsController::class, 'overview'])->name('portal.operations.overview');
+        Route::redirect('/orders', '/bookings');
+        Route::get('/orders/{order}', fn (string $order) => redirect('/bookings/'.$order));
+        Route::redirect('/bookings/applications', '/bookings');
+        Route::get('/bookings/allotment', [AllocationController::class, 'index'])->name('portal.bookings.allotment');
+        Route::get('/bookings', [OrderController::class, 'index'])->name('portal.orders.index');
+        Route::get('/bookings/{order}', [OrderController::class, 'show'])->name('portal.orders.show');
+        Route::get('/bookings/{order}/booking-form', [DealController::class, 'showBookingForm'])->name('portal.orders.show-booking-form');
+        Route::post('/bookings/{order}/booking', [DealController::class, 'storeBooking'])->name('portal.orders.booking');
+        Route::post('/bookings/{order}/plan', [DealController::class, 'plan'])->name('portal.orders.plan');
+        Route::post('/bookings/{order}/payments', [DealController::class, 'payment'])->name('portal.orders.payments.store');
+        Route::post('/bookings/{order}/ballot', [DealController::class, 'ballot'])->name('portal.orders.ballot');
+        Route::post('/bookings/{order}/transfer', [DealController::class, 'transfer'])->name('portal.orders.transfer');
+        Route::post('/bookings/{order}/handover', [DealController::class, 'handover'])->name('portal.orders.handover');
+        Route::post('/bookings/{order}/deliver', [DealController::class, 'deliver'])->name('portal.orders.deliver');
+        Route::post('/bookings/{order}/cancel', [OrderController::class, 'cancel'])->name('portal.orders.cancel');
+        Route::post('/bookings/{order}/allocate', [OrderController::class, 'allocate'])->name('portal.orders.allocate');
+        Route::post('/bookings/{order}/installments/{sequence}/pay', [PaymentInstallmentController::class, 'pay'])->name('portal.payment-installments.pay');
+        Route::redirect('/payment-plans', '/receivables/installments');
+        Route::get('/plan-templates', [PaymentPlanTemplateController::class, 'index'])->name('portal.plan-templates.index');
+        Route::post('/plan-templates', [PaymentPlanTemplateController::class, 'store'])->name('portal.plan-templates.store');
+        Route::match(['put', 'patch'], '/plan-templates/{template}', [PaymentPlanTemplateController::class, 'update'])->name('portal.plan-templates.update');
+        Route::delete('/plan-templates/{template}', [PaymentPlanTemplateController::class, 'destroy'])->name('portal.plan-templates.destroy');
+        Route::redirect('/receivables', '/receivables/installments');
+        Route::get('/receivables/installments', [PaymentPlanController::class, 'index'])->name('portal.payment-plans.index');
+        Route::get('/receivables/vouchers', [OperationsController::class, 'comingSoon'])
+            ->defaults('section', 'vouchers')
+            ->name('portal.receivables.vouchers');
+        Route::get('/receivables/verification', [OperationsController::class, 'comingSoon'])
+            ->defaults('section', 'verification')
+            ->name('portal.receivables.verification');
+        Route::get('/receivables/statements', [OperationsController::class, 'comingSoon'])
+            ->defaults('section', 'statements')
+            ->name('portal.receivables.statements');
+        Route::redirect('/allocation', '/bookings/allotment');
+        Route::redirect('/commissions', '/commissions/agents');
+        Route::get('/commissions/agents', [OperationsController::class, 'comingSoon'])
+            ->defaults('section', 'agents')
+            ->name('portal.commissions.agents');
+        Route::get('/commissions/dealers', [OperationsController::class, 'comingSoon'])
+            ->defaults('section', 'dealers')
+            ->name('portal.commissions.dealers');
         Route::get('/contacts', [ContactController::class, 'index'])->name('portal.contacts.index');
         Route::post('/contacts', [ContactController::class, 'store'])->name('portal.contacts.store');
         Route::match(['put', 'patch'], '/contacts/{contact}', [ContactController::class, 'update'])->name('portal.contacts.update');
@@ -181,6 +219,14 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::put('/settings/stages/reorder', [LeadStageController::class, 'reorder'])->name('portal.settings.stages.reorder');
         Route::put('/settings/stages/{stage}', [LeadStageController::class, 'update'])->name('portal.settings.stages.update');
         Route::delete('/settings/stages/{stage}', [LeadStageController::class, 'destroy'])->name('portal.settings.stages.destroy');
+        Route::post('/settings/order-stages', [OrderStageController::class, 'store'])->name('portal.settings.order-stages.store');
+        Route::put('/settings/order-stages/reorder', [OrderStageController::class, 'reorder'])->name('portal.settings.order-stages.reorder');
+        Route::put('/settings/order-stages/{stage}', [OrderStageController::class, 'update'])->name('portal.settings.order-stages.update');
+        Route::delete('/settings/order-stages/{stage}', [OrderStageController::class, 'destroy'])->name('portal.settings.order-stages.destroy');
+        Route::post('/settings/lead-actions', [LeadActionTypeController::class, 'store'])->name('portal.settings.lead-actions.store');
+        Route::put('/settings/lead-actions/reorder', [LeadActionTypeController::class, 'reorder'])->name('portal.settings.lead-actions.reorder');
+        Route::put('/settings/lead-actions/{actionType}', [LeadActionTypeController::class, 'update'])->name('portal.settings.lead-actions.update');
+        Route::delete('/settings/lead-actions/{actionType}', [LeadActionTypeController::class, 'destroy'])->name('portal.settings.lead-actions.destroy');
         Route::post('/settings/campaign-goals', [CampaignGoalTypeController::class, 'store'])->name('portal.settings.campaign-goals.store');
         Route::put('/settings/campaign-goals/reorder', [CampaignGoalTypeController::class, 'reorder'])->name('portal.settings.campaign-goals.reorder');
         Route::put('/settings/campaign-goals/{goalType}', [CampaignGoalTypeController::class, 'update'])->name('portal.settings.campaign-goals.update');

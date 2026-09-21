@@ -340,7 +340,7 @@ export default function ContactForm({
                         </div>
 
                         <div className="space-y-4 border-t border-border pt-5">
-                            <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                            <h3 className="text-base font-bold tracking-tight text-foreground">
                                 Demographics
                             </h3>
 

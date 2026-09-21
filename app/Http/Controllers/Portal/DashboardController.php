@@ -45,7 +45,7 @@ class DashboardController extends Controller
             ->active()
             ->whereNotNull('due_date')
             ->where('due_date', '<', $now->copy()->startOfDay())
-            ->whereNotIn('next_action', [Lead::NEXT_ACTION_DO_NOTHING])
+            ->where('next_action', '!=', Lead::doNothingNextAction())
             ->count();
 
         return Inertia::render('dashboard/index', [
@@ -86,6 +86,7 @@ class DashboardController extends Controller
             ->keyBy('lead_stage_id');
 
         return LeadStage::query()
+            ->enabled()
             ->orderBy('priority')
             ->get(['id', 'label', 'title', 'color'])
             ->map(function (LeadStage $stage) use ($counts): array {
@@ -197,7 +198,7 @@ class DashboardController extends Controller
             })
             ->where(function ($query): void {
                 $query->whereNull('next_action')
-                    ->orWhere('next_action', '!=', Lead::NEXT_ACTION_DO_NOTHING);
+                    ->orWhere('next_action', '!=', Lead::doNothingNextAction());
             })
             ->orderBy('due_date')
             ->limit(8)

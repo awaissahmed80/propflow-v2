@@ -18,7 +18,7 @@ class DealController extends Controller
 {
     public function __construct(protected DealPipeline $deals) {}
 
-    public function booking(VerifyBookingRequest $request, Order $order): RedirectResponse
+    public function storeBooking(VerifyBookingRequest $request, Order $order): RedirectResponse
     {
         $this->deals->verify($order, $request->validated(), $request->user()?->id);
 
@@ -67,7 +67,7 @@ class DealController extends Controller
         return back();
     }
 
-    public function bookingForm(Order $order): View
+    public function showBookingForm(Order $order): View
     {
         $order->load(['contact', 'project', 'unit.block', 'paymentPlan']);
         $deal = $this->deals->snapshot($order);

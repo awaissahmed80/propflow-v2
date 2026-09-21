@@ -98,8 +98,7 @@ class MetaIntegrationController extends Controller
             return redirect()->to($settingsUrl)->with('error', 'Unable to store Page tokens. Please try connecting again.');
         }
 
-        $defaultStageId = LeadStage::query()->where('label', 'new')->value('id')
-            ?? LeadStage::query()->orderBy('priority')->value('id');
+        $defaultStageId = LeadStage::defaultStageId();
 
         $existingLeadSettings = data_get($integration->settings, 'lead_settings');
         $leadSettings = MetaLeadSettings::normalize(

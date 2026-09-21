@@ -249,7 +249,7 @@ class UserController extends Controller
             ->all();
 
         return [
-            'roles' => Role::query()->orderBy('name')->pluck('name')->all(),
+            'roles' => Role::query()->enabled()->orderBy('name')->pluck('name')->all(),
             'managers' => $managers,
             'departments' => $departments,
         ];

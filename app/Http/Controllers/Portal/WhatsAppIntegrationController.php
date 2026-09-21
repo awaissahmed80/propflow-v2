@@ -94,8 +94,7 @@ class WhatsAppIntegrationController extends Controller
         $verifyToken = $integration->webhook_verify_token
             ?: (config('services.whatsapp.webhook_verify_token') ?: Str::random(32));
 
-        $defaultStageId = LeadStage::query()->where('label', 'new')->value('id')
-            ?? LeadStage::query()->orderBy('priority')->value('id');
+        $defaultStageId = LeadStage::defaultStageId();
 
         $existingLeadSettings = data_get($integration->settings, 'lead_settings');
         $leadSettings = WhatsAppLeadSettings::normalize(

@@ -14,6 +14,12 @@ class LeadTaskController extends Controller
 
     public function store(StoreLeadTaskRequest $request, Lead $lead): RedirectResponse
     {
+        if ($lead->hasActiveDeal()) {
+            return back()->withErrors([
+                'lead' => 'This lead is locked while its booking is active. Cancel the booking to add tasks.',
+            ]);
+        }
+
         $this->activity->recordUpdate(
             $lead,
             $request->validated(),

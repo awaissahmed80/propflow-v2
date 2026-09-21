@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Lead;
+use App\Models\LeadActionType;
 use App\Models\Task;
 use App\Models\User;
 use App\Support\AssetManager;
@@ -53,7 +54,7 @@ class LeadActivity
     public function recordUpdate(Lead $lead, array $data, ?int $userId): void
     {
         $nextAction = $data['next_action'];
-        $dueDate = $nextAction === Lead::NEXT_ACTION_DO_NOTHING
+        $dueDate = LeadActionType::isDoNothing($nextAction)
             ? null
             : ($data['due_date'] ?? null);
 
@@ -84,7 +85,7 @@ class LeadActivity
                 $this->assets->syncLinks($update, AssetManager::LINKAGE_DOCUMENT, $documentIds);
             }
 
-            if ($nextAction !== Lead::NEXT_ACTION_DO_NOTHING) {
+            if (! LeadActionType::isDoNothing($nextAction)) {
                 $this->log(
                     $lead,
                     $nextAction,
