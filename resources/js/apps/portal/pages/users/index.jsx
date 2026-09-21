@@ -239,11 +239,6 @@ function UserDetailPanel({ user, onEdit, onClose }) {
                             >
                                 {user.status || "UNKNOWN"}
                             </Badge>
-                            {user.code ? (
-                                <span className="ml-auto text-sm text-muted-foreground">
-                                    #{user.code}
-                                </span>
-                            ) : null}
                         </div>
 
                         <div className="space-y-5">
@@ -280,11 +275,6 @@ function UserDetailPanel({ user, onEdit, onClose }) {
                                             <div key={team.id} className="space-y-2">
                                                 <div>
                                                     <span className="font-medium">{team.title}</span>
-                                                    {team.code ? (
-                                                        <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                                            #{team.code}
-                                                        </span>
-                                                    ) : null}
                                                 </div>
                                                 {team.members?.length > 0 ? (
                                                     <AvatarGroup className="justify-start">

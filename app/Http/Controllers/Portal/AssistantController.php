@@ -194,7 +194,7 @@ class AssistantController extends Controller
 
                 return [
                     'code' => $lead->code,
-                    'name' => $name !== '' ? $name : $lead->code,
+                    'name' => $name !== '' ? $name : 'Lead',
                     'due_date' => $lead->due_date?->toIso8601String(),
                     'overdue' => $lead->due_date !== null && $lead->due_date->lt(now()->startOfDay()),
                     'href' => '/leads?lead='.$lead->code,
@@ -300,7 +300,7 @@ class AssistantController extends Controller
                 ])));
 
                 return [
-                    'name' => $name !== '' ? $name : $lead->code,
+                    'name' => $name !== '' ? $name : 'Lead',
                     'action' => $lead->next_action,
                     'when' => $lead->due_date?->toIso8601String(),
                     'overdue' => $lead->due_date !== null && $lead->due_date->lt(now()->startOfDay()),
@@ -331,7 +331,7 @@ class AssistantController extends Controller
                 ])));
 
                 return [
-                    'name' => $name !== '' ? $name : $order->code,
+                    'name' => $name !== '' ? $name : 'Booking',
                     'status' => $order->status,
                     'code' => $order->code,
                     'href' => '/bookings/'.$order->code,
@@ -369,7 +369,7 @@ class AssistantController extends Controller
                 ])));
 
                 return [
-                    'name' => $label !== '' ? $label : $lead->code,
+                    'name' => $label !== '' ? $label : 'Lead',
                     'code' => $lead->code,
                     'href' => '/leads?lead='.$lead->code,
                 ];

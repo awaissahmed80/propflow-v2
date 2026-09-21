@@ -2,10 +2,8 @@
 
 namespace App\Http\Requests\Portal;
 
-use App\Models\OrderPayment;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class RecordOrderPaymentRequest extends FormRequest
 {
@@ -21,7 +19,7 @@ class RecordOrderPaymentRequest extends FormRequest
     {
         return [
             'amount' => ['required', 'numeric', 'min:0.01'],
-            'method' => ['required', 'string', Rule::in(OrderPayment::methods())],
+            'method' => ['required', 'string', 'max:80'],
             'reference' => ['nullable', 'string', 'max:80'],
             'paid_on' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:500'],

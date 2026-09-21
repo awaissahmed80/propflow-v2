@@ -292,8 +292,8 @@ export default function UnitForm({
                     </DialogTitle>
                     <DialogDescription>
                         {isEditing
-                            ? `Update details for ${data?.code || "this unit"}.`
-                            : "Create a sellable inventory unit. Code is assigned automatically."}
+                            ? `Update details for ${data?.name || "this unit"}.`
+                            : "Create a sellable inventory unit."}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -302,13 +302,6 @@ export default function UnitForm({
                     onSubmit={handleSubmit(onSubmit)}
                 >
                     <div className="space-y-4">
-                        {isEditing && data?.code ? (
-                            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                                <span className="text-muted-foreground">Code </span>
-                                <span className="font-medium text-foreground">{data.code}</span>
-                            </div>
-                        ) : null}
-
                         <Controller
                             name="project_id"
                             control={control}

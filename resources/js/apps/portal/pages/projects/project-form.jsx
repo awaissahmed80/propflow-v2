@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { MetaComboBox } from "@/components/ui/meta-combo-box";
 import { SelectBox } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useMeta } from "@/hooks/use-meta";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,7 @@ const editDefaults = {
     total_area: null,
     start_date: "",
     end_date: "",
+    balloting_enabled: false,
 };
 
 export default function ProjectForm({
@@ -109,6 +111,7 @@ export default function ProjectForm({
                         : Number(data.total_area),
                 start_date: data.start_date ?? "",
                 end_date: data.end_date ?? "",
+                balloting_enabled: Boolean(data.balloting_enabled),
             });
             return;
         }
@@ -148,6 +151,7 @@ export default function ProjectForm({
                             : Number(formData.total_area),
                     start_date: formData.start_date || null,
                     end_date: formData.end_date || null,
+                    balloting_enabled: Boolean(formData.balloting_enabled),
                 },
                 {
                     preserveScroll: true,
@@ -422,6 +426,28 @@ export default function ProjectForm({
                                         )}
                                     />
                                 </div>
+
+                                <Controller
+                                    name="balloting_enabled"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <div className="flex items-start justify-between gap-4 rounded-md border border-border px-4 py-3">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium text-foreground">
+                                                    Balloting enabled
+                                                </p>
+                                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                                    Optional society plot allotment step for bookings on this project.
+                                                </p>
+                                            </div>
+                                            <Switch
+                                                className="mt-0.5 shrink-0"
+                                                checked={Boolean(field.value)}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </div>
+                                    )}
+                                />
                             </>
                         ) : null}
                     </div>

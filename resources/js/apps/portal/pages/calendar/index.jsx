@@ -801,8 +801,8 @@ function EventDetailPopover({ event, detail }) {
                 <PopoverHeader>
                     <PopoverTitle>{data?.contact?.display_name || event.title}</PopoverTitle>
                     <PopoverDescription>
-                        {data?.code || event.subject?.code}
-                        {data?.stage?.title ? ` · ${data.stage.title}` : ""}
+                        {[data?.project?.title, data?.stage?.title].filter(Boolean).join(" · ") ||
+                            event.subtitle}
                     </PopoverDescription>
                 </PopoverHeader>
                 <div className="space-y-2">
@@ -831,15 +831,19 @@ function EventDetailPopover({ event, detail }) {
         return (
             <>
                 <PopoverHeader>
-                    <PopoverTitle>{data?.code || event.title}</PopoverTitle>
+                    <PopoverTitle>
+                        {data?.contact?.display_name || event.title}
+                    </PopoverTitle>
                     <PopoverDescription>
-                        {data?.contact?.display_name || event.subtitle || "Order"}
+                        {[data?.project?.title, data?.unit?.name].filter(Boolean).join(" · ") ||
+                            event.subtitle ||
+                            "Booking"}
                     </PopoverDescription>
                 </PopoverHeader>
                 <div className="space-y-2">
                     <DetailRow label="Status" value={data?.status || data?.stage} />
                     <DetailRow label="Project" value={data?.project?.title} />
-                    <DetailRow label="Unit" value={data?.unit?.code || data?.unit?.name} />
+                    <DetailRow label="Unit" value={data?.unit?.name} />
                     <DetailRow
                         label="Assignee"
                         value={

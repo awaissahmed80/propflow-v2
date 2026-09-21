@@ -763,7 +763,6 @@ function WorkList({ work, formatMoney }) {
                 <li key={lead.code}>
                     <button type="button" className="text-left hover:underline" onClick={() => visit(lead.href)}>
                         {lead.name}
-                        <span className="ml-2 font-mono text-xs text-muted-foreground">{lead.code}</span>
                         {lead.overdue ? <span className="ml-2 text-destructive">Overdue</span> : null}
                     </button>
                 </li>
@@ -772,9 +771,6 @@ function WorkList({ work, formatMoney }) {
                 <li key={`${task.lead_code}-${task.action}`}>
                     <button type="button" className="text-left hover:underline" onClick={() => visit(task.href)}>
                         {task.action}
-                        {task.lead_code ? (
-                            <span className="ml-2 font-mono text-xs text-muted-foreground">{task.lead_code}</span>
-                        ) : null}
                     </button>
                 </li>
             ))}
@@ -783,9 +779,6 @@ function WorkList({ work, formatMoney }) {
                     <button type="button" className="text-left hover:underline" onClick={() => visit(row.href)}>
                         {row.label}
                         <span className="ml-2 text-muted-foreground">{formatMoney(row.amount)}</span>
-                        {row.order_code ? (
-                            <span className="ml-2 font-mono text-xs text-muted-foreground">{row.order_code}</span>
-                        ) : null}
                     </button>
                 </li>
             ))}
@@ -805,7 +798,6 @@ function EventList({ events }) {
                     <button type="button" className="text-left hover:underline" onClick={() => visit(event.href)}>
                         {event.name}
                         {event.action ? <span className="ml-2 text-muted-foreground">{event.action}</span> : null}
-                        <span className="ml-2 font-mono text-xs text-muted-foreground">{event.code}</span>
                         {event.overdue ? <span className="ml-2 text-destructive">Overdue</span> : null}
                     </button>
                 </li>
@@ -825,7 +817,6 @@ function DealList({ deals }) {
                 <li key={deal.code}>
                     <button type="button" className="text-left hover:underline" onClick={() => visit(deal.href)}>
                         {deal.name}
-                        <span className="ml-2 font-mono text-xs text-muted-foreground">{deal.code}</span>
                         <span className="ml-2 capitalize text-muted-foreground">{deal.status}</span>
                     </button>
                 </li>
@@ -849,7 +840,6 @@ function LeadMatchList({ leads, onPick }) {
                         onClick={() => (onPick ? onPick(lead.name) : visit(lead.href))}
                     >
                         {lead.name}
-                        <span className="ml-2 font-mono text-xs text-muted-foreground">{lead.code}</span>
                     </button>
                 </li>
             ))}

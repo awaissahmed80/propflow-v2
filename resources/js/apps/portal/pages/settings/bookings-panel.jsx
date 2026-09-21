@@ -1,20 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { DndProvider, useDrag, useDrop } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
-import { BlockPicker } from "react-color";
+import { useEffect, useState } from "react";
 import { router } from "@inertiajs/react";
+import { BlockPicker } from "react-color";
 import { toast } from "sonner";
-import {
-    destroy as destroyStage,
-    reorder as reorderStages,
-    store as storeStage,
-    update as updateStage,
-} from "@/actions/App/Http/Controllers/Portal/OrderStageController";
+import { update as updateStage } from "@/actions/App/Http/Controllers/Portal/OrderStageController";
+import { update as updateStatus } from "@/actions/App/Http/Controllers/Portal/OrderStatusController";
 import { Icon } from "@/components/ui/icon";
-import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 function pathFrom(url) {
@@ -34,7 +26,6 @@ function pathFrom(url) {
 }
 
 const DEFAULT_COLOR = "#64B5F6";
-const STAGE_DND_TYPE = "SETTINGS_ORDER_STAGE";
 
 const STAGE_COLORS = [
     "#64B5F6",
@@ -55,18 +46,16 @@ function formatOrderCount(count) {
     return `${n} ${n === 1 ? "booking" : "bookings"}`;
 }
 
-function StageColorSwatch({ value, onChange, disabled = false }) {
+function ColorSwatch({ value, onChange, label = "Change color" }) {
     const [open, setOpen] = useState(false);
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger
-                disabled={disabled}
-                aria-label="Change stage color"
+                aria-label={label}
                 className={cn(
                     "size-3 shrink-0 rounded-full ring-2 ring-background transition-transform hover:scale-110",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    disabled && "pointer-events-none opacity-50",
                 )}
                 style={{ backgroundColor: value || DEFAULT_COLOR }}
             />
@@ -86,485 +75,133 @@ function StageColorSwatch({ value, onChange, disabled = false }) {
     );
 }
 
-function SortableStageCard({
-    stage,
-    index,
-    moveStage,
-    processing,
-    onUpdate,
-    onDuplicate,
-    onRemove,
-    onToggleEnabled,
-    onDragEnd,
-}) {
-    const ref = useRef(null);
-    const [editing, setEditing] = useState(false);
-    const [title, setTitle] = useState(stage.title);
-    const enabled = stage.is_enabled !== false;
+function EditableTitle({ value, onSave }) {
+    const [draft, setDraft] = useState(value || "");
 
     useEffect(() => {
-        if (!editing) {
-            setTitle(stage.title);
-        }
-    }, [stage.title, editing]);
-
-    const [{ isDragging }, drag, preview] = useDrag(
-        () => ({
-            type: STAGE_DND_TYPE,
-            item: () => ({ id: stage.id, index }),
-            canDrag: !editing && !processing,
-            end: () => onDragEnd?.(),
-            collect: (monitor) => ({
-                isDragging: monitor.isDragging(),
-            }),
-        }),
-        [stage.id, index, editing, processing, onDragEnd],
-    );
-
-    const [, drop] = useDrop(
-        () => ({
-            accept: STAGE_DND_TYPE,
-            hover(item, monitor) {
-                if (!ref.current) {
-                    return;
-                }
-
-                const dragIndex = item.index;
-                const hoverIndex = index;
-
-                if (dragIndex === hoverIndex) {
-                    return;
-                }
-
-                const hoverBoundingRect = ref.current.getBoundingClientRect();
-                const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
-                const clientOffset = monitor.getClientOffset();
-
-                if (!clientOffset) {
-                    return;
-                }
-
-                const hoverClientY = clientOffset.y - hoverBoundingRect.top;
-
-                if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
-                    return;
-                }
-
-                if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
-                    return;
-                }
-
-                moveStage(dragIndex, hoverIndex);
-                item.index = hoverIndex;
-            },
-        }),
-        [index, moveStage],
-    );
-
-    preview(drop(ref));
-
-    const commitTitle = () => {
-        const next = title.trim();
-
-        setEditing(false);
-
-        if (!next || next === stage.title) {
-            setTitle(stage.title);
-            return;
-        }
-
-        onUpdate(stage.id, { title: next, color: stage.color });
-    };
+        setDraft(value || "");
+    }, [value]);
 
     return (
-        <div
-            ref={ref}
-            className={cn(
-                "flex items-center gap-3 rounded-xl border border-border/60 bg-background px-3 py-3 shadow-xs transition-shadow",
-                isDragging && "opacity-40 shadow-none",
-                !isDragging && "hover:border-border hover:shadow-sm",
-                !enabled && "opacity-60",
-            )}
-        >
-            <button
-                ref={drag}
-                type="button"
-                aria-label="Drag to reorder"
-                disabled={editing || processing}
-                className={cn(
-                    "inline-flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing",
-                    (editing || processing) && "pointer-events-none opacity-40",
-                )}
-            >
-                <Icon name="draggable" className="text-base" />
-            </button>
+        <Input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => {
+                const next = draft.trim();
 
-            <StageColorSwatch
-                value={stage.color}
-                disabled={processing}
-                onChange={(color) => onUpdate(stage.id, { title: stage.title, color })}
-            />
+                if (!next || next === (value || "")) {
+                    setDraft(value || "");
 
-            <div className="min-w-0 flex-1">
-                {editing ? (
-                    <Input
-                        value={title}
-                        autoFocus
-                        disabled={processing}
-                        onChange={(event) => setTitle(event.target.value)}
-                        onBlur={commitTitle}
-                        onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                                event.preventDefault();
-                                commitTitle();
-                            }
+                    return;
+                }
 
-                            if (event.key === "Escape") {
-                                setTitle(stage.title);
-                                setEditing(false);
-                            }
-                        }}
-                    />
-                ) : (
-                    <button
-                        type="button"
-                        className="block w-full truncate text-left text-sm font-medium text-foreground"
-                        onClick={() => setEditing(true)}
-                    >
-                        {stage.title}
-                    </button>
-                )}
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {stage.label}
-                    {stage.orders_count != null ? ` · ${formatOrderCount(stage.orders_count)}` : ""}
-                    {stage.is_system ? " · Default" : ""}
-                    {!enabled ? " · Off" : ""}
-                </p>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-                <IconButton
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    icon="file-copy-line"
-                    aria-label="Duplicate stage"
-                    disabled={processing}
-                    onClick={() => onDuplicate(stage)}
-                />
-                {stage.is_system ? (
-                    <Switch
-                        checked={enabled}
-                        disabled={processing}
-                        aria-label={`${enabled ? "Disable" : "Enable"} ${stage.title}`}
-                        onCheckedChange={(next) => onToggleEnabled(stage, Boolean(next))}
-                    />
-                ) : (
-                    <IconButton
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        icon="delete-bin-line"
-                        aria-label="Delete stage"
-                        disabled={processing}
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => onRemove(stage)}
-                    />
-                )}
-            </div>
-        </div>
+                onSave(next);
+            }}
+            onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                    event.currentTarget.blur();
+                }
+            }}
+            className="h-control max-w-xs"
+        />
     );
 }
 
 export default function BookingsPanel({ orderStages = [] }) {
-    const [items, setItems] = useState(orderStages);
-    const itemsRef = useRef(orderStages);
-    const [adding, setAdding] = useState(false);
-    const [newTitle, setNewTitle] = useState("");
-    const [newColor, setNewColor] = useState(DEFAULT_COLOR);
     const [processing, setProcessing] = useState(false);
-    const dragOrderDirty = useRef(false);
-    const addInputRef = useRef(null);
 
-    useEffect(() => {
-        setItems(orderStages);
-        itemsRef.current = orderStages;
-        dragOrderDirty.current = false;
-    }, [orderStages]);
-
-    useEffect(() => {
-        if (adding) {
-            requestAnimationFrame(() => addInputRef.current?.focus());
-        }
-    }, [adding]);
-
-    const persistOrder = useCallback((nextItems) => {
+    const saveStage = (stage, payload) => {
         setProcessing(true);
-        router.put(
-            pathFrom(reorderStages.url()),
-            { order: nextItems.map((stage) => stage.id) },
-            {
-                preserveScroll: true,
-                optimistic: (props) => ({
-                    orderStages: nextItems.map((stage, index) => ({
-                        ...(props.orderStages?.find((item) => item.id === stage.id) ?? stage),
-                        priority: index + 1,
-                    })),
-                }),
-                onSuccess: () => {
-                    dragOrderDirty.current = false;
-                },
-                onError: (errors) => toast.error(errors.order || errors.message || "Unable to reorder"),
-                onFinish: () => setProcessing(false),
-            },
-        );
-    }, []);
-
-    const moveStage = useCallback((fromIndex, toIndex) => {
-        setItems((prev) => {
-            const next = [...prev];
-            const [moved] = next.splice(fromIndex, 1);
-            next.splice(toIndex, 0, moved);
-            itemsRef.current = next;
-            dragOrderDirty.current = true;
-
-            return next;
-        });
-    }, []);
-
-    const handleDragEnd = useCallback(() => {
-        if (!dragOrderDirty.current) {
-            return;
-        }
-
-        persistOrder(itemsRef.current);
-    }, [persistOrder]);
-
-    const updateStageInline = (id, payload) => {
-        if (processing) {
-            return;
-        }
-
-        setProcessing(true);
-        setItems((prev) => prev.map((stage) => (stage.id === id ? { ...stage, ...payload } : stage)));
-
-        const stage = items.find((item) => item.id === id);
-
-        router.put(pathFrom(updateStage.url(stage?.label ?? id)), payload, {
+        router.put(pathFrom(updateStage.url(stage.label)), payload, {
             preserveScroll: true,
-            optimistic: (props) => ({
-                orderStages: (props.orderStages ?? []).map((row) =>
-                    row.id === id ? { ...row, ...payload } : row,
-                ),
-            }),
-            onError: (errors) =>
-                toast.error(errors.title || errors.stage || errors.message || "Unable to update"),
+            onSuccess: () => toast.success("Stage updated"),
+            onError: () => toast.error("Could not update stage"),
             onFinish: () => setProcessing(false),
         });
     };
 
-    const createStage = (title, color = DEFAULT_COLOR) => {
-        const value = title.trim();
-
-        if (!value || processing) {
-            return;
-        }
-
+    const saveStatus = (status, payload) => {
         setProcessing(true);
-        router.post(
-            pathFrom(storeStage.url()),
-            { title: value, color },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setNewTitle("");
-                    setNewColor(DEFAULT_COLOR);
-                    setAdding(false);
-                },
-                onError: (errors) => toast.error(errors.title || errors.message || "Unable to create"),
-                onFinish: () => setProcessing(false),
-            },
-        );
-    };
-
-    const duplicateStage = (stage) => {
-        if (processing) {
-            return;
-        }
-
-        createStage(`${stage.title} copy`, stage.color || DEFAULT_COLOR);
-    };
-
-    const removeStage = async (stage) => {
-        if (processing || stage.is_system) {
-            return;
-        }
-
-        const enabledRemaining = items.filter(
-            (item) => item.id !== stage.id && item.is_enabled !== false,
-        ).length;
-
-        if (enabledRemaining < 1) {
-            await alert("At least one enabled booking stage is required.", "Cannot delete stage");
-            return;
-        }
-
-        const orderCount = Number(stage.orders_count) || 0;
-        const orderNote =
-            orderCount > 0
-                ? ` ${formatOrderCount(orderCount)} on this stage will move to the first default stage.`
-                : "";
-
-        const confirmed = await confirm(`Delete "${stage.title}"?${orderNote}`, "Delete stage");
-
-        if (!confirmed) {
-            return;
-        }
-
-        setProcessing(true);
-        router.delete(pathFrom(destroyStage.url(stage.label)), {
+        router.put(pathFrom(updateStatus.url(status.id)), payload, {
             preserveScroll: true,
-            onSuccess: () =>
-                toast.success(
-                    orderCount > 0 ? "Stage deleted — bookings reassigned" : "Stage deleted",
-                ),
-            onError: (errors) => toast.error(errors.stage || errors.message || "Unable to delete"),
+            onSuccess: () => toast.success("Status updated"),
+            onError: () => toast.error("Could not update status"),
             onFinish: () => setProcessing(false),
-        });
-    };
-
-    const toggleStageEnabled = (stage, nextEnabled) => {
-        if (processing || !stage.is_system) {
-            return;
-        }
-
-        if (!nextEnabled) {
-            const enabledCount = items.filter((item) => item.is_enabled !== false).length;
-
-            if (enabledCount <= 1) {
-                toast.error("At least one enabled booking stage is required.");
-                return;
-            }
-        }
-
-        setItems((prev) =>
-            prev.map((item) => (item.id === stage.id ? { ...item, is_enabled: nextEnabled } : item)),
-        );
-
-        updateStageInline(stage.id, {
-            title: stage.title,
-            color: stage.color,
-            is_enabled: nextEnabled,
         });
     };
 
     return (
-        <div className="space-y-8">
-            <section className="space-y-4">
-                <div>
-                    <h3 className="text-base font-bold tracking-tight text-foreground">
-                        Booking stages
-                    </h3>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                        Order pipeline — drag to reorder. Default stages can be turned off, not deleted.
-                        System stage keys stay fixed for deal flow.
-                    </p>
-                </div>
+        <div className="space-y-6">
+            <div>
+                <h2 className="text-base font-semibold text-foreground">Booking lifecycle</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                    Stages and statuses are fixed. You can rename titles and change colors only.
+                    Optional balloting is configured per project.
+                </p>
+            </div>
 
-                <DndProvider backend={HTML5Backend}>
-                    <div className="space-y-2">
-                        {items.length === 0 && !adding ? (
-                            <div className="rounded-xl border border-dashed border-border/70 bg-muted/15 px-4 py-8 text-center text-sm text-muted-foreground">
-                                No stages yet. Add your first stage below.
+            <div className="space-y-4">
+                {(orderStages || []).map((stage) => (
+                    <div
+                        key={stage.id}
+                        className="rounded-md border border-border bg-card p-4"
+                    >
+                        <div className="flex flex-wrap items-center gap-3">
+                            <ColorSwatch
+                                value={stage.color}
+                                onChange={(color) =>
+                                    !processing && saveStage(stage, { title: stage.title, color })
+                                }
+                            />
+                            <EditableTitle
+                                value={stage.title}
+                                onSave={(title) =>
+                                    !processing && saveStage(stage, { title, color: stage.color })
+                                }
+                            />
+                            <span className="text-xs text-muted-foreground">
+                                {stage.label} · {formatOrderCount(stage.orders_count)}
+                            </span>
+                        </div>
+
+                        <div className="mt-4 space-y-2 border-t border-border pt-3">
+                            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                <Icon name="price-tag-3-line" className="size-3.5" />
+                                Statuses
                             </div>
-                        ) : (
-                            items.map((stage, index) => (
-                                <SortableStageCard
-                                    key={stage.id}
-                                    stage={stage}
-                                    index={index}
-                                    moveStage={moveStage}
-                                    processing={processing}
-                                    onUpdate={updateStageInline}
-                                    onDuplicate={duplicateStage}
-                                    onRemove={removeStage}
-                                    onToggleEnabled={toggleStageEnabled}
-                                    onDragEnd={handleDragEnd}
-                                />
-                            ))
-                        )}
-
-                        {adding ? (
-                            <form
-                                className="flex items-center gap-3 rounded-xl border border-primary/25 bg-primary/5 px-3 py-3"
-                                onSubmit={(event) => {
-                                    event.preventDefault();
-                                    createStage(newTitle, newColor);
-                                }}
-                            >
-                                <span className="inline-flex size-7 shrink-0 items-center justify-center text-muted-foreground">
-                                    <Icon name="add-line" className="text-base" />
-                                </span>
-                                <StageColorSwatch
-                                    value={newColor}
-                                    onChange={setNewColor}
-                                    disabled={processing}
-                                />
-                                <div className="min-w-0 flex-1">
-                                    <Input
-                                        ref={addInputRef}
-                                        value={newTitle}
-                                        onChange={(event) => setNewTitle(event.target.value)}
-                                        placeholder="Stage name"
-                                        disabled={processing}
-                                        onKeyDown={(event) => {
-                                            if (event.key === "Escape") {
-                                                setAdding(false);
-                                                setNewTitle("");
-                                                setNewColor(DEFAULT_COLOR);
-                                            }
-                                        }}
+                            {(stage.statuses || []).map((status) => (
+                                <div
+                                    key={status.id}
+                                    className="flex flex-wrap items-center gap-3 rounded-md bg-muted/40 px-3 py-2"
+                                >
+                                    <ColorSwatch
+                                        value={status.color}
+                                        label="Change status color"
+                                        onChange={(color) =>
+                                            !processing &&
+                                            saveStatus(status, {
+                                                title: status.title,
+                                                color,
+                                            })
+                                        }
                                     />
+                                    <EditableTitle
+                                        value={status.title}
+                                        onSave={(title) =>
+                                            !processing &&
+                                            saveStatus(status, {
+                                                title,
+                                                color: status.color,
+                                            })
+                                        }
+                                    />
+                                    <span className="text-xs text-muted-foreground">{status.label}</span>
                                 </div>
-                                <div className="flex shrink-0 items-center gap-1">
-                                    <IconButton
-                                        type="submit"
-                                        size="sm"
-                                        variant="ghost"
-                                        icon="check-line"
-                                        aria-label="Create stage"
-                                        disabled={processing || !newTitle.trim()}
-                                    />
-                                    <IconButton
-                                        type="button"
-                                        size="sm"
-                                        variant="ghost"
-                                        icon="close-line"
-                                        aria-label="Cancel"
-                                        disabled={processing}
-                                        onClick={() => {
-                                            setAdding(false);
-                                            setNewTitle("");
-                                            setNewColor(DEFAULT_COLOR);
-                                        }}
-                                    />
-                                </div>
-                            </form>
-                        ) : (
-                            <button
-                                type="button"
-                                className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border/80 px-3 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 hover:text-foreground"
-                                onClick={() => setAdding(true)}
-                            >
-                                <span className="inline-flex size-7 shrink-0 items-center justify-center">
-                                    <Icon name="add-line" className="text-base" />
-                                </span>
-                                Add stage
-                            </button>
-                        )}
+                            ))}
+                        </div>
                     </div>
-                </DndProvider>
-            </section>
+                ))}
+            </div>
         </div>
     );
 }

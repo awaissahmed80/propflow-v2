@@ -133,7 +133,7 @@ function StatCard({ label, value, hint, icon, href, tone = "default" }) {
 }
 
 function LeadMiniRow({ lead }) {
-    const name = lead.contact?.display_name || lead.code || "Lead";
+    const name = lead.contact?.display_name || "Lead";
     const overdue = isOverdue(lead.due_date);
 
     return (
@@ -565,7 +565,6 @@ function Dashboard({
                                                             {project.title}
                                                         </p>
                                                         <p className="text-xs text-muted-foreground">
-                                                            {project.code} ·{" "}
                                                             {formatCount(project.units_count)} units
                                                         </p>
                                                     </div>

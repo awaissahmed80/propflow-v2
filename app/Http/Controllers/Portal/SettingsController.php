@@ -14,6 +14,7 @@ use App\Models\LeadStage;
 use App\Models\MetaData;
 use App\Models\Order;
 use App\Models\OrderStage;
+use App\Models\OrderStatus;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\Tenant;
@@ -130,6 +131,7 @@ class SettingsController extends Controller
 
         $data = [
             'business_name' => $validated['business_name'],
+            'legal_name' => $validated['legal_name'] ?? null,
             'tagline' => $validated['tagline'] ?? null,
             'phone' => $validated['phone'] ?? null,
             'whatsapp' => $validated['whatsapp'] ?? null,
@@ -139,6 +141,12 @@ class SettingsController extends Controller
             'city' => $validated['city'] ?? null,
             'state' => $validated['state'] ?? null,
             'tax_id' => $validated['tax_id'] ?? null,
+            'bank_name' => $validated['bank_name'] ?? null,
+            'account_title' => $validated['account_title'] ?? null,
+            'account_number' => $validated['account_number'] ?? null,
+            'iban' => $validated['iban'] ?? null,
+            'swift' => $validated['swift'] ?? null,
+            'branch' => $validated['branch'] ?? null,
             'logo_path' => $current['logo_path'] ?? null,
         ];
 
@@ -232,6 +240,7 @@ class SettingsController extends Controller
     {
         $data = Setting::group(Setting::GROUP_GENERAL, [
             'business_name' => Tenant::current()?->name,
+            'legal_name' => null,
             'tagline' => null,
             'phone' => null,
             'whatsapp' => null,
@@ -241,6 +250,12 @@ class SettingsController extends Controller
             'city' => null,
             'state' => null,
             'tax_id' => null,
+            'bank_name' => null,
+            'account_title' => null,
+            'account_number' => null,
+            'iban' => null,
+            'swift' => null,
+            'branch' => null,
             'logo_path' => null,
         ]);
 
@@ -267,17 +282,22 @@ class SettingsController extends Controller
     }
 
     /**
-     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool, orders_count: int}>
+     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool, orders_count: int, statuses: list<array{id: int, stage_label: string, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool}>}>
      */
     protected function orderStagesPayload(): array
     {
         OrderStage::ensureDefaults();
+        OrderStatus::ensureDefaults();
+        MetaData::ensurePaymentMethods();
 
         $counts = Order::query()
             ->selectRaw('stage, count(*) as aggregate')
             ->where('status', '!=', Order::STATUS_CANCELLED)
             ->groupBy('stage')
             ->pluck('aggregate', 'stage');
+
+        $statuses = collect(OrderStatus::catalog(enabledOnly: false))
+            ->groupBy('stage_label');
 
         return OrderStage::query()
             ->orderBy('priority')
@@ -291,6 +311,7 @@ class SettingsController extends Controller
                 'is_system' => (bool) $stage->is_system,
                 'is_enabled' => (bool) $stage->is_enabled,
                 'orders_count' => (int) ($counts->get($stage->label) ?? 0),
+                'statuses' => ($statuses->get($stage->label) ?? collect())->values()->all(),
             ])
             ->values()
             ->all();

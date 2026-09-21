@@ -18,7 +18,10 @@ import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { Icon } from "@/components/ui/icon";
+import { NumberInput } from "@/components/ui/number-input";
 import { SelectBox } from "@/components/ui/select";
+import { ComboBox } from "@/components/ui/combo-box";
 import { formatMoney } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 
@@ -36,22 +39,29 @@ function pathFrom(url) {
     return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
+const FALLBACK_PAYMENT_METHODS = ["Cash", "Pay order", "Cheque", "Bank transfer"];
+
 const steps = [
-    { id: "booking", label: "Booking & KYC" },
-    { id: "plan", label: "Payment plan" },
-    { id: "tracking", label: "Installments" },
-    { id: "transfer", label: "Balloting" },
-    { id: "handover", label: "Handover" },
+    { id: "token", label: "Token" },
+    { id: "booking_kyc", label: "Booking & KYC" },
+    { id: "active", label: "Active" },
+    { id: "closed", label: "Closed" },
 ];
 
 function stepIndex(stage) {
-    if (stage === "delivered") {
+    if (stage === "closed" || stage === "completed" || stage === "cancelled") {
         return steps.length - 1;
     }
 
     const index = steps.findIndex((step) => step.id === stage);
 
     return index === -1 ? 0 : index;
+}
+
+function paymentMethodOptions(deal) {
+    const fromDeal = Array.isArray(deal?.payment_methods) ? deal.payment_methods : [];
+
+    return Array.from(new Set([...fromDeal, ...FALLBACK_PAYMENT_METHODS].filter(Boolean)));
 }
 
 function post(url, data, success) {
@@ -74,22 +84,24 @@ export default function OrderShow({ order, deal }) {
 
     const current = steps[step];
     const cancelled = order.status === "cancelled";
-    const delivered = order.status === "delivered" || deal?.stage === "delivered";
+    const closed = order.status === "completed" || deal?.stage === "closed" || order.status === "cancelled";
+
+    const title = order.contact?.display_name || "Booking";
 
     return (
         <Layout>
             <Layout.Header
-                metaTitle={order?.code ? `${order.code} · Deal` : "Deal"}
-                breadcrumbs={[{ label: "Bookings", href: "/bookings" }, { label: order?.code || "Deal" }]}
+                metaTitle={`${title} · Booking`}
+                breadcrumbs={[{ label: "Bookings", href: "/bookings" }, { label: title }]}
             />
             <Layout.Content className="min-h-0 flex-1 overflow-auto">
                 <div className="mx-auto w-full max-w-4xl space-y-6 py-2">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <h1 className="text-2xl font-bold tracking-tight text-foreground">{order.code}</h1>
+                            <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                {order.contact?.display_name || "Buyer"}
-                                {order.unit?.code ? ` · ${order.unit.code}` : ""}
+                                {[order.project?.title, order.unit?.name].filter(Boolean).join(" · ") ||
+                                    "No unit linked"}
                                 {deal?.ledger?.is_late ? " · Default / late" : ""}
                             </p>
                         </div>
@@ -101,7 +113,7 @@ export default function OrderShow({ order, deal }) {
                             >
                                 Booking form
                             </Button>
-                            {!cancelled && !delivered ? (
+                            {!cancelled && !closed ? (
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -117,7 +129,7 @@ export default function OrderShow({ order, deal }) {
                         </div>
                     </div>
 
-                    <ol className="grid gap-2 sm:grid-cols-5">
+                    <ol className="grid gap-2 sm:grid-cols-4">
                         {steps.map((item, index) => (
                             <li key={item.id}>
                                 <button
@@ -130,18 +142,31 @@ export default function OrderShow({ order, deal }) {
                                             : "border-border text-muted-foreground",
                                     )}
                                 >
-                                    <span className="block text-[10px] uppercase tracking-wide">Step {index + 1}</span>
+                                    <span className="block text-[10px] uppercase tracking-wide">
+                                        Stage {index + 1}
+                                    </span>
                                     {item.label}
                                 </button>
                             </li>
                         ))}
                     </ol>
 
-                    {current.id === "booking" ? <BookingStep order={order} deal={deal} errors={errors} /> : null}
-                    {current.id === "plan" ? <PlanStep order={order} deal={deal} errors={errors} /> : null}
-                    {current.id === "tracking" ? <LedgerStep order={order} deal={deal} errors={errors} /> : null}
-                    {current.id === "transfer" ? <TransferStep order={order} deal={deal} errors={errors} /> : null}
-                    {current.id === "handover" ? <HandoverStep order={order} deal={deal} errors={errors} delivered={delivered} /> : null}
+                    {current.id === "token" ? <BookingStep order={order} deal={deal} errors={errors} /> : null}
+                    {current.id === "booking_kyc" ? <PlanStep order={order} deal={deal} errors={errors} /> : null}
+                    {current.id === "active" ? (
+                        <>
+                            <LedgerStep order={order} deal={deal} errors={errors} />
+                            <TransferStep order={order} deal={deal} errors={errors} />
+                        </>
+                    ) : null}
+                    {current.id === "closed" ? (
+                        <HandoverStep
+                            order={order}
+                            deal={deal}
+                            errors={errors}
+                            delivered={order.status === "completed"}
+                        />
+                    ) : null}
                 </div>
             </Layout.Content>
         </Layout>
@@ -281,7 +306,9 @@ function PlanStep({ order, deal, errors }) {
                         { value: "monthly", label: "Monthly" },
                         { value: "daily", label: "Daily" },
                     ]}
-                    onValueChange={(value) => setForm((current) => ({ ...current, late_fee_basis: value || "monthly" }))}
+                    placeholder="None"
+                    clearable
+                    onValueChange={(value) => setForm((current) => ({ ...current, late_fee_basis: value || "" }))}
                 />
                 <Input label="Late fee rate %" type="number" min="0" step="0.01" value={form.late_fee_rate} onChange={(event) => setForm((current) => ({ ...current, late_fee_rate: event.target.value }))} />
             </div>
@@ -292,9 +319,10 @@ function PlanStep({ order, deal, errors }) {
 
 function LedgerStep({ order, deal, errors }) {
     const ledger = deal?.ledger || {};
+    const methods = paymentMethodOptions(deal);
     const [form, setForm] = useState({
-        amount: "",
-        method: "pay_order",
+        amount: null,
+        method: methods[0] || "Cash",
         reference: "",
         paid_on: new Date().toISOString().slice(0, 10),
         notes: "",
@@ -319,25 +347,36 @@ function LedgerStep({ order, deal, errors }) {
                     post(payment.url(order.code), form, "Payment recorded");
                 }}
             >
-                <Input label="Amount" required type="number" min="0" step="0.01" value={form.amount} error={errors.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} />
-                <SelectBox
+                <NumberInput
+                    label="Amount"
+                    required
+                    min={0.01}
+                    step={0.01}
+                    allowDecimal
+                    value={form.amount}
+                    error={errors.amount}
+                    onChange={(value) => setForm((current) => ({ ...current, amount: value }))}
+                />
+                <ComboBox
                     label="Method"
                     value={form.method}
-                    options={[
-                        { value: "pay_order", label: "Pay order" },
-                        { value: "cheque", label: "Cheque" },
-                        { value: "bank_transfer", label: "Bank transfer" },
-                    ]}
-                    onValueChange={(value) => setForm((current) => ({ ...current, method: value || "pay_order" }))}
+                    options={methods}
+                    placeholder="Cash, Pay order..."
+                    onValueChange={(value) =>
+                        setForm((current) => ({ ...current, method: value || methods[0] || "Cash" }))
+                    }
                 />
                 <Input label="Reference" value={form.reference} onChange={(event) => setForm((current) => ({ ...current, reference: event.target.value }))} />
                 <DatePicker label="Paid on" required value={form.paid_on} onChange={(value) => setForm((current) => ({ ...current, paid_on: value }))} />
-                <label className="text-sm text-muted-foreground sm:col-span-2">
-                    Receipt
+                <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm sm:col-span-2">
+                    <Icon name="upload-2-line" className="shrink-0 text-base text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">
+                        {form.receipt?.name || "Proof of payment (image or PDF)"}
+                    </span>
                     <input
                         type="file"
-                        accept="image/*,.pdf"
-                        className="mt-1 block w-full text-sm"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        className="sr-only"
                         onChange={(event) => setForm((current) => ({ ...current, receipt: event.target.files?.[0] || null }))}
                     />
                 </label>
@@ -368,21 +407,25 @@ function TransferStep({ order, deal, errors }) {
 
     return (
         <div className="space-y-4">
-            <form
-                className="space-y-3 rounded-xl border border-border/80 bg-background p-5"
-                onSubmit={(event) => {
-                    event.preventDefault();
-                    post(ballot.url(order.code), ballotForm, "Plot recorded");
-                }}
-            >
-                <h2 className="text-base font-bold tracking-tight">Balloting</h2>
-                <p className="text-sm text-muted-foreground">Turn the file into a physical plot once the society ballots it.</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                    <Input label="Plot number" required value={ballotForm.plot_number} error={errors.plot_number} onChange={(event) => setBallotForm((current) => ({ ...current, plot_number: event.target.value }))} />
-                    <Input label="Dimensions" required value={ballotForm.dimensions} error={errors.dimensions} onChange={(event) => setBallotForm((current) => ({ ...current, dimensions: event.target.value }))} />
-                </div>
-                <Button type="submit">Save plot</Button>
-            </form>
+            {deal?.balloting_enabled ? (
+                <form
+                    className="space-y-3 rounded-xl border border-border/80 bg-background p-5"
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        post(ballot.url(order.code), ballotForm, "Plot recorded");
+                    }}
+                >
+                    <h2 className="text-base font-bold tracking-tight">Balloting</h2>
+                    <p className="text-sm text-muted-foreground">
+                        Optional for this project. Record the physical plot once allotted.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <Input label="Plot number" required value={ballotForm.plot_number} error={errors.plot_number} onChange={(event) => setBallotForm((current) => ({ ...current, plot_number: event.target.value }))} />
+                        <Input label="Dimensions" required value={ballotForm.dimensions} error={errors.dimensions} onChange={(event) => setBallotForm((current) => ({ ...current, dimensions: event.target.value }))} />
+                    </div>
+                    <Button type="submit">Save plot</Button>
+                </form>
+            ) : null}
             <form
                 className="space-y-3 rounded-xl border border-border/80 bg-background p-5"
                 onSubmit={(event) => {

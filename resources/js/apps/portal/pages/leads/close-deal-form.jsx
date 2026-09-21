@@ -35,7 +35,7 @@ function monthFromNow() {
 }
 
 function unitLabel(unit) {
-    return unit.code || unit.name || `Unit #${unit.id}`;
+    return unit.name || "Unit";
 }
 
 export default function CloseDealForm({ lead, projects = [], units = [], onLost }) {
@@ -97,14 +97,16 @@ export default function CloseDealForm({ lead, projects = [], units = [], onLost 
                 <div>
                     <p className="text-sm font-medium text-foreground">Deal closed — booking in progress</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                        Sales fields are read-only while booking {order?.code || "is active"}. Cancel the
+                        Sales fields are read-only while this booking is active. Cancel the
                         booking to unlock this lead.
                     </p>
                 </div>
                 <dl className="grid gap-3 sm:grid-cols-2">
                     <div>
-                        <dt className="text-xs text-muted-foreground">Booking</dt>
-                        <dd className="text-sm font-medium">{order?.code || "—"}</dd>
+                        <dt className="text-xs text-muted-foreground">Buyer</dt>
+                        <dd className="text-sm font-medium">
+                            {lead?.contact?.display_name || "—"}
+                        </dd>
                     </div>
                     <div>
                         <dt className="text-xs text-muted-foreground">Booking kind</dt>

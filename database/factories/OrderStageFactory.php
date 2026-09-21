@@ -33,13 +33,18 @@ class OrderStageFactory extends Factory
     public function booking(): static
     {
         return $this->state(fn (): array => [
-            'label' => Order::STAGE_BOOKING,
-            'title' => 'Booking & KYC',
+            'label' => Order::STAGE_TOKEN,
+            'title' => 'Token',
             'priority' => 1,
             'color' => '#3B82F6',
             'is_system' => true,
             'is_enabled' => true,
         ]);
+    }
+
+    public function token(): static
+    {
+        return $this->booking();
     }
 
     public function system(): static

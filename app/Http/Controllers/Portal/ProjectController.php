@@ -183,6 +183,7 @@ class ProjectController extends Controller
             'end_date',
             'progress',
             'pin_location',
+            'balloting_enabled',
         ] as $field) {
             if (array_key_exists($field, $validated)) {
                 $attributes[$field] = $validated[$field];

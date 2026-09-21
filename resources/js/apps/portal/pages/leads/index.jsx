@@ -214,11 +214,6 @@ function LeadRow({
                                 <div className="truncate text-sm text-foreground">
                                     {lead.project.title}
                                 </div>
-                                {lead.project.code ? (
-                                    <div className="truncate text-xs text-muted-foreground">
-                                        {lead.project.code}
-                                    </div>
-                                ) : null}
                             </div>
                         </div>
                     ) : (

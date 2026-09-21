@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['user_id', 'lead_id', 'action', 'comments', 'status', 'type'])]
+#[Fillable(['user_id', 'lead_id', 'order_id', 'stage', 'stage_label', 'action', 'comments', 'status', 'type'])]
 #[Connection('tenant')]
 class Task extends Model
 {
@@ -56,6 +56,14 @@ class Task extends Model
     public function lead(): BelongsTo
     {
         return $this->belongsTo(Lead::class);
+    }
+
+    /**
+     * @return BelongsTo<Order, $this>
+     */
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
     }
 
     /**

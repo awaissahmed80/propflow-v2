@@ -29,20 +29,32 @@ class OrderPayment extends Model
 
     public const METHOD_PAY_ORDER = 'pay_order';
 
+    public const METHOD_CASH = 'cash';
+
     public const METHOD_CHEQUE = 'cheque';
 
     public const METHOD_TRANSFER = 'bank_transfer';
 
     /**
+     * Default method labels (also seeded into MetaData).
+     *
      * @return list<string>
      */
     public static function methods(): array
     {
-        return [
-            self::METHOD_PAY_ORDER,
-            self::METHOD_CHEQUE,
-            self::METHOD_TRANSFER,
-        ];
+        return MetaData::defaultPaymentMethods();
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function methodOptions(): array
+    {
+        MetaData::ensurePaymentMethods();
+
+        $values = MetaData::valuesFor(MetaData::TYPE_PAYMENT_METHOD)->all();
+
+        return $values !== [] ? $values : self::methods();
     }
 
     /**

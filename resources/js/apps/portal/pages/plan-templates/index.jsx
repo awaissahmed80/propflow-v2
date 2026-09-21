@@ -24,6 +24,7 @@ import { FilterInput } from "@/components/ui/filter-input";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
 import { SelectBox } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -33,14 +34,22 @@ function emptyForm() {
         title: "",
         project_id: "",
         frequency: "monthly",
-        installment_count: "12",
-        balloon_every: "",
-        down_payment_percent: "10",
-        handover_percent: "10",
+        installment_count: 12,
+        balloon_every: null,
+        down_payment_percent: 10,
+        handover_percent: 10,
         late_fee_basis: "monthly",
-        late_fee_rate: "1",
+        late_fee_rate: 1,
         is_enabled: true,
     };
+}
+
+function optionalNumber(value) {
+    if (value === "" || value == null) {
+        return null;
+    }
+
+    return value;
 }
 
 function TemplateFormDialog({ open, template, formOptions, onOpenChange }) {
@@ -52,27 +61,23 @@ function TemplateFormDialog({ open, template, formOptions, onOpenChange }) {
                   title: template.title || "",
                   project_id: template.project_id ? String(template.project_id) : "",
                   frequency: template.frequency || "monthly",
-                  installment_count: String(template.installment_count ?? 12),
-                  balloon_every:
-                      template.balloon_every != null ? String(template.balloon_every) : "",
-                  down_payment_percent: String(template.down_payment_percent ?? 10),
-                  handover_percent: String(template.handover_percent ?? 10),
+                  installment_count: template.installment_count ?? 12,
+                  balloon_every: template.balloon_every ?? null,
+                  down_payment_percent: template.down_payment_percent ?? 10,
+                  handover_percent: template.handover_percent ?? 10,
                   late_fee_basis: template.late_fee_basis || "",
-                  late_fee_rate:
-                      template.late_fee_rate != null ? String(template.late_fee_rate) : "",
+                  late_fee_rate: template.late_fee_rate ?? null,
                   is_enabled: template.is_enabled !== false,
               }
             : {}),
     });
 
     const projectOptions = useMemo(
-        () => [
-            { value: "", label: "All projects" },
-            ...(formOptions.projects || []).map((project) => ({
+        () =>
+            (formOptions.projects || []).map((project) => ({
                 value: String(project.id),
                 label: project.title,
             })),
-        ],
         [formOptions.projects],
     );
 
@@ -86,9 +91,9 @@ function TemplateFormDialog({ open, template, formOptions, onOpenChange }) {
         const payload = {
             ...form.data,
             project_id: form.data.project_id || null,
-            balloon_every: form.data.balloon_every || null,
+            balloon_every: optionalNumber(form.data.balloon_every),
             late_fee_basis: form.data.late_fee_basis || null,
-            late_fee_rate: form.data.late_fee_rate || null,
+            late_fee_rate: optionalNumber(form.data.late_fee_rate),
         };
 
         const options = {
@@ -142,14 +147,6 @@ function TemplateFormDialog({ open, template, formOptions, onOpenChange }) {
                             error={form.errors.title}
                         />
                     </div>
-                    <div className="space-y-1.5">
-                        <Label>Project (optional)</Label>
-                        <SelectBox
-                            value={form.data.project_id}
-                            onValueChange={(value) => form.setData("project_id", value)}
-                            options={projectOptions}
-                        />
-                    </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                             <Label>Frequency</Label>
@@ -159,88 +156,78 @@ function TemplateFormDialog({ open, template, formOptions, onOpenChange }) {
                                 options={formOptions.frequencies || []}
                             />
                         </div>
-                        <div className="space-y-1.5">
-                            <Label htmlFor="installment_count">Installments</Label>
-                            <Input
-                                id="installment_count"
-                                type="number"
-                                min="1"
-                                value={form.data.installment_count}
-                                onChange={(event) =>
-                                    form.setData("installment_count", event.target.value)
-                                }
-                                error={form.errors.installment_count}
-                            />
-                        </div>
+                        <NumberInput
+                            id="installment_count"
+                            label="Installments"
+                            min={1}
+                            max={120}
+                            value={form.data.installment_count}
+                            onChange={(value) => form.setData("installment_count", value)}
+                            error={form.errors.installment_count}
+                        />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                            <Label htmlFor="down_payment_percent">Down payment %</Label>
-                            <Input
-                                id="down_payment_percent"
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                value={form.data.down_payment_percent}
-                                onChange={(event) =>
-                                    form.setData("down_payment_percent", event.target.value)
-                                }
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label htmlFor="handover_percent">Handover %</Label>
-                            <Input
-                                id="handover_percent"
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                value={form.data.handover_percent}
-                                onChange={(event) =>
-                                    form.setData("handover_percent", event.target.value)
-                                }
-                            />
-                        </div>
+                        <NumberInput
+                            id="down_payment_percent"
+                            label="Down payment %"
+                            min={0}
+                            max={100}
+                            step={0.01}
+                            allowDecimal
+                            value={form.data.down_payment_percent}
+                            onChange={(value) => form.setData("down_payment_percent", value)}
+                            error={form.errors.down_payment_percent}
+                        />
+                        <NumberInput
+                            id="handover_percent"
+                            label="Handover %"
+                            min={0}
+                            max={100}
+                            step={0.01}
+                            allowDecimal
+                            value={form.data.handover_percent}
+                            onChange={(value) => form.setData("handover_percent", value)}
+                            error={form.errors.handover_percent}
+                        />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                            <Label htmlFor="balloon_every">Balloon every (optional)</Label>
-                            <Input
-                                id="balloon_every"
-                                type="number"
-                                min="2"
-                                value={form.data.balloon_every}
-                                onChange={(event) =>
-                                    form.setData("balloon_every", event.target.value)
-                                }
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>Late fee basis</Label>
-                            <SelectBox
-                                value={form.data.late_fee_basis}
-                                onValueChange={(value) =>
-                                    form.setData("late_fee_basis", value)
-                                }
-                                options={[
-                                    { value: "", label: "None" },
-                                    ...(formOptions.late_fee_bases || []),
-                                ]}
-                            />
-                        </div>
+                        <NumberInput
+                            id="balloon_every"
+                            label="Balloon every (optional)"
+                            min={2}
+                            max={24}
+                            value={form.data.balloon_every}
+                            onChange={(value) => form.setData("balloon_every", value)}
+                            error={form.errors.balloon_every}
+                        />
+                        <SelectBox
+                            label="Late fee basis"
+                            value={form.data.late_fee_basis}
+                            onValueChange={(value) => form.setData("late_fee_basis", value)}
+                            options={formOptions.late_fee_bases || []}
+                            placeholder="None"
+                            clearable
+                        />
                     </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="late_fee_rate">Late fee rate %</Label>
-                        <Input
+                    <div className="grid grid-cols-2 gap-3">
+                        <NumberInput
                             id="late_fee_rate"
-                            type="number"
-                            min="0"
-                            step="0.0001"
+                            label="Late fee rate %"
+                            min={0}
+                            max={100}
+                            step={0.0001}
+                            allowDecimal
                             value={form.data.late_fee_rate}
-                            onChange={(event) =>
-                                form.setData("late_fee_rate", event.target.value)
-                            }
+                            onChange={(value) => form.setData("late_fee_rate", value)}
+                            error={form.errors.late_fee_rate}
+                        />
+                        <SelectBox
+                            label="Project (optional)"
+                            value={form.data.project_id}
+                            onValueChange={(value) => form.setData("project_id", value)}
+                            options={projectOptions}
+                            placeholder="All projects"
+                            clearable
                         />
                     </div>
                     <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">

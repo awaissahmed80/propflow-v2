@@ -5,12 +5,14 @@ namespace App\Services;
 use App\Models\Asset;
 use App\Models\Contact;
 use App\Models\Integration;
+use App\Models\MetaData;
 use App\Models\Order;
 use App\Models\OrderPayment;
 use App\Models\OrderTransfer;
 use App\Models\PaymentInstallment;
 use App\Models\PaymentPlan;
 use App\Models\PaymentPlanTemplate;
+use App\Models\Project;
 use App\Models\Unit;
 use App\Support\AssetManager;
 use App\Support\Deals\PaymentSchedule;
@@ -26,6 +28,7 @@ class DealPipeline
 {
     public function __construct(
         protected LeadActivity $activity,
+        protected OrderActivity $orderActivity,
         protected AssetManager $assets,
         protected WhatsAppGraphClient $whatsapp,
     ) {}
@@ -54,7 +57,8 @@ class DealPipeline
                 'premium' => $this->money($this->cents($data['premium'] ?? 0)),
                 'discount' => $this->money($this->cents($data['discount'] ?? 0)),
                 'booking_verified_at' => $order->booking_verified_at ?? now(),
-                'stage' => $order->stage === Order::STAGE_BOOKING ? Order::STAGE_PLAN : $order->stage,
+                'stage' => Order::STAGE_TOKEN,
+                'status' => Order::STATUS_VERIFIED,
             ])->save();
 
             $contact = $order->contact;
@@ -67,9 +71,33 @@ class DealPipeline
                 ])->save();
             }
 
+            $this->orderActivity->log($order, 'Booking verified', $order->contact?->display_name ?: 'Booking', $actorId);
+
             if ($order->lead) {
-                $this->activity->log($order->lead, 'Booking verified', $order->code, $actorId);
+                $this->activity->log($order->lead, 'Booking verified', $order->contact?->display_name ?: 'Booking', $actorId);
             }
+
+            return $order;
+        });
+    }
+
+    public function enterBookingKyc(Order $order, ?int $actorId): Order
+    {
+        return DB::connection('tenant')->transaction(function () use ($order, $actorId): Order {
+            $order = $this->lockOpen($order);
+
+            if ($order->status !== Order::STATUS_VERIFIED && $order->booking_verified_at === null) {
+                throw ValidationException::withMessages([
+                    'order' => 'Verify the token before entering Booking & KYC.',
+                ]);
+            }
+
+            $order->forceFill([
+                'stage' => Order::STAGE_BOOKING_KYC,
+                'status' => Order::STATUS_IN_PROGRESS,
+            ])->save();
+
+            $this->orderActivity->log($order, 'Entered Booking & KYC', null, $actorId);
 
             return $order;
         });
@@ -158,11 +186,21 @@ class DealPipeline
 
             $this->syncBookingPayment($order, $down);
 
-            if (in_array($order->stage, [Order::STAGE_BOOKING, Order::STAGE_PLAN], true)) {
-                $order->forceFill(['stage' => Order::STAGE_TRACKING])->save();
-            }
+            $order->forceFill([
+                'stage' => Order::STAGE_ACTIVE,
+                'status' => Order::STATUS_CURRENT,
+            ])->save();
 
-            return $order;
+            $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']));
+
+            $this->orderActivity->log(
+                $order->fresh(),
+                'Payment plan set',
+                $this->planTitle($templateKey),
+                null,
+            );
+
+            return $order->fresh(['paymentPlan.installments', 'payments']) ?? $order;
         });
     }
 
@@ -243,6 +281,18 @@ class DealPipeline
                 $payment->forceFill(['receipt_asset_id' => $asset->asset_id])->save();
             }
 
+            if (filled($data['method'] ?? null) && ($data['method'] ?? '') !== OrderPayment::METHOD_BOOKING) {
+                MetaData::remember(MetaData::TYPE_PAYMENT_METHOD, (string) $data['method']);
+            }
+
+            $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
+            $this->orderActivity->log(
+                $order->fresh() ?? $order,
+                'Payment recorded',
+                $this->money($this->cents($data['amount'])).' via '.$data['method'],
+                null,
+            );
+
             return $payment;
         });
     }
@@ -256,6 +306,16 @@ class DealPipeline
             $order = $this->lockOpen($order);
             $this->requirePlan($order);
 
+            $project = $order->project_id
+                ? Project::query()->find($order->project_id)
+                : null;
+
+            if ($project !== null && ! $project->balloting_enabled) {
+                throw ValidationException::withMessages([
+                    'order' => 'Balloting is not enabled for this project.',
+                ]);
+            }
+
             $order->forceFill([
                 'inventory_kind' => Order::INVENTORY_PLOT,
                 'plot_or_file' => $data['plot_number'],
@@ -263,10 +323,9 @@ class DealPipeline
                 'phase' => $data['phase'] ?? $order->phase,
                 'sector' => $data['sector'] ?? $order->sector,
                 'balloted_at' => now(),
-                'stage' => in_array($order->stage, [Order::STAGE_TRACKING, Order::STAGE_PLAN], true)
-                    ? Order::STAGE_TRANSFER
-                    : $order->stage,
             ])->save();
+
+            $this->orderActivity->log($order, 'Ballot confirmed', (string) $order->plot_or_file, $actorId);
 
             if ($order->lead) {
                 $this->activity->log($order->lead, 'Plot balloted', (string) $order->plot_or_file, $actorId);
@@ -285,6 +344,13 @@ class DealPipeline
             $order = $this->lockOpen($order);
             $this->requirePlan($order);
 
+            if ($order->stage !== Order::STAGE_ACTIVE) {
+                throw ValidationException::withMessages([
+                    'order' => 'Transfers are only allowed while the booking is Active.',
+                ]);
+            }
+
+            $fromName = $order->contact?->display_name ?: 'Previous buyer';
             $buyer = $this->resolveBuyer($data);
             $outstanding = $this->outstandingCents($order->fresh(['paymentPlan.installments', 'payments']));
 
@@ -300,20 +366,44 @@ class DealPipeline
 
             $order->forceFill([
                 'contact_id' => $buyer->id,
-                'stage' => $order->stage === Order::STAGE_TRACKING ? Order::STAGE_TRANSFER : $order->stage,
+                'stage' => Order::STAGE_ACTIVE,
             ])->save();
+
+            $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
+
+            $note = $fromName.' → '.$buyer->display_name.($transfer->ndc_cleared ? ' · NDC cleared' : ' · NDC outstanding');
+            $this->orderActivity->log($order->fresh() ?? $order, 'Buyer transferred', $note, $actorId);
 
             if ($order->lead) {
                 $order->lead->forceFill(['contact_id' => $buyer->id])->save();
-                $this->activity->log(
-                    $order->lead,
-                    'File transferred',
-                    $buyer->display_name.($transfer->ndc_cleared ? ' · NDC cleared' : ' · NDC outstanding'),
-                    $actorId,
-                );
+                $this->activity->log($order->lead, 'File transferred', $note, $actorId);
             }
 
             return $transfer;
+        });
+    }
+
+    public function setLitigation(Order $order, bool $litigation, ?int $actorId): Order
+    {
+        return DB::connection('tenant')->transaction(function () use ($order, $litigation, $actorId): Order {
+            $order = $this->lockOpen($order);
+
+            if ($order->stage !== Order::STAGE_ACTIVE) {
+                throw ValidationException::withMessages([
+                    'order' => 'Litigation can only be set on Active bookings.',
+                ]);
+            }
+
+            if ($litigation) {
+                $order->forceFill(['status' => Order::STATUS_LITIGATION])->save();
+                $this->orderActivity->log($order, 'Litigation set', null, $actorId);
+            } else {
+                $order->forceFill(['status' => Order::STATUS_CURRENT])->save();
+                $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
+                $this->orderActivity->log($order->fresh() ?? $order, 'Litigation cleared', null, $actorId);
+            }
+
+            return $order->fresh() ?? $order;
         });
     }
 
@@ -324,11 +414,17 @@ class DealPipeline
     {
         return DB::connection('tenant')->transaction(function () use ($order, $checklist, $actorId): Order {
             $order = $this->lockOpen($order);
-            $order->load(['paymentPlan.installments', 'payments', 'contact', 'unit']);
+            $order->load(['paymentPlan.installments', 'payments', 'contact', 'unit', 'project']);
 
             if ($this->outstandingCents($order) > 0) {
                 throw ValidationException::withMessages([
                     'order' => 'The statement of account still has a balance. Clear every installment and late fee first.',
+                ]);
+            }
+
+            if ($order->project?->balloting_enabled && $order->balloted_at === null) {
+                throw ValidationException::withMessages([
+                    'order' => 'Confirm balloting before marking this file ready for handover.',
                 ]);
             }
 
@@ -339,11 +435,11 @@ class DealPipeline
                     'registry_docs' => (bool) ($checklist['registry_docs'] ?? false),
                 ],
                 'handover_ready_at' => now(),
-                'stage' => Order::STAGE_HANDOVER,
+                'stage' => Order::STAGE_ACTIVE,
             ])->save();
 
             $name = $order->contact?->display_name ?: 'The buyer';
-            $plot = $order->plot_or_file ?: ($order->unit?->code ?: 'the file');
+            $plot = $order->plot_or_file ?: ($order->unit?->name ?: 'the file');
             $body = $name.', plot '.$plot.' is ready for handover. Please schedule possession.';
 
             WorkspaceNotifier::send(
@@ -355,8 +451,10 @@ class DealPipeline
             );
             $this->sendWhatsApp($order->contact?->phone_number, $body);
 
+            $this->orderActivity->log($order, 'Ready for handover', $order->contact?->display_name ?: 'Booking', $actorId);
+
             if ($order->lead) {
-                $this->activity->log($order->lead, 'Ready for handover', $order->code, $actorId);
+                $this->activity->log($order->lead, 'Ready for handover', $order->contact?->display_name ?: 'Booking', $actorId);
             }
 
             return $order;
@@ -368,15 +466,23 @@ class DealPipeline
         return DB::connection('tenant')->transaction(function () use ($order, $actorId): Order {
             $order = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-            if ($order->status === Order::STATUS_CANCELLED) {
+            if ($order->status === Order::STATUS_CANCELLED || $order->isClosed()) {
                 throw ValidationException::withMessages([
-                    'order' => 'A cancelled booking cannot be handed over.',
+                    'order' => 'A closed booking cannot be handed over.',
                 ]);
             }
 
             if ($order->handover_ready_at === null) {
                 throw ValidationException::withMessages([
                     'order' => 'Mark the file ready for handover before delivering it.',
+                ]);
+            }
+
+            $order->loadMissing('project');
+
+            if ($order->project?->balloting_enabled && $order->balloted_at === null) {
+                throw ValidationException::withMessages([
+                    'order' => 'Confirm balloting before completing this booking.',
                 ]);
             }
 
@@ -387,13 +493,15 @@ class DealPipeline
             }
 
             $order->forceFill([
-                'status' => Order::STATUS_DELIVERED,
-                'stage' => Order::STAGE_DELIVERED,
+                'status' => Order::STATUS_COMPLETED,
+                'stage' => Order::STAGE_CLOSED,
                 'delivered_at' => now(),
             ])->save();
 
+            $this->orderActivity->log($order, 'Booking completed', $order->contact?->display_name ?: 'Booking', $actorId);
+
             if ($order->lead) {
-                $this->activity->log($order->lead, 'Asset delivered', $order->code, $actorId);
+                $this->activity->log($order->lead, 'Asset delivered', $order->contact?->display_name ?: 'Booking', $actorId);
             }
 
             return $order;
@@ -444,12 +552,14 @@ class DealPipeline
      */
     public function snapshot(Order $order): array
     {
-        $order->loadMissing(['paymentPlan.installments', 'payments', 'transfers.fromContact', 'transfers.toContact', 'contact', 'project', 'unit.block']);
+        $order->loadMissing(['paymentPlan.installments', 'payments', 'transfers.fromContact', 'transfers.toContact', 'contact', 'project', 'unit.block', 'activities.user', 'activities.gallery.asset', 'activities.documents.asset']);
         $plan = $order->paymentPlan;
         $ledger = $this->ledger($order);
 
         return [
-            'stage' => $order->stage ?: Order::STAGE_BOOKING,
+            'stage' => $order->stage ?: Order::STAGE_TOKEN,
+            'status' => $order->status ?: Order::STATUS_HOLD,
+            'balloting_enabled' => (bool) ($order->project?->balloting_enabled ?? false),
             'net_price' => (float) $this->money($this->netCents($order)),
             'booking' => [
                 'identity_kind' => $order->identity_kind ?: 'cnic',
@@ -492,9 +602,12 @@ class DealPipeline
             ],
             'ledger' => $ledger,
             'installments' => $plan
-                ? $plan->installments->map(fn (PaymentInstallment $row): array => $this->installmentRow($row, $plan))->values()->all()
+                ? $plan->installments->map(fn (PaymentInstallment $row): array => $this->installmentRow($row, $plan, $order))->values()->all()
                 : [],
-            'payments' => $order->payments->map(function (OrderPayment $payment): array {
+            'installment_totals' => $this->installmentTotals($order),
+            'activities' => $this->orderActivity->timeline($order),
+            'payment_methods' => OrderPayment::methodOptions(),
+            'payments' => $order->payments->map(function (OrderPayment $payment) use ($order): array {
                 $asset = $payment->receipt_asset_id
                     ? Asset::query()->find($payment->receipt_asset_id)
                     : null;
@@ -507,6 +620,10 @@ class DealPipeline
                     'paid_on' => $payment->paid_on?->toDateString(),
                     'notes' => $payment->notes,
                     'receipt_url' => $this->assets->url($asset),
+                    'voucher_url' => route('portal.orders.payments.voucher', [
+                        'order' => $order->code,
+                        'payment' => $payment->id,
+                    ], absolute: false),
                 ];
             })->values()->all(),
             'transfers' => $order->transfers->map(fn (OrderTransfer $transfer): array => [
@@ -626,7 +743,7 @@ class DealPipeline
     }
 
     /**
-     * @return array{total_paid: float, total_outstanding: float, upcoming: float, overdue: float, late_fees: float, is_late: bool}
+     * @return array{total_paid: float, total_outstanding: float, upcoming: float, overdue: float, late_fees: float, scheduled: float, remaining: float, is_late: bool}
      */
     public function ledger(Order $order): array
     {
@@ -636,8 +753,11 @@ class DealPipeline
         $late = 0;
         $overdue = 0;
         $upcoming = 0;
+        $scheduled = 0;
 
         foreach ($plan?->installments ?? [] as $row) {
+            $scheduled += $this->cents($row->amount);
+
             if (! $row->isPending()) {
                 continue;
             }
@@ -661,23 +781,76 @@ class DealPipeline
             'upcoming' => (float) $this->money($upcoming),
             'overdue' => (float) $this->money($overdue),
             'late_fees' => (float) $this->money($late),
+            'scheduled' => (float) $this->money($scheduled),
+            'remaining' => (float) $this->money($outstanding),
             'is_late' => $overdue > 0,
         ];
+    }
+
+    /**
+     * @return array{scheduled: float, paid: float, remaining: float, late_fees: float, outstanding: float}
+     */
+    public function installmentTotals(Order $order): array
+    {
+        $ledger = $this->ledger($order);
+
+        return [
+            'scheduled' => $ledger['scheduled'],
+            'paid' => $ledger['total_paid'],
+            'remaining' => $ledger['remaining'],
+            'late_fees' => $ledger['late_fees'],
+            'outstanding' => $ledger['total_outstanding'],
+        ];
+    }
+
+    public function syncActiveStatus(Order $order): Order
+    {
+        if ($order->stage !== Order::STAGE_ACTIVE || $order->status === Order::STATUS_LITIGATION) {
+            return $order;
+        }
+
+        $order->loadMissing(['paymentPlan.installments', 'payments']);
+        $ledger = $this->ledger($order);
+        $overdueCents = $this->cents($ledger['overdue']);
+
+        $status = Order::STATUS_CURRENT;
+
+        if ($overdueCents > 0) {
+            $oldestOverdueDays = 0;
+
+            foreach ($order->paymentPlan?->installments ?? [] as $row) {
+                if (! $row->isPending() || $row->due_on === null || ! $row->due_on->lt(today())) {
+                    continue;
+                }
+
+                $oldestOverdueDays = max($oldestOverdueDays, (int) $row->due_on->diffInDays(today()));
+            }
+
+            $status = $oldestOverdueDays >= 90
+                ? Order::STATUS_DEFAULTER
+                : Order::STATUS_OVERDUE;
+        }
+
+        if ($order->status !== $status) {
+            $order->forceFill(['status' => $status])->save();
+        }
+
+        return $order;
     }
 
     protected function lockOpen(Order $order): Order
     {
         $order = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-        if ($order->status === Order::STATUS_CANCELLED) {
+        if ($order->status === Order::STATUS_CANCELLED || $order->stage === Order::STAGE_CLOSED) {
             throw ValidationException::withMessages([
-                'order' => 'This booking is cancelled.',
+                'order' => 'This booking is closed.',
             ]);
         }
 
-        if ($order->status === Order::STATUS_DELIVERED) {
+        if ($order->status === Order::STATUS_COMPLETED) {
             throw ValidationException::withMessages([
-                'order' => 'This asset has already been delivered.',
+                'order' => 'This booking has already been completed.',
             ]);
         }
 
@@ -748,10 +921,15 @@ class DealPipeline
     /**
      * @return array<string, mixed>
      */
-    protected function installmentRow(PaymentInstallment $row, PaymentPlan $plan): array
+    protected function installmentRow(PaymentInstallment $row, PaymentPlan $plan, ?Order $order = null): array
     {
         $fee = $this->lateFeeCents($row, $plan);
         $remaining = max(0, $this->cents($row->amount) + $fee - $this->cents($row->paid_amount));
+        $order ??= $plan->order;
+        $paid = ! $row->isPending();
+        $linkedPayment = $paid && $order
+            ? $order->payments->firstWhere('payment_installment_id', $row->id)
+            : null;
 
         return [
             'id' => $row->id,
@@ -766,6 +944,24 @@ class DealPipeline
             'status' => $row->status,
             'overdue' => $row->isPending() && $row->due_on !== null && $row->due_on->lt(today()),
             'paid_at' => $row->paid_at?->toIso8601String(),
+            'receipt_url' => $linkedPayment
+                ? route('portal.orders.payments.voucher', [
+                    'order' => $order->code,
+                    'payment' => $linkedPayment->id,
+                ], absolute: false)
+                : null,
+            'voucher_url' => $linkedPayment
+                ? route('portal.orders.payments.voucher', [
+                    'order' => $order->code,
+                    'payment' => $linkedPayment->id,
+                ], absolute: false)
+                : null,
+            'pay_voucher_url' => $order && ! $paid
+                ? route('portal.orders.installments.pay-voucher', [
+                    'order' => $order->code,
+                    'installment' => $row->id,
+                ], absolute: false)
+                : null,
         ];
     }
 

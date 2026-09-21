@@ -37,6 +37,7 @@ class UpdateProjectRequest extends FormRequest
             'total_area' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'features' => ['sometimes', 'nullable', 'array'],
             'features.*' => ['required', 'string', 'max:150'],
+            'balloting_enabled' => ['sometimes', 'boolean'],
         ];
     }
 }

@@ -22,6 +22,7 @@ class StoreProjectRequest extends FormRequest
             'title' => ['required', 'string', 'max:150'],
             'type' => ['nullable', 'string', 'max:50'],
             'status' => ['nullable', 'string', 'max:20', Rule::in(['draft', 'active', 'on_hold', 'completed', 'archived'])],
+            'balloting_enabled' => ['sometimes', 'boolean'],
         ];
     }
 }

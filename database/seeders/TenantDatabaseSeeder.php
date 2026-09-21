@@ -87,6 +87,7 @@ class TenantDatabaseSeeder extends Seeder
     protected function seedDefaultOrderStages(): void
     {
         OrderStage::ensureDefaults();
+        MetaData::ensurePaymentMethods();
     }
 
     protected function seedDefaultLeadActionTypes(): void

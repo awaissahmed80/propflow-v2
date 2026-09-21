@@ -26,8 +26,10 @@ use App\Http\Controllers\Portal\MetaDataController;
 use App\Http\Controllers\Portal\MetaIntegrationController;
 use App\Http\Controllers\Portal\NotificationController;
 use App\Http\Controllers\Portal\OperationsController;
+use App\Http\Controllers\Portal\OrderActivityController;
 use App\Http\Controllers\Portal\OrderController;
 use App\Http\Controllers\Portal\OrderStageController;
+use App\Http\Controllers\Portal\OrderStatusController;
 use App\Http\Controllers\Portal\PaymentInstallmentController;
 use App\Http\Controllers\Portal\PaymentPlanController;
 use App\Http\Controllers\Portal\PaymentPlanTemplateController;
@@ -143,11 +145,23 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::redirect('/bookings/applications', '/bookings');
         Route::get('/bookings/allotment', [AllocationController::class, 'index'])->name('portal.bookings.allotment');
         Route::get('/bookings', [OrderController::class, 'index'])->name('portal.orders.index');
+        Route::match(['put', 'patch'], '/bookings/{order}', [OrderController::class, 'update'])->name('portal.orders.update');
         Route::get('/bookings/{order}', [OrderController::class, 'show'])->name('portal.orders.show');
         Route::get('/bookings/{order}/booking-form', [DealController::class, 'showBookingForm'])->name('portal.orders.show-booking-form');
         Route::post('/bookings/{order}/booking', [DealController::class, 'storeBooking'])->name('portal.orders.booking');
         Route::post('/bookings/{order}/plan', [DealController::class, 'plan'])->name('portal.orders.plan');
         Route::post('/bookings/{order}/payments', [DealController::class, 'payment'])->name('portal.orders.payments.store');
+        Route::get('/bookings/{order}/payments/{payment}/voucher', [DealController::class, 'paymentVoucher'])
+            ->whereNumber('payment')
+            ->name('portal.orders.payments.voucher');
+        Route::get('/bookings/{order}/installments/{installment}/pay-voucher', [DealController::class, 'paymentRequestVoucher'])
+            ->whereNumber('installment')
+            ->name('portal.orders.installments.pay-voucher');
+        Route::get('/bookings/{order}/ledger.pdf', [DealController::class, 'ledgerPdf'])->name('portal.orders.ledger.pdf');
+        Route::get('/bookings/{order}/ledger', [DealController::class, 'ledgerPreview'])->name('portal.orders.ledger.preview');
+        Route::post('/bookings/{order}/activity', [OrderActivityController::class, 'store'])->name('portal.orders.activity.store');
+        Route::post('/bookings/{order}/litigation', [DealController::class, 'litigation'])->name('portal.orders.litigation');
+        Route::post('/bookings/{order}/enter-booking-kyc', [DealController::class, 'enterBookingKyc'])->name('portal.orders.enter-booking-kyc');
         Route::post('/bookings/{order}/ballot', [DealController::class, 'ballot'])->name('portal.orders.ballot');
         Route::post('/bookings/{order}/transfer', [DealController::class, 'transfer'])->name('portal.orders.transfer');
         Route::post('/bookings/{order}/handover', [DealController::class, 'handover'])->name('portal.orders.handover');
@@ -223,6 +237,7 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::put('/settings/order-stages/reorder', [OrderStageController::class, 'reorder'])->name('portal.settings.order-stages.reorder');
         Route::put('/settings/order-stages/{stage}', [OrderStageController::class, 'update'])->name('portal.settings.order-stages.update');
         Route::delete('/settings/order-stages/{stage}', [OrderStageController::class, 'destroy'])->name('portal.settings.order-stages.destroy');
+        Route::put('/settings/order-statuses/{status}', [OrderStatusController::class, 'update'])->name('portal.settings.order-statuses.update');
         Route::post('/settings/lead-actions', [LeadActionTypeController::class, 'store'])->name('portal.settings.lead-actions.store');
         Route::put('/settings/lead-actions/reorder', [LeadActionTypeController::class, 'reorder'])->name('portal.settings.lead-actions.reorder');
         Route::put('/settings/lead-actions/{actionType}', [LeadActionTypeController::class, 'update'])->name('portal.settings.lead-actions.update');

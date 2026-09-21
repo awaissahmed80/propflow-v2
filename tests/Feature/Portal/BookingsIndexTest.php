@@ -60,7 +60,7 @@ class BookingsIndexTest extends TestCase
                 ->has('orders', 1)
                 ->where('orders.0.code', $order->code)
                 ->where('openedBooking.order.code', $order->code)
-                ->where('openedBooking.deal.stage', Order::STAGE_BOOKING)
+                ->where('openedBooking.deal.stage', Order::STAGE_TOKEN)
                 ->has('openedBooking.deal.templates')
                 ->has('openedBooking.order.lead')
                 ->has('openedBooking.order.contact')
@@ -118,9 +118,58 @@ class BookingsIndexTest extends TestCase
         $tenant->makeCurrent();
         $order->refresh();
         $order->load('paymentPlan');
-        $this->assertSame(Order::STAGE_TRACKING, $order->stage);
+        $this->assertSame(Order::STAGE_ACTIVE, $order->stage);
         $this->assertSame('template:'.$template->id, $order->paymentPlan->template);
         $this->assertSame(6, (int) $order->paymentPlan->installment_count);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_booking_project_and_assignee_can_be_updated(): void
+    {
+        [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_bookings_assign');
+        $assignee = User::factory()->tenant()->create();
+        TenantUser::factory()->create([
+            'user_id' => $assignee->id,
+            'tenant_id' => $tenant->id,
+        ]);
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/convert'), [
+            'unit_id' => $unit->id,
+            'booking_kind' => Order::KIND_TOKEN,
+            'agreed_price' => 1000,
+            'token_amount' => 200,
+            'installment_count' => 1,
+            'first_due_on' => '2026-11-01',
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order = Order::query()->first();
+        $project = Project::factory()->create(['title' => 'Second Project']);
+        Tenant::forgetCurrent();
+
+        $this->patch(Domain::portal('/bookings/'.$order->code), [
+            'assigned_to' => $assignee->id,
+            'project_id' => $project->id,
+        ])->assertRedirect('/bookings?booking='.$order->code);
+
+        $tenant->makeCurrent();
+        $order->refresh();
+        $this->assertSame($assignee->id, $order->assigned_to);
+        $this->assertSame($project->id, $order->project_id);
+        Tenant::forgetCurrent();
+
+        $this->patch(Domain::portal('/bookings/'.$order->code), [
+            'assigned_to' => null,
+            'project_id' => null,
+        ])->assertRedirect('/bookings?booking='.$order->code);
+
+        $tenant->makeCurrent();
+        $order->refresh();
+        $this->assertNull($order->assigned_to);
+        $this->assertNull($order->project_id);
         Tenant::forgetCurrent();
     }
 

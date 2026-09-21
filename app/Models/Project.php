@@ -31,6 +31,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'links',
     'progress',
     'status',
+    'balloting_enabled',
 ])]
 #[Connection('tenant')]
 class Project extends Model
@@ -48,6 +49,7 @@ class Project extends Model
             'features' => 'array',
             'links' => 'array',
             'progress' => 'integer',
+            'balloting_enabled' => 'boolean',
         ];
     }
 

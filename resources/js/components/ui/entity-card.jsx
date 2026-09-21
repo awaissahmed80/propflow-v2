@@ -152,7 +152,7 @@ export function LeadCard({ lead, href, size = "default", className }) {
         );
     }
 
-    const title = lead.code || `Lead #${lead.id}`;
+    const title = lead.contact?.display_name || "Lead";
     const stageTitle = lead.stage?.title || lead.stage?.label;
 
     return (
@@ -168,7 +168,6 @@ export function LeadCard({ lead, href, size = "default", className }) {
             className={className}
             meta={lead.tag ? <HeatIcon tag={lead.tag} /> : null}
         >
-            <DetailRow label="Code" value={lead.code} />
             {lead.stage ? (
                 <div className="flex items-center justify-between gap-3">
                     <span className="text-xs text-muted-foreground">Stage</span>

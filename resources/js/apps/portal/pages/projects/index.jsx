@@ -165,11 +165,6 @@ function ProjectCard({ project, onDelete }) {
                         <h2 className="truncate text-base font-semibold tracking-tight text-foreground">
                             {project.title}
                         </h2>
-                        {project.code ? (
-                            <Badge variant="outline" className="rounded-sm font-normal text-muted-foreground">
-                                #{project.code}
-                            </Badge>
-                        ) : null}
                     </div>
                     <p className="truncate text-sm text-muted-foreground">
                         {projectLocation(project)}
@@ -228,9 +223,6 @@ function ProjectListRow({ project, onDelete }) {
                     <div className="truncate text-base font-bold tracking-tight text-foreground">
                         {project.title}
                     </div>
-                    {project.code ? (
-                        <span className="text-xs text-muted-foreground">#{project.code}</span>
-                    ) : null}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
                     {projectLocation(project)}

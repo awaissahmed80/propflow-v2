@@ -38,33 +38,30 @@ class OrderStageSettingsTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('settings/index', false)
                 ->where('section', 'bookings')
-                ->has('orderStages', 6)
-                ->where('orderStages.0.label', Order::STAGE_BOOKING)
+                ->has('orderStages', 4)
+                ->where('orderStages.0.label', Order::STAGE_TOKEN)
+                ->has('orderStages.0.statuses')
+                ->where('orderStages.2.label', Order::STAGE_ACTIVE)
             );
     }
 
-    public function test_order_stage_can_be_created(): void
+    public function test_order_stage_cannot_be_created(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_order_stage_store');
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->post(Domain::portal('/settings/order-stages'), [
-            'title' => 'Legal review',
-            'color' => '#F59E0B',
-        ])->assertRedirect();
-
-        $tenant->makeCurrent();
-        $stage = OrderStage::query()->where('title', 'Legal review')->first();
-        $this->assertNotNull($stage);
-        $this->assertSame('legal_review', $stage->label);
-        $this->assertSame('#F59E0B', $stage->color);
-        $this->assertFalse($stage->is_system);
-        Tenant::forgetCurrent();
+        $this->from(Domain::portal('/settings/bookings'))
+            ->post(Domain::portal('/settings/order-stages'), [
+                'title' => 'Legal review',
+                'color' => '#F59E0B',
+            ])
+            ->assertRedirect(Domain::portal('/settings/bookings'))
+            ->assertSessionHasErrors('stage');
     }
 
-    public function test_order_stage_can_be_updated_and_reordered(): void
+    public function test_order_stage_title_and_color_can_be_updated(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_order_stage_update');
 
@@ -75,30 +72,43 @@ class OrderStageSettingsTest extends TestCase
 
         $tenant->makeCurrent();
         $first = OrderStage::query()->orderBy('priority')->first();
-        $second = OrderStage::query()->orderBy('priority')->skip(1)->first();
         Tenant::forgetCurrent();
 
         $this->put(Domain::portal('/settings/order-stages/'.$first->label), [
-            'title' => 'Booking verified',
+            'title' => 'Token hold',
             'color' => '#EF4444',
-        ])->assertRedirect();
-
-        $this->put(Domain::portal('/settings/order-stages/reorder'), [
-            'order' => [$second->id, $first->id],
         ])->assertRedirect();
 
         $tenant->makeCurrent();
         $first->refresh();
-        $second->refresh();
-        $this->assertSame('Booking verified', $first->title);
+        $this->assertSame('Token hold', $first->title);
         $this->assertSame('#EF4444', $first->color);
-        $this->assertSame(Order::STAGE_BOOKING, $first->label);
-        $this->assertSame(1, (int) $second->priority);
-        $this->assertSame(2, (int) $first->priority);
+        $this->assertSame(Order::STAGE_TOKEN, $first->label);
         Tenant::forgetCurrent();
     }
 
-    public function test_system_order_stage_cannot_be_deleted(): void
+    public function test_order_stages_cannot_be_reordered(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_order_stage_reorder');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->get(Domain::portal('/settings/bookings'))->assertOk();
+
+        $tenant->makeCurrent();
+        $ids = OrderStage::query()->orderBy('priority')->pluck('id')->all();
+        Tenant::forgetCurrent();
+
+        $this->from(Domain::portal('/settings/bookings'))
+            ->put(Domain::portal('/settings/order-stages/reorder'), [
+                'order' => array_reverse($ids),
+            ])
+            ->assertRedirect(Domain::portal('/settings/bookings'))
+            ->assertSessionHasErrors('stage');
+    }
+
+    public function test_order_stage_cannot_be_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_order_stage_system');
 
@@ -108,7 +118,7 @@ class OrderStageSettingsTest extends TestCase
         $this->get(Domain::portal('/settings/bookings'))->assertOk();
 
         $tenant->makeCurrent();
-        $stage = OrderStage::query()->where('label', Order::STAGE_BOOKING)->firstOrFail();
+        $stage = OrderStage::query()->where('label', Order::STAGE_TOKEN)->firstOrFail();
         Tenant::forgetCurrent();
 
         $this->from(Domain::portal('/settings/bookings'))
@@ -118,29 +128,6 @@ class OrderStageSettingsTest extends TestCase
 
         $tenant->makeCurrent();
         $this->assertNotNull(OrderStage::query()->find($stage->id));
-        Tenant::forgetCurrent();
-    }
-
-    public function test_custom_order_stage_can_be_deleted(): void
-    {
-        [$user, $tenant] = $this->createTenantUser('tenant_order_stage_delete');
-
-        $tenant->makeCurrent();
-        OrderStage::ensureDefaults();
-        $custom = OrderStage::factory()->create([
-            'title' => 'Drop me',
-            'label' => 'drop_me',
-            'priority' => 99,
-        ]);
-        Tenant::forgetCurrent();
-
-        $this->actingAs($user);
-        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
-
-        $this->delete(Domain::portal('/settings/order-stages/'.$custom->label))->assertRedirect();
-
-        $tenant->makeCurrent();
-        $this->assertNull(OrderStage::query()->find($custom->id));
         Tenant::forgetCurrent();
     }
 

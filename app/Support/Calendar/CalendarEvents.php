@@ -203,15 +203,11 @@ class CalendarEvents
                     continue;
                 }
 
-                $buyer = $order->contact
-                    ? trim($order->contact->first_name.' '.$order->contact->last_name)
-                    : null;
-
                 $events->push($this->event(
                     id: 'order-'.$field.'-'.$order->id,
                     module: self::MODULE_ORDERS,
-                    title: $order->code,
-                    subtitle: $label.($buyer ? ' · '.$buyer : ''),
+                    title: $this->personName($order->contact),
+                    subtitle: $label.($order->unit?->name ? ' · '.$order->unit->name : ''),
                     when: $when,
                     allDay: false,
                     overdue: false,
@@ -249,7 +245,7 @@ class CalendarEvents
             $events->push($this->event(
                 id: 'order-transfer-'.$transfer->id,
                 module: self::MODULE_ORDERS,
-                title: $order->code,
+                title: $this->personName($order->contact),
                 subtitle: 'Transferred',
                 when: $transfer->transferred_at,
                 allDay: false,
@@ -316,7 +312,7 @@ class CalendarEvents
                     id: 'payment-due-'.$installment->id,
                     module: self::MODULE_PAYMENTS,
                     title: $installment->label ?: 'Installment #'.$installment->sequence,
-                    subtitle: 'Due · '.$order->code,
+                    subtitle: 'Due · '.$this->personName($order->contact),
                     when: $due,
                     allDay: true,
                     overdue: $overdue,
@@ -331,7 +327,7 @@ class CalendarEvents
                     id: 'payment-paid-'.$installment->id,
                     module: self::MODULE_PAYMENTS,
                     title: $installment->label ?: 'Installment #'.$installment->sequence,
-                    subtitle: 'Paid · '.$order->code,
+                    subtitle: 'Paid · '.$this->personName($order->contact),
                     when: $installment->paid_at,
                     allDay: false,
                     overdue: false,
@@ -346,7 +342,7 @@ class CalendarEvents
                     id: 'payment-reminded-'.$installment->id,
                     module: self::MODULE_PAYMENTS,
                     title: $installment->label ?: 'Installment #'.$installment->sequence,
-                    subtitle: 'Reminded · '.$order->code,
+                    subtitle: 'Reminded · '.$this->personName($order->contact),
                     when: $installment->reminded_at,
                     allDay: false,
                     overdue: false,
@@ -360,6 +356,7 @@ class CalendarEvents
         $payments = OrderPayment::query()
             ->with([
                 'order:id,code,assigned_to',
+                'order.contact:id,first_name,last_name',
                 'order.assignee:id,display_name,first_name,last_name',
             ])
             ->whereNotNull('paid_on')
@@ -384,7 +381,7 @@ class CalendarEvents
                 id: 'order-payment-'.$payment->id,
                 module: self::MODULE_PAYMENTS,
                 title: 'Payment received',
-                subtitle: $order->code.($payment->method ? ' · '.$payment->method : ''),
+                subtitle: $this->personName($order->contact).($payment->method ? ' · '.$payment->method : ''),
                 when: $payment->paid_on->copy()->startOfDay(),
                 allDay: true,
                 overdue: false,
@@ -602,6 +599,17 @@ class CalendarEvents
             'href' => $href,
             'subject' => $subject,
         ];
+    }
+
+    protected function personName(mixed $contact, string $fallback = 'Booking'): string
+    {
+        if ($contact === null) {
+            return $fallback;
+        }
+
+        $name = trim(($contact->first_name ?? '').' '.($contact->last_name ?? ''));
+
+        return $name !== '' ? $name : $fallback;
     }
 
     /**

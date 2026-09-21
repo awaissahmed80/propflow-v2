@@ -59,8 +59,8 @@ export default function BookingsAllotment({ orders, pagination }) {
                             <table className="w-full text-left text-sm">
                                 <thead className="border-b border-border/70 bg-muted/30 text-xs font-medium text-muted-foreground">
                                     <tr>
-                                        <th className="px-4 py-2.5 font-medium">Booking</th>
                                         <th className="px-4 py-2.5 font-medium">Buyer</th>
+                                        <th className="px-4 py-2.5 font-medium">Contact</th>
                                         <th className="px-4 py-2.5 font-medium">Unit</th>
                                         <th className="px-4 py-2.5 font-medium">Outstanding</th>
                                         <th className="px-4 py-2.5" />
@@ -80,14 +80,16 @@ export default function BookingsAllotment({ orders, pagination }) {
                                                         router.visit(pathFrom(show.url(order.code)))
                                                     }
                                                 >
-                                                    {order.code}
+                                                    {order.contact?.display_name || "Buyer"}
                                                 </button>
                                             </td>
                                             <td className="px-4 py-3">
-                                                {order.contact?.display_name || "—"}
+                                                {order.contact?.phone_number ||
+                                                    order.contact?.email_address ||
+                                                    "—"}
                                             </td>
                                             <td className="px-4 py-3">
-                                                {order.unit?.code || order.unit?.name || "—"}
+                                                {order.unit?.name || "—"}
                                             </td>
                                             <td className="px-4 py-3 text-muted-foreground">
                                                 {order.unpaid_count

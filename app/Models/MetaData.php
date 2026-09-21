@@ -31,6 +31,8 @@ class MetaData extends Model
 
     public const TYPE_DEPARTMENT = 'DEPARTMENT';
 
+    public const TYPE_PAYMENT_METHOD = 'PAYMENT_METHOD';
+
     /**
      * @return list<string>
      */
@@ -44,6 +46,7 @@ class MetaData extends Model
             self::TYPE_AREA,
             self::TYPE_LINK,
             self::TYPE_DEPARTMENT,
+            self::TYPE_PAYMENT_METHOD,
         ];
     }
 
@@ -69,6 +72,28 @@ class MetaData extends Model
             ->pluck('value')
             ->unique(fn (string $value): string => mb_strtolower($value))
             ->values();
+    }
+
+    /**
+     * Seed defaults for payment methods used on booking receipts.
+     *
+     * @return list<string>
+     */
+    public static function defaultPaymentMethods(): array
+    {
+        return [
+            'Cash',
+            'Pay order',
+            'Cheque',
+            'Bank transfer',
+        ];
+    }
+
+    public static function ensurePaymentMethods(): void
+    {
+        foreach (static::defaultPaymentMethods() as $method) {
+            static::remember(self::TYPE_PAYMENT_METHOD, $method);
+        }
     }
 
     public static function remember(string $type, string $value): static

@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('meta_data', function (Blueprint $table) {
             $table->id();
             $table->string('value')->nullable();
-            $table->enum('type', ['CITY', 'PROJECT', 'UNIT', 'AREA', 'LINK', 'DEPARTMENT', 'COUNTRY'])->nullable();
+            $table->enum('type', ['CITY', 'PROJECT', 'UNIT', 'AREA', 'LINK', 'DEPARTMENT', 'COUNTRY', 'PAYMENT_METHOD'])->nullable();
         });
     }
 

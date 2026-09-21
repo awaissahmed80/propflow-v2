@@ -31,7 +31,7 @@ class OrderResource extends JsonResource
             'booking_kind' => $this->booking_kind,
             'agreed_price' => $this->agreed_price !== null ? (float) $this->agreed_price : 0,
             'status' => $this->status,
-            'stage' => $this->stage ?: Order::STAGE_BOOKING,
+            'stage' => $this->stage ?: Order::STAGE_TOKEN,
             'assigned_to' => $this->assigned_to,
             'booked_at' => $this->booked_at?->toIso8601String(),
             'allocated_at' => $this->allocated_at?->toIso8601String(),
@@ -51,6 +51,7 @@ class OrderResource extends JsonResource
                 'id' => $this->project->id,
                 'title' => $this->project->title,
                 'code' => $this->project->code ?? null,
+                'thumbnail' => $this->project->getAttribute('thumbnail_url'),
             ] : null),
             'unit' => $this->whenLoaded('unit', fn () => $this->unit ? [
                 'id' => $this->unit->id,

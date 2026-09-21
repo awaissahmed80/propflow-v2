@@ -32,6 +32,7 @@ class ProjectResource extends JsonResource
             'end_date' => $this->end_date,
             'progress' => (int) ($this->progress ?? 0),
             'pin_location' => $this->pin_location,
+            'balloting_enabled' => (bool) $this->balloting_enabled,
             'map_embed_src' => MapEmbed::src($this->pin_location),
             'area_unit' => data_get($this->details, 'area_unit'),
             'total_area' => data_get($this->details, 'total_area'),

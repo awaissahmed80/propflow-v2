@@ -132,10 +132,7 @@ function UnitRow({ unit, onEdit, onDelete }) {
     return (
         <tr className="border-b border-border last:border-0 hover:bg-muted/40">
             <td className="px-4 py-3 align-middle">
-                <div className="font-medium text-foreground">
-                    {unit.name || unit.code}
-                </div>
-                <div className="text-xs text-muted-foreground">{unit.code}</div>
+                <div className="font-medium text-foreground">{unit.name || "Unit"}</div>
             </td>
             <td className="px-4 py-3 align-middle text-sm text-foreground">
                 {unit.project?.title || "—"}
@@ -172,7 +169,7 @@ function UnitRow({ unit, onEdit, onDelete }) {
                 <DropdownMenu>
                     <DropdownMenuTrigger
                         className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                        aria-label={`Actions for ${unit.code}`}
+                        aria-label={`Actions for ${unit.name || "unit"}`}
                     >
                         <Icon name="more-2-fill" className="text-lg" />
                     </DropdownMenuTrigger>
@@ -405,7 +402,7 @@ function Inventory({
     };
 
     const confirmDelete = async (unit) => {
-        const label = unit.name || unit.code;
+        const label = unit.name || "this unit";
         const confirmed = await confirm(
             `Delete "${label}" from inventory? This cannot be undone.`,
             "Delete unit"

@@ -99,8 +99,8 @@ class OrderService
                 'assigned_to' => $lead->assigned_to,
                 'booking_kind' => $kind,
                 'agreed_price' => $agreed,
-                'status' => Order::STATUS_BOOKED,
-                'stage' => Order::STAGE_BOOKING,
+                'status' => Order::STATUS_HOLD,
+                'stage' => Order::STAGE_TOKEN,
                 'booked_at' => now(),
             ]);
 
@@ -118,11 +118,19 @@ class OrderService
                 Carbon::parse($data['first_due_on'])->startOfDay(),
             );
 
-            $unitLabel = $unit->code ?: $unit->name ?: 'unit #'.$unit->id;
+            $unitLabel = $unit->name ?: 'unit';
             $this->activity->log(
                 $lead,
                 'Deal booked',
                 $unitLabel.' booked at '.$agreed.'.',
+                $actorId,
+            );
+
+            app(OrderActivity::class)->created($order, $actorId);
+            app(OrderActivity::class)->log(
+                $order,
+                'Entered Token',
+                $unitLabel.' · hold',
                 $actorId,
             );
 
@@ -135,9 +143,9 @@ class OrderService
         return DB::connection('tenant')->transaction(function () use ($order, $actorId): Order {
             $order = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-            if (! $order->isBooked()) {
+            if (! $order->isOpen()) {
                 throw ValidationException::withMessages([
-                    'order' => 'Only a booked order can be cancelled.',
+                    'order' => 'Only an open booking can be cancelled.',
                 ]);
             }
 
@@ -149,13 +157,16 @@ class OrderService
 
             $order->forceFill([
                 'status' => Order::STATUS_CANCELLED,
+                'stage' => Order::STAGE_CLOSED,
                 'cancelled_at' => now(),
             ])->save();
 
             $lead = $order->lead;
 
+            app(OrderActivity::class)->log($order, 'Booking cancelled', $order->contact?->display_name ?: 'Booking', $actorId);
+
             if ($lead) {
-                $this->activity->log($lead, 'Booking cancelled', $order->code, $actorId);
+                $this->activity->log($lead, 'Booking cancelled', $order->contact?->display_name ?: 'Booking', $actorId);
             }
 
             return $order;
@@ -167,9 +178,9 @@ class OrderService
         return DB::connection('tenant')->transaction(function () use ($order, $actorId): Order {
             $order = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-            if (! $order->isBooked()) {
+            if (! $order->isOpen()) {
                 throw ValidationException::withMessages([
-                    'order' => 'Only a booked order can be allocated.',
+                    'order' => 'Only an open booking can be allocated.',
                 ]);
             }
 
@@ -180,14 +191,15 @@ class OrderService
             }
 
             $order->forceFill([
-                'status' => Order::STATUS_ALLOCATED,
+                'status' => Order::STATUS_CURRENT,
+                'stage' => Order::STAGE_ACTIVE,
                 'allocated_at' => now(),
             ])->save();
 
             $lead = $order->lead;
 
             if ($lead) {
-                $this->activity->log($lead, 'Unit allocated', $order->code, $actorId);
+                $this->activity->log($lead, 'Unit allocated', $order->unit?->name ?: 'Unit', $actorId);
             }
 
             return $order;

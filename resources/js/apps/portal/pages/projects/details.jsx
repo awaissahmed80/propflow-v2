@@ -522,12 +522,12 @@ function InventoryPanel({ project, stats, units }) {
                                     />
                                     <div className="min-w-0 flex-1">
                                         <div className="truncate font-medium text-foreground">
-                                            {unit.name || unit.code}
+                                            {unit.name || "Unit"}
                                         </div>
                                         <div className="truncate text-xs text-muted-foreground">
-                                            {[unit.code, unit.type, unit.block?.title]
+                                            {[unit.type, unit.block?.title]
                                                 .filter(Boolean)
-                                                .join(" · ")}
+                                                .join(" · ") || "—"}
                                         </div>
                                     </div>
                                     <Badge
@@ -771,11 +771,6 @@ function ProjectDetails({ project }) {
                                                 Add location
                                             </button>
                                         )}
-                                        {project.code ? (
-                                            <span className="font-mono text-xs tracking-wide">
-                                                #{project.code}
-                                            </span>
-                                        ) : null}
                                     </div>
 
                                     {project.description ? (

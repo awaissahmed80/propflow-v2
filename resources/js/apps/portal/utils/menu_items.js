@@ -94,15 +94,7 @@ export const menu_items = [
                 component: "bookings/index",
                 icon: "book-2-line",
                 activeWhen: (current) =>
-                    current === "/bookings" ||
-                    (current.startsWith("/bookings/") && current !== "/bookings/allotment"),
-            },
-            {
-                label: "Allotment & Transfers",
-                to: "/bookings/allotment",
-                component: "bookings/allotment",
-                icon: "file-paper-2-line",
-                end: true,
+                    current === "/bookings" || current.startsWith("/bookings/"),
             },
             {
                 label: "Plan Templates",

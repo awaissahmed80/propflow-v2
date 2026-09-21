@@ -70,11 +70,6 @@ function TeamCard({ team, onOpen, onEdit, onDelete }) {
                             <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
                                 {team.title}
                             </h2>
-                            {team.code ? (
-                                <Badge variant="outline" className="rounded-sm font-normal text-muted-foreground">
-                                    #{team.code}
-                                </Badge>
-                            ) : null}
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                             {team.description || "No description yet."}
@@ -182,9 +177,6 @@ function TeamDetailSheet({ team, open, onOpenChange, onEdit, onDelete }) {
                         <div className="flex items-start justify-between gap-3 pr-8">
                             <div className="min-w-0">
                                 <SheetTitle className="truncate">{team.title}</SheetTitle>
-                                {team.code ? (
-                                    <div className="mt-1 text-sm text-muted-foreground">#{team.code}</div>
-                                ) : null}
                             </div>
                             <div className="flex shrink-0 items-center gap-1">
                                 <IconButton

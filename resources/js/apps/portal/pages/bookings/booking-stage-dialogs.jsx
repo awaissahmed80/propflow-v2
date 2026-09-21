@@ -5,11 +5,15 @@ import {
     ballot,
     storeBooking as booking,
     deliver,
+    enterBookingKyc,
     handover,
+    litigation,
     payment,
     plan,
+    transfer,
 } from "@/actions/App/Http/Controllers/Portal/DealController";
 import { Button } from "@/components/ui/button";
+import { ComboBox } from "@/components/ui/combo-box";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
     Dialog,
@@ -20,8 +24,12 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { SelectBox } from "@/components/ui/select";
+import { Icon } from "@/components/ui/icon";
 import { formatMoney } from "@/lib/currency";
+
+const FALLBACK_PAYMENT_METHODS = ["Cash", "Pay order", "Cheque", "Bank transfer"];
 
 function pathFrom(url) {
     const raw = String(url || "/");
@@ -49,12 +57,17 @@ function post(url, data, success, onDone) {
     });
 }
 
+function paymentMethodOptions(deal) {
+    const fromDeal = Array.isArray(deal?.payment_methods) ? deal.payment_methods : [];
+
+    return Array.from(new Set([...fromDeal, ...FALLBACK_PAYMENT_METHODS].filter(Boolean)));
+}
+
 export const FALLBACK_BOOKING_STAGES = [
-    { id: "booking", label: "Booking & KYC" },
-    { id: "plan", label: "Payment plan" },
-    { id: "tracking", label: "Installments" },
-    { id: "transfer", label: "Balloting" },
-    { id: "handover", label: "Handover" },
+    { id: "token", label: "Token" },
+    { id: "booking_kyc", label: "Booking & KYC" },
+    { id: "active", label: "Active" },
+    { id: "closed", label: "Closed" },
 ];
 
 /** @deprecated Prefer resolveBookingStages(orderStages) */
@@ -62,12 +75,13 @@ export const BOOKING_STAGES = FALLBACK_BOOKING_STAGES;
 
 export function resolveBookingStages(orderStages = []) {
     const rows = (orderStages || [])
-        .filter((stage) => stage && stage.label && stage.label !== "delivered")
+        .filter((stage) => stage && stage.label)
         .filter((stage) => stage.is_enabled !== false)
         .map((stage) => ({
             id: stage.label,
             label: stage.title || stage.label,
             color: stage.color || null,
+            statuses: stage.statuses || [],
         }));
 
     return rows.length > 0 ? rows : FALLBACK_BOOKING_STAGES;
@@ -80,7 +94,32 @@ export function stageTitle(stage, orderStages = []) {
         return match.title || match.label;
     }
 
-    return FALLBACK_BOOKING_STAGES.find((item) => item.id === stage)?.label || stage || "Booking & KYC";
+    return FALLBACK_BOOKING_STAGES.find((item) => item.id === stage)?.label || stage || "Token";
+}
+
+export function statusTitle(status, stage, orderStages = []) {
+    if (!status) {
+        return null;
+    }
+
+    const stageRow = (orderStages || []).find((item) => item.label === stage || item.id === stage);
+    const nested = (stageRow?.statuses || []).find((item) => item.label === status);
+
+    if (nested?.title) {
+        return nested.title;
+    }
+
+    return String(status)
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+export function statusColor(status, stage, orderStages = []) {
+    const stageRow = (orderStages || []).find((item) => item.label === stage || item.id === stage);
+    const nested = (stageRow?.statuses || []).find((item) => item.label === status);
+
+    return nested?.color || stageRow?.color || null;
 }
 
 export function BookingStageDialog({ open, onOpenChange, action, order, deal }) {
@@ -92,12 +131,17 @@ export function BookingStageDialog({ open, onOpenChange, action, order, deal }) 
 
     const title =
         {
-            booking: "Complete Booking & KYC",
+            verify: "Verify token",
+            booking: "Verify token",
+            enter_kyc: "Enter Booking & KYC",
             plan: "Set payment plan",
             tracking: "Record payment",
-            transfer: "Balloting & transfer",
-            handover: "Handover",
-            deliver: "Mark delivered",
+            payment: "Record payment",
+            ballot: "Record balloting",
+            transfer: "Transfer file",
+            litigation: "Litigation",
+            handover: "Ready for handover",
+            deliver: "Complete booking",
         }[action] || "Update booking";
 
     return (
@@ -106,11 +150,12 @@ export function BookingStageDialog({ open, onOpenChange, action, order, deal }) 
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>
-                        {order.code}
+                        {order.contact?.display_name || "Booking"}
+                        {order.unit?.name ? ` · ${order.unit.name}` : ""}
                         {deal?.net_price != null ? ` · Net ${formatMoney(deal.net_price)}` : ""}
                     </DialogDescription>
                 </DialogHeader>
-                {action === "booking" ? (
+                {action === "verify" || action === "booking" ? (
                     <BookingKycForm
                         order={order}
                         deal={deal}
@@ -118,14 +163,23 @@ export function BookingStageDialog({ open, onOpenChange, action, order, deal }) 
                         onDone={() => onOpenChange(false)}
                     />
                 ) : null}
+                {action === "enter_kyc" ? (
+                    <EnterKycForm order={order} onDone={() => onOpenChange(false)} />
+                ) : null}
                 {action === "plan" ? (
                     <PlanForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
                 ) : null}
-                {action === "tracking" ? (
+                {action === "tracking" || action === "payment" ? (
                     <PaymentForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
                 ) : null}
-                {action === "transfer" ? (
+                {action === "ballot" ? (
                     <BallotForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
+                ) : null}
+                {action === "transfer" ? (
+                    <TransferForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
+                ) : null}
+                {action === "litigation" ? (
+                    <LitigationForm order={order} deal={deal} onDone={() => onOpenChange(false)} />
                 ) : null}
                 {action === "handover" ? (
                     <HandoverForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
@@ -151,7 +205,7 @@ function BookingKycForm({ order, deal, errors, onDone }) {
         nominee_phone: bookingData.nominee_phone || "",
         phase: bookingData.phase || "",
         sector: bookingData.sector || "",
-        plot_or_file: bookingData.plot_or_file || order.unit?.code || "",
+        plot_or_file: bookingData.plot_or_file || order.unit?.name || "",
         category: bookingData.category || "standard",
         premium: bookingData.premium ? String(bookingData.premium) : "0",
         discount: bookingData.discount ? String(bookingData.discount) : "0",
@@ -162,7 +216,7 @@ function BookingKycForm({ order, deal, errors, onDone }) {
             className="space-y-3"
             onSubmit={(event) => {
                 event.preventDefault();
-                post(booking.url(order.code), form, "Booking verified", onDone);
+                post(booking.url(order.code), form, "Token verified", onDone);
             }}
         >
             <div className="grid gap-3 sm:grid-cols-2">
@@ -235,9 +289,29 @@ function BookingKycForm({ order, deal, errors, onDone }) {
                 />
             </div>
             <DialogFooter>
-                <Button type="submit">Save & continue</Button>
+                <Button type="submit">Verify token</Button>
             </DialogFooter>
         </form>
+    );
+}
+
+function EnterKycForm({ order, onDone }) {
+    return (
+        <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+                Move this file into Booking &amp; KYC so the payment plan can be prepared.
+            </p>
+            <DialogFooter>
+                <Button
+                    type="button"
+                    onClick={() =>
+                        post(enterBookingKyc.url(order.code), {}, "Entered Booking & KYC", onDone)
+                    }
+                >
+                    Enter Booking &amp; KYC
+                </Button>
+            </DialogFooter>
+        </div>
     );
 }
 
@@ -371,9 +445,10 @@ function PlanForm({ order, deal, errors, onDone }) {
 }
 
 function PaymentForm({ order, deal, errors, onDone }) {
+    const methods = paymentMethodOptions(deal);
     const [form, setForm] = useState({
-        amount: "",
-        method: "pay_order",
+        amount: null,
+        method: methods[0] || "Cash",
         reference: "",
         paid_on: new Date().toISOString().slice(0, 10),
         notes: "",
@@ -393,25 +468,24 @@ function PaymentForm({ order, deal, errors, onDone }) {
                 {formatMoney(deal?.ledger?.total_paid)}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
-                <Input
+                <NumberInput
                     label="Amount"
                     required
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    min={0.01}
+                    step={0.01}
+                    allowDecimal
                     value={form.amount}
                     error={errors.amount}
-                    onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
+                    onChange={(value) => setForm((current) => ({ ...current, amount: value }))}
                 />
-                <SelectBox
+                <ComboBox
                     label="Method"
+                    required
                     value={form.method}
-                    options={[
-                        { value: "pay_order", label: "Pay order" },
-                        { value: "cheque", label: "Cheque" },
-                        { value: "bank_transfer", label: "Bank transfer" },
-                    ]}
-                    onValueChange={(value) => setForm((current) => ({ ...current, method: value || "pay_order" }))}
+                    options={methods}
+                    placeholder="Cash, Pay order..."
+                    error={errors.method}
+                    onValueChange={(value) => setForm((current) => ({ ...current, method: value || methods[0] || "Cash" }))}
                 />
                 <DatePicker
                     label="Paid on"
@@ -424,6 +498,29 @@ function PaymentForm({ order, deal, errors, onDone }) {
                     value={form.reference}
                     onChange={(event) => setForm((current) => ({ ...current, reference: event.target.value }))}
                 />
+            </div>
+            <div className="space-y-1.5">
+                <p className="text-label font-medium text-muted-foreground">Proof of payment</p>
+                <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors hover:bg-muted/40">
+                    <Icon name="upload-2-line" className="shrink-0 text-base text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-foreground">
+                        {form.receipt?.name || "Upload an image or PDF"}
+                    </span>
+                    <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        className="sr-only"
+                        onChange={(event) =>
+                            setForm((current) => ({
+                                ...current,
+                                receipt: event.target.files?.[0] || null,
+                            }))
+                        }
+                    />
+                </label>
+                {errors.receipt ? (
+                    <p className="text-[13px] text-destructive">{errors.receipt}</p>
+                ) : null}
             </div>
             <DialogFooter>
                 <Button type="submit">Record payment</Button>
@@ -471,6 +568,115 @@ function BallotForm({ order, deal, errors, onDone }) {
     );
 }
 
+function TransferForm({ order, deal, errors, onDone }) {
+    const [buyer, setBuyer] = useState({
+        first_name: "",
+        last_name: "",
+        phone_number: "",
+        cnic: "",
+        ndc_cleared: false,
+        notes: "",
+    });
+
+    return (
+        <form
+            className="space-y-3"
+            onSubmit={(event) => {
+                event.preventDefault();
+                post(
+                    transfer.url(order.code),
+                    { ...buyer, ndc_cleared: buyer.ndc_cleared ? 1 : 0 },
+                    "File transferred",
+                    onDone,
+                );
+            }}
+        >
+            <p className="text-sm text-muted-foreground">
+                Transfer stays on Active with the new buyer. Payment history remains on this file.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                    label="New buyer"
+                    required
+                    value={buyer.first_name}
+                    error={errors.first_name}
+                    onChange={(event) => setBuyer((current) => ({ ...current, first_name: event.target.value }))}
+                />
+                <Input
+                    label="Last name"
+                    value={buyer.last_name}
+                    onChange={(event) => setBuyer((current) => ({ ...current, last_name: event.target.value }))}
+                />
+                <Input
+                    label="Phone"
+                    required
+                    value={buyer.phone_number}
+                    error={errors.phone_number}
+                    onChange={(event) => setBuyer((current) => ({ ...current, phone_number: event.target.value }))}
+                />
+                <Input
+                    label="CNIC"
+                    value={buyer.cnic}
+                    onChange={(event) => setBuyer((current) => ({ ...current, cnic: event.target.value }))}
+                />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+                <input
+                    type="checkbox"
+                    checked={buyer.ndc_cleared}
+                    onChange={(event) =>
+                        setBuyer((current) => ({ ...current, ndc_cleared: event.target.checked }))
+                    }
+                />
+                No Demand Certificate cleared
+            </label>
+            {(deal?.transfers || []).length > 0 ? (
+                <ul className="space-y-1.5 rounded-md border border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                    {deal.transfers.map((row) => (
+                        <li key={row.id}>
+                            {row.from || "Previous"} → {row.to || "New"} · Outstanding{" "}
+                            {formatMoney(row.outstanding)}
+                        </li>
+                    ))}
+                </ul>
+            ) : null}
+            <DialogFooter>
+                <Button type="submit">Transfer file</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+
+function LitigationForm({ order, deal, onDone }) {
+    const inLitigation = deal?.status === "litigation" || order?.status === "litigation";
+
+    return (
+        <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+                {inLitigation
+                    ? "Clear litigation to resume the normal Active status flow."
+                    : "Mark this Active booking as under litigation."}
+            </p>
+            <DialogFooter>
+                <Button
+                    type="button"
+                    variant={inLitigation ? "outline" : "destructive"}
+                    onClick={() =>
+                        post(
+                            litigation.url(order.code),
+                            { litigation: !inLitigation },
+                            inLitigation ? "Litigation cleared" : "Litigation set",
+                            onDone,
+                        )
+                    }
+                >
+                    {inLitigation ? "Clear litigation" : "Set litigation"}
+                </Button>
+            </DialogFooter>
+        </div>
+    );
+}
+
 function HandoverForm({ order, deal, errors, onDone }) {
     const checklist = deal?.checklist || {};
     const [form, setForm] = useState({
@@ -515,14 +721,14 @@ function DeliverForm({ order, onDone }) {
     return (
         <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-                Confirm delivery to mark this booking complete and set the unit as sold.
+                Confirm completion to close this booking and set the unit as sold.
             </p>
             <DialogFooter>
                 <Button
                     type="button"
-                    onClick={() => post(deliver.url(order.code), {}, "Booking delivered", onDone)}
+                    onClick={() => post(deliver.url(order.code), {}, "Booking completed", onDone)}
                 >
-                    Confirm delivery
+                    Complete booking
                 </Button>
             </DialogFooter>
         </div>

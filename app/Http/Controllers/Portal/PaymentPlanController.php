@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PaymentInstallment;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -13,22 +14,56 @@ class PaymentPlanController extends Controller
 {
     public function index(Request $request): Response
     {
-        $paginator = PaymentInstallment::query()
+        $month = $request->string('month')->toString();
+        $from = $request->string('from')->toString();
+        $to = $request->string('to')->toString();
+        $hasHistoryFilter = filled($month) || filled($from) || filled($to);
+
+        $query = PaymentInstallment::query()
             ->with([
                 'plan.order:id,code,status,contact_id,unit_id',
                 'plan.order.contact:id,first_name,last_name',
                 'plan.order.unit:id,code,name',
-            ])
-            ->orderByRaw("case when status = 'pending' then 0 else 1 end")
+            ]);
+
+        if ($hasHistoryFilter) {
+            if (filled($month) && preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+                $start = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+                $end = $start->copy()->endOfMonth();
+                $query->whereDate('due_on', '>=', $start->toDateString())
+                    ->whereDate('due_on', '<=', $end->toDateString());
+            }
+
+            if (filled($from)) {
+                $query->whereDate('due_on', '>=', $from);
+            }
+
+            if (filled($to)) {
+                $query->whereDate('due_on', '<=', $to);
+            }
+        } else {
+            $query->where('status', PaymentInstallment::STATUS_PENDING);
+        }
+
+        $paginator = $query
             ->orderBy('due_on')
             ->orderBy('id')
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('receivables/installments', [
+            'filters' => [
+                'month' => $month !== '' ? $month : null,
+                'from' => $from !== '' ? $from : null,
+                'to' => $to !== '' ? $to : null,
+                'mode' => $hasHistoryFilter ? 'history' : 'upcoming',
+            ],
             'installments' => $paginator->getCollection()->map(function (PaymentInstallment $row): array {
                 $order = $row->plan?->order;
                 $contact = $order?->contact;
+                $overdue = $row->isPending()
+                    && $row->due_on !== null
+                    && $row->due_on->lt(today());
 
                 return [
                     'id' => $row->id,
@@ -37,6 +72,7 @@ class PaymentPlanController extends Controller
                     'amount' => (float) $row->amount,
                     'due_on' => $row->due_on?->toDateString(),
                     'status' => $row->status,
+                    'overdue' => $overdue,
                     'paid_at' => $row->paid_at?->toIso8601String(),
                     'order' => $order ? [
                         'id' => $order->id,

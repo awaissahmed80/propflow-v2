@@ -257,7 +257,7 @@ export default function LeadForm({
                     </DialogTitle>
                     <DialogDescription>
                         {isEditing
-                            ? `Update details for ${data?.code || "this lead"}.`
+                            ? `Update details for ${data?.contact?.display_name || "this lead"}.`
                             : "Add a lead contact. Matching phone or email reuses an existing contact."}
                     </DialogDescription>
                 </DialogHeader>
@@ -267,15 +267,6 @@ export default function LeadForm({
                     onSubmit={handleSubmit(onSubmit)}
                 >
                     <div className="space-y-4">
-                        {isEditing && data?.code ? (
-                            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                                <span className="text-muted-foreground">Code </span>
-                                <span className="font-medium text-foreground">
-                                    {data.code}
-                                </span>
-                            </div>
-                        ) : null}
-
                         <Input
                             label="Name"
                             required
@@ -385,11 +376,6 @@ export default function LeadForm({
                                                             >
                                                                 {project.title}
                                                             </span>
-                                                            {project.code ? (
-                                                                <span className="block truncate text-xs text-muted-foreground">
-                                                                    {project.code}
-                                                                </span>
-                                                            ) : null}
                                                         </span>
                                                         {selected ? (
                                                             <Icon

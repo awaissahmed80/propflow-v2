@@ -10,7 +10,12 @@ import { formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import BookingDetailPanel from "./booking-detail-panel";
-import { resolveBookingStages, stageTitle } from "./booking-stage-dialogs";
+import {
+    resolveBookingStages,
+    stageTitle,
+    statusColor,
+    statusTitle,
+} from "./booking-stage-dialogs";
 
 function bookingCodeFromLocation() {
     if (typeof window === "undefined") {
@@ -51,30 +56,28 @@ function writeBookingHash(code) {
 }
 
 function stageMeta(order, orderStages = []) {
-    if (order?.status === "cancelled") {
-        return { label: "Cancelled", color: "#94A3B8", id: "cancelled" };
-    }
-
-    if (order?.status === "delivered" || order?.stage === "delivered") {
-        return {
-            label: stageTitle("delivered", orderStages),
-            color: orderStages.find((s) => s.label === "delivered")?.color || "#059669",
-            id: "delivered",
-        };
-    }
-
-    const match = (orderStages || []).find((item) => item.label === order?.stage);
+    const stage = order?.stage || "token";
+    const status = order?.status || "hold";
+    const match = (orderStages || []).find((item) => item.label === stage);
+    const color =
+        statusColor(status, stage, orderStages) || match?.color || "#3B82F6";
+    const statusLabel = statusTitle(status, stage, orderStages);
 
     return {
-        label: stageTitle(order?.stage, orderStages),
-        color: match?.color || "#3B82F6",
-        id: order?.stage || "booking",
+        label: statusLabel
+            ? `${stageTitle(stage, orderStages)} · ${statusLabel}`
+            : stageTitle(stage, orderStages),
+        color,
+        id: stage,
+        status,
     };
 }
 
 function stageProgressIndex(stageId, stages) {
-    if (stageId === "delivered" || stageId === "cancelled") {
-        return stages.length;
+    if (stageId === "closed" || stageId === "cancelled" || stageId === "completed") {
+        const closed = stages.findIndex((item) => item.id === "closed");
+
+        return closed < 0 ? stages.length : closed;
     }
 
     const index = stages.findIndex((item) => item.id === stageId);
@@ -110,34 +113,58 @@ function MiniStageRail({ stageId, stages, color }) {
     );
 }
 
-export default function BookingsIndex({ orders, pagination, openedBooking = null, orderStages = [] }) {
+export default function BookingsIndex({
+    orders,
+    pagination,
+    openedBooking = null,
+    orderStages = [],
+    projects = [],
+    assignees = [],
+    activityTypes = [],
+}) {
     const pending = isPagePending(orders);
     const rows = orders ?? [];
     const pager = pagination ?? { current_page: 1, last_page: 1, total: 0 };
     const stages = useMemo(() => resolveBookingStages(orderStages), [orderStages]);
+    const statusOptions = useMemo(() => {
+        return stages.flatMap((stage) =>
+            (stage.statuses || [])
+                .filter((status) => status.is_enabled !== false)
+                .map((status) => ({
+                    value: `${stage.id}:${status.label}`,
+                    stage: stage.id,
+                    status: status.label,
+                    label: `${stage.label} · ${status.title || status.label}`,
+                    color: status.color || stage.color,
+                })),
+        );
+    }, [stages]);
     const [selectedCode, setSelectedCode] = useState(
         () => openedBooking?.order?.code || bookingCodeFromLocation(),
     );
     const [stageFilter, setStageFilter] = useState("all");
+    const [statusFilter, setStatusFilter] = useState("all");
     const openBookingCode = useRef(selectedCode || null);
     const requestedBookingCode = useRef(null);
 
     const filteredRows = useMemo(() => {
-        if (stageFilter === "all") {
-            return rows;
-        }
+        return rows.filter((order) => {
+            if (stageFilter !== "all" && order.stage !== stageFilter) {
+                return false;
+            }
 
-        if (stageFilter === "delivered") {
-            return rows.filter(
-                (order) => order.status === "delivered" || order.stage === "delivered",
-            );
-        }
+            if (statusFilter !== "all" && order.status !== statusFilter) {
+                return false;
+            }
 
-        return rows.filter((order) => order.stage === stageFilter && order.status !== "delivered");
-    }, [rows, stageFilter]);
+            return true;
+        });
+    }, [rows, stageFilter, statusFilter]);
 
     const stats = useMemo(() => {
-        const active = rows.filter((order) => order.status !== "delivered").length;
+        const active = rows.filter(
+            (order) => order.stage !== "closed" && order.status !== "cancelled",
+        ).length;
         const unpaid = rows.reduce((sum, order) => sum + (Number(order.unpaid_count) || 0), 0);
 
         return {
@@ -244,7 +271,7 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                     <div className="min-w-0 flex-1">
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">Bookings</h1>
                         <p className="mt-0.5 text-sm text-muted-foreground">
-                            Contract files in motion — from KYC through handover.
+                            Contract files in motion — token through closed.
                         </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -275,13 +302,16 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                     </div>
                 </Layout.Toolbar>
 
-                <div className="border-b border-border/70 bg-background px-6 py-2.5">
+                <div className="space-y-2 border-b border-border/70 bg-background px-6 py-2.5">
                     <div className="flex gap-1.5 overflow-x-auto pb-0.5">
                         <button
                             type="button"
-                            onClick={() => setStageFilter("all")}
+                            onClick={() => {
+                                setStageFilter("all");
+                                setStatusFilter("all");
+                            }}
                             className={cn(
-                                "inline-flex shrink-0 items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                                "inline-flex shrink-0 items-center rounded-md border px-3 py-1 text-xs font-medium transition-colors",
                                 stageFilter === "all"
                                     ? "border-primary/40 bg-primary/10 text-primary"
                                     : "border-border bg-background text-muted-foreground hover:text-foreground",
@@ -293,9 +323,12 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                             <button
                                 key={stage.id}
                                 type="button"
-                                onClick={() => setStageFilter(stage.id)}
+                                onClick={() => {
+                                    setStageFilter(stage.id);
+                                    setStatusFilter("all");
+                                }}
                                 className={cn(
-                                    "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                                    "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-medium transition-colors",
                                     stageFilter === stage.id
                                         ? "border-primary/40 bg-primary/10 text-primary"
                                         : "border-border bg-background text-muted-foreground hover:text-foreground",
@@ -308,19 +341,48 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                                 {stage.label}
                             </button>
                         ))}
-                        <button
-                            type="button"
-                            onClick={() => setStageFilter("delivered")}
-                            className={cn(
-                                "inline-flex shrink-0 items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                                stageFilter === "delivered"
-                                    ? "border-primary/40 bg-primary/10 text-primary"
-                                    : "border-border bg-background text-muted-foreground hover:text-foreground",
-                            )}
-                        >
-                            Delivered
-                        </button>
                     </div>
+                    {statusOptions.length > 0 ? (
+                        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                            <button
+                                type="button"
+                                onClick={() => setStatusFilter("all")}
+                                className={cn(
+                                    "inline-flex shrink-0 items-center rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                    statusFilter === "all"
+                                        ? "border-primary/40 bg-primary/10 text-primary"
+                                        : "border-border bg-background text-muted-foreground hover:text-foreground",
+                                )}
+                            >
+                                Any status
+                            </button>
+                            {(stageFilter === "all"
+                                ? statusOptions
+                                : statusOptions.filter((option) => option.stage === stageFilter)
+                            ).map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setStatusFilter(option.status)}
+                                    className={cn(
+                                        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                        statusFilter === option.status
+                                            ? "border-primary/40 bg-primary/10 text-primary"
+                                            : "border-border bg-background text-muted-foreground hover:text-foreground",
+                                    )}
+                                >
+                                    <span
+                                        className="size-1.5 rounded-full"
+                                        style={{
+                                            backgroundColor:
+                                                option.color || "var(--muted-foreground)",
+                                        }}
+                                    />
+                                    {option.label.split(" · ").pop()}
+                                </button>
+                            ))}
+                        </div>
+                    ) : null}
                 </div>
 
                 <div
@@ -345,13 +407,16 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                                         ? "Close a lead as won to open the first contract file."
                                         : "Try another stage filter or clear the selection."}
                                 </p>
-                                {stageFilter !== "all" ? (
+                                {stageFilter !== "all" || statusFilter !== "all" ? (
                                     <Button
                                         type="button"
                                         variant="outline"
                                         size="sm"
                                         className="mt-4"
-                                        onClick={() => setStageFilter("all")}
+                                        onClick={() => {
+                                            setStageFilter("all");
+                                            setStatusFilter("all");
+                                        }}
                                     >
                                         Show all bookings
                                     </Button>
@@ -370,7 +435,7 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                                             type="button"
                                             onClick={() => openBooking(order.code)}
                                             className={cn(
-                                                "group relative w-full overflow-hidden rounded-2xl border text-left transition-all duration-200",
+                                                "group relative w-full cursor-pointer overflow-hidden rounded-2xl border text-left transition-all duration-200",
                                                 active
                                                     ? "border-primary/35 bg-primary/[0.06] shadow-sm ring-1 ring-primary/15"
                                                     : "border-border/80 bg-background hover:border-border hover:bg-muted/25 hover:shadow-xs",
@@ -381,17 +446,24 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                                                 style={{ backgroundColor: meta.color }}
                                                 aria-hidden
                                             />
-                                            <div className="flex flex-col gap-3 px-4 py-3.5 pl-5 sm:flex-row sm:items-center">
-                                                <div className="flex min-w-0 flex-1 items-start gap-3">
+                                            <div
+                                                className={cn(
+                                                    "grid items-center gap-x-6 gap-y-3 px-4 py-3.5 pl-5",
+                                                    panelOpen
+                                                        ? "sm:grid-cols-2"
+                                                        : "md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(11rem,0.85fr)]",
+                                                )}
+                                            >
+                                                <div className="flex min-w-0 items-center gap-3">
                                                     <Avatar
                                                         name={buyer}
                                                         size="sm"
-                                                        className="mt-0.5 size-9 shrink-0"
+                                                        className="size-9 shrink-0"
                                                     />
-                                                    <div className="min-w-0 flex-1">
+                                                    <div className="min-w-0">
                                                         <div className="flex flex-wrap items-center gap-2">
-                                                            <span className="font-mono text-sm font-semibold tracking-tight text-foreground">
-                                                                {order.code}
+                                                            <span className="truncate text-sm font-semibold text-foreground">
+                                                                {buyer}
                                                             </span>
                                                             <span className="rounded-md border border-border/80 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
                                                                 {order.booking_kind || "booking"}
@@ -402,46 +474,85 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                                                                 </span>
                                                             ) : null}
                                                         </div>
-                                                        <p className="mt-0.5 truncate text-sm text-foreground">
-                                                            {buyer}
-                                                        </p>
                                                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                                                            {[order.project?.title, order.unit?.code || order.unit?.name]
-                                                                .filter(Boolean)
-                                                                .join(" · ") || "No unit linked"}
+                                                            {order.contact?.phone_number ||
+                                                                order.contact?.email_address ||
+                                                                "No contact details"}
                                                         </p>
                                                     </div>
                                                 </div>
 
-                                                <div className="flex shrink-0 items-center gap-4 sm:w-56 sm:flex-col sm:items-end sm:gap-2">
-                                                    <div className="text-left sm:text-right">
-                                                        <p className="text-sm font-semibold tabular-nums text-foreground">
-                                                            {formatMoney(order.agreed_price)}
-                                                        </p>
-                                                        <p className="text-[11px] text-muted-foreground">
-                                                            {formatDateTime(order.booked_at) || "—"}
-                                                        </p>
-                                                    </div>
-                                                    <div className="min-w-0 flex-1 sm:w-full">
-                                                        <div className="mb-1.5 flex items-center justify-between gap-2">
-                                                            <span
-                                                                className="inline-flex items-center gap-1.5 truncate text-xs font-medium"
-                                                                style={{ color: meta.color }}
-                                                            >
-                                                                <span
-                                                                    className="size-1.5 shrink-0 rounded-full"
-                                                                    style={{ backgroundColor: meta.color }}
-                                                                />
-                                                                {meta.label}
-                                                            </span>
-                                                            <Icon
-                                                                name="arrow-right-s-line"
-                                                                className={cn(
-                                                                    "shrink-0 text-muted-foreground transition-transform",
-                                                                    active && "translate-x-0.5 text-primary",
-                                                                )}
+                                                <div className="min-w-0 space-y-1.5">
+                                                    <div className="flex min-w-0 items-center gap-2">
+                                                        {order.project?.thumbnail ? (
+                                                            <img
+                                                                src={order.project.thumbnail}
+                                                                alt=""
+                                                                className="size-7 shrink-0 rounded-md object-cover"
                                                             />
+                                                        ) : (
+                                                            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                                                                <Icon name="community-line" className="text-sm" />
+                                                            </span>
+                                                        )}
+                                                        <span className="truncate text-sm font-medium text-foreground">
+                                                            {order.project?.title || "No project"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex min-w-0 items-center gap-2">
+                                                        {order.assignee ? (
+                                                            <>
+                                                                <Avatar
+                                                                    name={order.assignee.display_name}
+                                                                    src={order.assignee.avatar || undefined}
+                                                                    size="sm"
+                                                                    className="size-7 shrink-0"
+                                                                    textClass="text-[9px]"
+                                                                />
+                                                                <span className="truncate text-sm text-foreground">
+                                                                    {order.assignee.display_name}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-sm text-muted-foreground">
+                                                                Unassigned
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="truncate text-xs text-muted-foreground">
+                                                        {order.unit?.name || "No unit linked"}
+                                                    </p>
+                                                </div>
+
+                                                <div className={cn("min-w-0", panelOpen && "sm:col-span-2")}>
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-semibold tabular-nums text-foreground">
+                                                                {formatMoney(order.agreed_price)}
+                                                            </p>
+                                                            <p className="text-[11px] text-muted-foreground">
+                                                                {formatDateTime(order.booked_at) || "—"}
+                                                            </p>
                                                         </div>
+                                                        <Icon
+                                                            name="arrow-right-s-line"
+                                                            className={cn(
+                                                                "mt-0.5 shrink-0 text-muted-foreground transition-transform",
+                                                                active && "translate-x-0.5 text-primary",
+                                                            )}
+                                                        />
+                                                    </div>
+                                                    <div className="mt-2">
+                                                        <span
+                                                            className="mb-1.5 inline-flex max-w-full items-center gap-1.5 truncate text-xs font-medium"
+                                                            style={{ color: meta.color }}
+                                                        >
+                                                            <span
+                                                                className="size-1.5 shrink-0 rounded-full"
+                                                                style={{ backgroundColor: meta.color }}
+                                                            />
+                                                            {meta.label}
+                                                        </span>
                                                         <MiniStageRail
                                                             stageId={meta.id}
                                                             stages={stages}
@@ -504,6 +615,9 @@ export default function BookingsIndex({ orders, pagination, openedBooking = null
                                 <BookingDetailPanel
                                     payload={openedBooking}
                                     orderStages={orderStages}
+                                    projects={projects}
+                                    assignees={assignees}
+                                    activityTypes={activityTypes}
                                     onClose={closePanel}
                                 />
                             ) : null}

@@ -39,23 +39,39 @@ class OrderStage extends Model
     public static function defaultDefinitions(): array
     {
         return [
-            ['label' => Order::STAGE_BOOKING, 'title' => 'Booking & KYC', 'priority' => 1, 'color' => '#3B82F6', 'is_system' => true, 'is_enabled' => true],
-            ['label' => Order::STAGE_PLAN, 'title' => 'Payment plan', 'priority' => 2, 'color' => '#8B5CF6', 'is_system' => true, 'is_enabled' => true],
-            ['label' => Order::STAGE_TRACKING, 'title' => 'Installments', 'priority' => 3, 'color' => '#06B6D4', 'is_system' => true, 'is_enabled' => true],
-            ['label' => Order::STAGE_TRANSFER, 'title' => 'Balloting', 'priority' => 4, 'color' => '#F59E0B', 'is_system' => true, 'is_enabled' => true],
-            ['label' => Order::STAGE_HANDOVER, 'title' => 'Handover', 'priority' => 5, 'color' => '#F97316', 'is_system' => true, 'is_enabled' => true],
-            ['label' => Order::STAGE_DELIVERED, 'title' => 'Delivered', 'priority' => 6, 'color' => '#059669', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STAGE_TOKEN, 'title' => 'Token', 'priority' => 1, 'color' => '#3B82F6', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STAGE_BOOKING_KYC, 'title' => 'Booking & KYC', 'priority' => 2, 'color' => '#8B5CF6', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STAGE_ACTIVE, 'title' => 'Active', 'priority' => 3, 'color' => '#06B6D4', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STAGE_CLOSED, 'title' => 'Closed', 'priority' => 4, 'color' => '#059669', 'is_system' => true, 'is_enabled' => true],
         ];
     }
 
     public static function ensureDefaults(): void
     {
-        if (static::query()->exists()) {
-            return;
+        OrderStatus::ensureDefaults();
+
+        $defaults = collect(static::defaultDefinitions())->keyBy('label');
+        $existing = static::query()->get()->keyBy('label');
+
+        foreach ($defaults as $label => $definition) {
+            if ($existing->has($label)) {
+                continue;
+            }
+
+            static::query()->create($definition);
         }
 
-        foreach (static::defaultDefinitions() as $definition) {
-            static::query()->create($definition);
+        // Drop legacy non-system or obsolete stage keys that are not in the fixed catalog.
+        static::query()
+            ->whereNotIn('label', $defaults->keys()->all())
+            ->delete();
+
+        foreach ($defaults as $label => $definition) {
+            static::query()->where('label', $label)->update([
+                'priority' => $definition['priority'],
+                'is_system' => true,
+                'is_enabled' => true,
+            ]);
         }
     }
 
@@ -90,7 +106,7 @@ class OrderStage extends Model
     public static function titleFor(?string $label, ?string $fallback = null): string
     {
         if ($label === null || $label === '') {
-            return $fallback ?? 'Booking & KYC';
+            return $fallback ?? 'Token';
         }
 
         static::ensureDefaults();
