@@ -20,6 +20,8 @@ class UpdateRoleRequest extends FormRequest
      */
     public function rules(): array
     {
+        $role = $this->route('role');
+
         return [
             'name' => [
                 'required',
@@ -27,7 +29,7 @@ class UpdateRoleRequest extends FormRequest
                 'max:255',
                 Rule::unique(Role::class, 'name')
                     ->where(fn ($query) => $query->where('guard_name', 'web'))
-                    ->ignore((int) $this->route('role')),
+                    ->ignore($role instanceof Role ? $role->id : null),
             ],
             'description' => ['nullable', 'string', 'max:1000'],
             'permissions' => ['nullable', 'array'],

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Database\Factories\UnitFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -30,7 +31,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Unit extends Model
 {
     /** @use HasFactory<UnitFactory> */
-    use HasFactory, SoftDeletes;
+    use HasFactory, LogUserActivity, SoftDeletes;
 
     public const STATUS_AVAILABLE = 'AVAILABLE';
 
@@ -71,6 +72,11 @@ class Unit extends Model
             'features' => 'array',
             'pricing' => 'array',
         ];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'code';
     }
 
     public static function boot(): void

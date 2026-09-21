@@ -12,6 +12,7 @@ import {
   applyLibrarySelection,
   uploadLibraryFiles,
   useLibrarySelection,
+  useReportLibrarySelection,
 } from "@/components/asset-library-shell"
 import { cn } from "@/lib/utils"
 import { destroyLibraryFile, fetchLibrary } from "@/lib/assets"
@@ -36,10 +37,12 @@ function MediaManager({
   assetableId,
   linkage = "GALLERY",
   selectedIds = EMPTY_SELECTED_IDS,
+  selectable: selectableProp,
+  onSelectionChange,
   onApplied,
 }) {
   const isOpen = embedded || open
-  const selectable = !embedded
+  const selectable = selectableProp ?? !embedded
   const [items, setItems] = useState([])
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
@@ -61,6 +64,14 @@ function MediaManager({
     enabled: selectable,
   })
 
+  useReportLibrarySelection({
+    selection,
+    items,
+    kind: "media",
+    enabled: selectable && typeof onSelectionChange === "function",
+    onSelectionChange,
+  })
+
   useEffect(() => {
     if (!isOpen) {
       return
@@ -68,7 +79,7 @@ function MediaManager({
 
     setQuery("")
     void loadItems("")
-  }, [isOpen, selectedIds])
+  }, [isOpen])
 
   const loadItems = async (nextQuery) => {
     setLoading(true)

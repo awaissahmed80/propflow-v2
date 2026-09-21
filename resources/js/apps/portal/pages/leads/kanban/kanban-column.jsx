@@ -90,8 +90,8 @@ export function KanbanColumn({
 
         try {
             const page = await fetchBoardColumn({
-                stageId,
-                cursor: String(nextCursor),
+                stageId: column.stage.label,
+                cursor: nextCursor == null ? undefined : String(nextCursor),
                 ...filterParams,
             }).unwrap();
 

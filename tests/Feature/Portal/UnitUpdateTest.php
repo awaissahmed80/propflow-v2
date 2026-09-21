@@ -44,7 +44,7 @@ class UnitUpdateTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $response = $this->put(Domain::portal('/units/'.$unitId), [
+        $response = $this->put(Domain::portal('/units/'.$code), [
             'project_id' => $project->id,
             'name' => 'New Name',
             'status' => Unit::STATUS_RESERVED,

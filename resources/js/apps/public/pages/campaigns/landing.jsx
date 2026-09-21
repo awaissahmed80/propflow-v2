@@ -7,6 +7,7 @@ export default function CampaignLanding({
     form,
     submitUrl,
     tenantIdentifier,
+    isPreview = false,
 }) {
     const [values, setValues] = useState(() => {
         const initial = {};
@@ -86,6 +87,12 @@ export default function CampaignLanding({
         <>
             <Head title={landing.headline || campaign.title} />
             <div className="min-h-dvh bg-slate-950 text-slate-50">
+                {isPreview ? (
+                    <div className="border-b border-amber-400/30 bg-amber-400/15 px-4 py-2.5 text-center text-sm text-amber-100">
+                        Preview mode — this campaign is not live yet. Set status to{" "}
+                        <span className="font-semibold">Active</span> to publish.
+                    </div>
+                ) : null}
                 <div
                     className="relative overflow-hidden border-b border-white/10"
                     style={{

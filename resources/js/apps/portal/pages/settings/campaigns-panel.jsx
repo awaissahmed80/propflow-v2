@@ -14,6 +14,7 @@ import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import CampaignFormFieldsPanel from "./campaign-form-fields-panel";
 import { cn } from "@/lib/utils";
 
 function pathFrom(url) {
@@ -251,7 +252,10 @@ function SortableGoalCard({
     );
 }
 
-export default function CampaignsPanel({ campaignGoalTypes = [] }) {
+export default function CampaignsPanel({
+    campaignGoalTypes = [],
+    campaignFormFields = [],
+}) {
     const [items, setItems] = useState(campaignGoalTypes);
     const itemsRef = useRef(campaignGoalTypes);
     const [adding, setAdding] = useState(false);
@@ -325,7 +329,9 @@ export default function CampaignsPanel({ campaignGoalTypes = [] }) {
             prev.map((goal) => (goal.id === id ? { ...goal, ...payload } : goal))
         );
 
-        router.put(pathFrom(updateGoalType.url(id)), payload, {
+        const goal = items.find((item) => item.id === id);
+
+        router.put(pathFrom(updateGoalType.url(goal?.label ?? id)), payload, {
             preserveScroll: true,
             optimistic: (props) => ({
                 campaignGoalTypes: (props.campaignGoalTypes ?? []).map((goal) =>
@@ -392,7 +398,7 @@ export default function CampaignsPanel({ campaignGoalTypes = [] }) {
         }
 
         setProcessing(true);
-        router.delete(pathFrom(destroyGoalType.url(goal.id)), {
+        router.delete(pathFrom(destroyGoalType.url(goal.label)), {
             preserveScroll: true,
             onSuccess: () => toast.success("Campaign goal deleted"),
             onError: (errors) =>
@@ -402,18 +408,18 @@ export default function CampaignsPanel({ campaignGoalTypes = [] }) {
     };
 
     return (
-        <div className="space-y-8">
-            <section className="space-y-4">
-                <div>
-                    <h3 className="text-base font-semibold tracking-tight text-foreground">
-                        Campaign goals
-                    </h3>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                        Metrics available when creating campaigns — drag to reorder.
-                    </p>
-                </div>
+        <DndProvider backend={HTML5Backend}>
+            <div className="space-y-8">
+                <section className="space-y-4">
+                    <div>
+                        <h3 className="text-base font-semibold tracking-tight text-foreground">
+                            Campaign goals
+                        </h3>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                            Metrics available when creating campaigns — drag to reorder.
+                        </p>
+                    </div>
 
-                <DndProvider backend={HTML5Backend}>
                     <div className="space-y-2">
                         {items.length === 0 && !adding ? (
                             <div className="rounded-xl border border-dashed border-border/70 bg-muted/15 px-4 py-8 text-center text-sm text-muted-foreground">
@@ -507,8 +513,10 @@ export default function CampaignsPanel({ campaignGoalTypes = [] }) {
                             </button>
                         )}
                     </div>
-                </DndProvider>
-            </section>
-        </div>
+                </section>
+
+                <CampaignFormFieldsPanel campaignFormFields={campaignFormFields} />
+            </div>
+        </DndProvider>
     );
 }

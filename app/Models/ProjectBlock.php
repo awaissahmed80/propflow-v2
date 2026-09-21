@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Database\Factories\ProjectBlockFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -17,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ProjectBlock extends Model
 {
     /** @use HasFactory<ProjectBlockFactory> */
-    use HasFactory;
+    use HasFactory, LogUserActivity;
 
     /**
      * @return BelongsTo<Project, $this>

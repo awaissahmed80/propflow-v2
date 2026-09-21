@@ -4,17 +4,21 @@ namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Portal\BulkLeadRequest;
+use App\Http\Requests\Portal\ConvertLeadRequest;
 use App\Http\Requests\Portal\StoreLeadRequest;
 use App\Http\Requests\Portal\UpdateLeadRequest;
 use App\Http\Resources\Portal\LeadResource;
 use App\Models\Lead;
 use App\Models\LeadStage;
 use App\Models\Project;
+use App\Models\Task;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Models\Unit;
 use App\Models\User;
+use App\Services\LeadActivity;
 use App\Services\LeadIntakeService;
+use App\Services\OrderService;
 use App\Support\AssetManager;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +35,8 @@ class LeadController extends Controller
     public function __construct(
         protected AssetManager $assets,
         protected LeadIntakeService $intake,
+        protected LeadActivity $activity,
+        protected OrderService $orders,
     ) {}
 
     public function index(Request $request): Response
@@ -41,7 +47,7 @@ class LeadController extends Controller
         [$filters, $leadsQuery] = $this->filteredLeadsQuery($request, archived: $view === 'archive');
 
         if ($view === 'kanban') {
-            return $this->kanbanIndex($leadsQuery, $filters);
+            return $this->kanbanIndex($request, $leadsQuery, $filters);
         }
 
         $paginator = (clone $leadsQuery)->paginate(20)->withQueryString();
@@ -52,6 +58,7 @@ class LeadController extends Controller
         return Inertia::render('leads/index', [
             'view' => $view === 'archive' ? 'archive' : 'table',
             'leads' => LeadResource::collection($leads)->resolve(),
+            'openedLead' => $this->openedLead($request),
             'board' => [],
             'pagination' => [
                 'current_page' => $paginator->currentPage(),
@@ -70,8 +77,8 @@ class LeadController extends Controller
     {
         [, $leadsQuery] = $this->filteredLeadsQuery($request, applyStageFilter: false, archived: false);
 
-        $cursor = $request->integer('cursor');
-        $page = $this->kanbanColumnPage($leadsQuery, $stage->id, $cursor > 0 ? $cursor : null);
+        $cursor = $request->string('cursor')->trim()->toString();
+        $page = $this->kanbanColumnPage($leadsQuery, $stage->id, $cursor !== '' ? $cursor : null);
 
         return response()->json($page);
     }
@@ -107,9 +114,19 @@ class LeadController extends Controller
         return to_route('portal.leads.index');
     }
 
+    public function convert(ConvertLeadRequest $request, Lead $lead): RedirectResponse
+    {
+        $order = $this->orders->book($lead, $request->validated(), $request->user()?->id);
+
+        return to_route('portal.orders.show', $order);
+    }
+
     public function update(UpdateLeadRequest $request, Lead $lead): RedirectResponse
     {
         $validated = $request->validated();
+
+        $previousStageId = $lead->lead_stage_id;
+        $previousAssigneeId = $lead->assigned_to;
 
         if (array_key_exists('contact', $validated) || array_key_exists('contact_id', $validated)) {
             [$contact] = $this->intake->resolveContact($this->contactPayload($validated), $lead);
@@ -139,6 +156,37 @@ class LeadController extends Controller
 
         $lead->save();
 
+        $actorId = $request->user()?->id;
+
+        if (
+            array_key_exists('lead_stage_id', $validated)
+            && ! $lead->isArchived()
+            && (int) $previousStageId !== (int) $lead->lead_stage_id
+        ) {
+            $titles = LeadStage::query()
+                ->whereIn('id', array_filter([$previousStageId, $lead->lead_stage_id]))
+                ->pluck('title', 'id');
+
+            $from = $titles->get($previousStageId) ?? 'None';
+            $to = $titles->get($lead->lead_stage_id) ?? 'None';
+
+            $this->activity->log($lead, 'Stage changed', $from.' → '.$to, $actorId);
+        }
+
+        if (
+            array_key_exists('assigned_to', $validated)
+            && (int) $previousAssigneeId !== (int) $lead->assigned_to
+        ) {
+            $names = User::query()
+                ->whereIn('id', array_filter([$previousAssigneeId, $lead->assigned_to]))
+                ->pluck('display_name', 'id');
+
+            $from = $names->get($previousAssigneeId) ?? 'Unassigned';
+            $to = $names->get($lead->assigned_to) ?? 'Unassigned';
+
+            $this->activity->log($lead, 'Assignee changed', $from.' → '.$to, $actorId);
+        }
+
         return back();
     }
 
@@ -149,6 +197,7 @@ class LeadController extends Controller
         }
 
         $lead->archive();
+        $this->activity->log($lead, 'Lead archived', null, request()->user()?->id);
 
         return back();
     }
@@ -167,6 +216,7 @@ class LeadController extends Controller
         }
 
         $lead->restoreFromArchive($fallbackStageId !== null ? (int) $fallbackStageId : null);
+        $this->activity->log($lead, 'Lead restored', null, request()->user()?->id);
 
         return back();
     }
@@ -237,9 +287,9 @@ class LeadController extends Controller
         if ($action === 'assign') {
             $assignedTo = $validated['assigned_to'] ?? null;
 
-            Lead::query()
-                ->whereIn('id', $ids)
-                ->update(['assigned_to' => $assignedTo]);
+            $leads->each(function (Lead $lead) use ($assignedTo): void {
+                $lead->update(['assigned_to' => $assignedTo]);
+            });
 
             return back();
         }
@@ -247,10 +297,10 @@ class LeadController extends Controller
         if ($action === 'stage') {
             $stageId = (int) $validated['lead_stage_id'];
 
-            Lead::query()
-                ->whereIn('id', $ids)
-                ->active()
-                ->update(['lead_stage_id' => $stageId]);
+            $leads->filter(fn (Lead $lead): bool => ! $lead->isArchived())
+                ->each(function (Lead $lead) use ($stageId): void {
+                    $lead->update(['lead_stage_id' => $stageId]);
+                });
 
             return back();
         }
@@ -268,7 +318,7 @@ class LeadController extends Controller
      *     assigned_to: list<string>
      * }  $filters
      */
-    protected function kanbanIndex(Builder $leadsQuery, array $filters): Response
+    protected function kanbanIndex(Request $request, Builder $leadsQuery, array $filters): Response
     {
         $stagesQuery = LeadStage::query()->orderBy('priority');
 
@@ -313,6 +363,7 @@ class LeadController extends Controller
         return Inertia::render('leads/index', [
             'view' => 'kanban',
             'leads' => $loadedLeads->all(),
+            'openedLead' => $this->openedLead($request),
             'board' => $board,
             'pagination' => [
                 'current_page' => 1,
@@ -329,29 +380,87 @@ class LeadController extends Controller
 
     /**
      * @param  Builder<Lead>  $leadsQuery
-     * @return array{leads: list<array<string, mixed>>, next_cursor: ?int, has_more: bool}
+     * @return array{leads: list<array<string, mixed>>, next_cursor: ?string, has_more: bool}
      */
-    protected function kanbanColumnPage(Builder $leadsQuery, int $stageId, ?int $cursor = null): array
+    protected function kanbanColumnPage(Builder $leadsQuery, int $stageId, ?string $cursor = null): array
     {
+        $cursorId = null;
+
+        if ($cursor !== null && $cursor !== '') {
+            $cursorId = Lead::query()->where('code', $cursor)->value('id');
+
+            if ($cursorId === null) {
+                return [
+                    'leads' => [],
+                    'next_cursor' => null,
+                    'has_more' => false,
+                ];
+            }
+        }
+
         $page = (clone $leadsQuery)
             ->where('lead_stage_id', $stageId)
-            ->when($cursor !== null, fn (Builder $builder) => $builder->where('id', '<', $cursor))
+            ->when($cursorId !== null, fn (Builder $builder) => $builder->where('id', '<', $cursorId))
             ->limit(self::KANBAN_COLUMN_PAGE_SIZE)
             ->get();
 
         $this->hydrateAssignees($page);
         $this->hydrateProjectThumbnails($page);
 
-        $nextCursor = $page->isEmpty() ? null : (int) $page->last()->id;
-        $hasMore = $nextCursor !== null && (clone $leadsQuery)
+        $last = $page->last();
+        $nextCursor = $last === null ? null : $last->code;
+        $hasMore = $last !== null && (clone $leadsQuery)
             ->where('lead_stage_id', $stageId)
-            ->where('id', '<', $nextCursor)
+            ->where('id', '<', $last->id)
             ->exists();
 
         return [
             'leads' => LeadResource::collection($page)->resolve(),
             'next_cursor' => $hasMore ? $nextCursor : null,
             'has_more' => $hasMore,
+        ];
+    }
+
+    /**
+     * Lead opened from a notification link, even when it is not on the current page.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function openedLead(Request $request): ?array
+    {
+        $code = $request->string('lead')->trim()->toString();
+
+        if ($code === '') {
+            return null;
+        }
+
+        $lead = Lead::query()->with($this->leadDetailRelations())->where('code', $code)->first();
+
+        if ($lead === null) {
+            return null;
+        }
+
+        $loaded = collect([$lead]);
+        $this->hydrateAssignees($loaded);
+        $this->hydrateProjectThumbnails($loaded);
+
+        return (new LeadResource($lead))->resolve();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function leadDetailRelations(): array
+    {
+        return [
+            'contact:id,first_name,last_name,email_address,phone_number',
+            'project:id,title,code',
+            'project.thumbnail.asset',
+            'unit:id,code,name,project_id,price,status',
+            'stage:id,label,title,color,priority',
+            'campaign:id,title,public_id',
+            'activeOrder',
+            'tasks' => fn ($query) => $query->with(['gallery.asset', 'documents.asset'])->latest('id'),
         ];
     }
 
@@ -398,14 +507,7 @@ class LeadController extends Controller
 
         $leadsQuery = Lead::query()
             ->when($archived, fn (Builder $builder) => $builder->archived(), fn (Builder $builder) => $builder->active())
-            ->with([
-                'contact:id,first_name,last_name,email_address,phone_number',
-                'project:id,title,code',
-                'project.thumbnail.asset',
-                'unit:id,code,name,project_id',
-                'stage:id,label,title,color,priority',
-                'campaign:id,title,public_id',
-            ])
+            ->with($this->leadDetailRelations())
             ->when($query !== '', function ($builder) use ($query): void {
                 $builder->where(function ($inner) use ($query): void {
                     $inner->where('code', 'like', "%{$query}%")
@@ -517,13 +619,20 @@ class LeadController extends Controller
     protected function hydrateAssignees(Collection $leads): void
     {
         $userIds = $leads->pluck('assigned_to')
+            ->merge($leads->pluck('user_id'))
+            ->merge($leads->flatMap(
+                fn (Lead $lead) => $lead->relationLoaded('tasks') ? $lead->tasks->pluck('user_id') : []
+            ))
             ->filter()
             ->unique()
             ->values()
             ->all();
 
         if ($userIds === []) {
-            $leads->each(fn (Lead $lead) => $lead->setRelation('assignee', null));
+            $leads->each(function (Lead $lead): void {
+                $lead->setRelation('assignee', null);
+                $lead->setRelation('creator', null);
+            });
 
             return;
         }
@@ -545,6 +654,13 @@ class LeadController extends Controller
 
         $leads->each(function (Lead $lead) use ($users): void {
             $lead->setRelation('assignee', $users->get($lead->assigned_to));
+            $lead->setRelation('creator', $users->get($lead->user_id));
+
+            if ($lead->relationLoaded('tasks')) {
+                $lead->tasks->each(function (Task $task) use ($users): void {
+                    $task->setRelation('user', $users->get($task->user_id));
+                });
+            }
         });
     }
 
@@ -568,7 +684,7 @@ class LeadController extends Controller
     /**
      * @return array{
      *     projects: list<array{id: int, title: string, code: string, thumbnail: ?string}>,
-     *     units: list<array{id: int, project_id: int, code: string, name: ?string}>,
+     *     units: list<array{id: int, project_id: int, code: string, name: ?string, price: ?float, status: ?string}>,
      *     stages: list<array{id: int, label: string, title: string, color: ?string}>,
      *     tags: list<string>,
      *     assignees: list<array{id: int, display_name: string, title: ?string, avatar: ?string}>,
@@ -584,7 +700,7 @@ class LeadController extends Controller
 
         $units = Unit::query()
             ->orderBy('code')
-            ->get(['id', 'project_id', 'code', 'name']);
+            ->get(['id', 'project_id', 'code', 'name', 'price', 'status']);
 
         $stages = LeadStage::query()
             ->orderBy('priority')
@@ -645,6 +761,8 @@ class LeadController extends Controller
                     'project_id' => $unit->project_id,
                     'code' => $unit->code,
                     'name' => $unit->name,
+                    'price' => $unit->price !== null ? (float) $unit->price : null,
+                    'status' => $unit->status,
                 ])
                 ->values()
                 ->all(),

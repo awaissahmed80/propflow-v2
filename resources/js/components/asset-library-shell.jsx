@@ -38,7 +38,18 @@ export function useLibrarySelection({
   const [selection, setSelection] = useState(() => selectedIds.map(String))
 
   useEffect(() => {
-    setSelection(selectedIds.map(String))
+    setSelection((current) => {
+      const next = selectedIds.map(String)
+
+      if (
+        current.length === next.length &&
+        current.every((id, index) => id === next[index])
+      ) {
+        return current
+      }
+
+      return next
+    })
   }, [selectedIds])
 
   const toggleItem = (id) => {
@@ -90,6 +101,72 @@ export function useLibrarySelection({
     removeFromSelection,
     isSelected: (id) => enabled && selection.includes(String(id)),
   }
+}
+
+/**
+ * Report the current selection as library items, including files that are
+ * not on the current page or folder.
+ *
+ * @param {object} options
+ * @param {string[]} options.selection
+ * @param {Array<{ id: number|string, name?: string, url?: string, thumbnail_url?: string|null }>} options.items
+ * @param {"media"|"document"} options.kind
+ * @param {boolean} [options.enabled]
+ * @param {(selection: { ids: string[], items: Array<{ id: number|string, name?: string, url?: string, thumbnail_url?: string|null, kind: string }> }) => void} [options.onSelectionChange]
+ */
+export function useReportLibrarySelection({
+  selection,
+  items,
+  kind,
+  enabled = false,
+  onSelectionChange,
+}) {
+  const cache = useRef(new Map())
+  const callbackRef = useRef(onSelectionChange)
+  const signatureRef = useRef("")
+
+  callbackRef.current = onSelectionChange
+
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
+    for (const item of items) {
+      cache.current.set(String(item.id), item)
+    }
+
+    const resolved = []
+
+    for (const id of selection) {
+      const item = cache.current.get(String(id))
+
+      if (!item) {
+        continue
+      }
+
+      resolved.push({
+        id: item.id,
+        name: item.name,
+        url: item.url,
+        thumbnail_url: item.thumbnail_url ?? null,
+        type: item.type ?? null,
+        kind,
+      })
+    }
+
+    const signature = `${selection.map(String).join(",")}|${resolved.map((item) => String(item.id)).join(",")}`
+
+    if (signature === signatureRef.current) {
+      return
+    }
+
+    signatureRef.current = signature
+    callbackRef.current?.({
+      ids: selection,
+      items: resolved,
+    })
+  }, [enabled, items, kind, selection])
 }
 
 /**

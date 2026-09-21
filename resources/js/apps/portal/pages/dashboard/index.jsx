@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "@inertiajs/react";
+import { Deferred, Link } from "@inertiajs/react";
 import {
     Bar,
     BarChart,
@@ -15,7 +15,7 @@ import { index as leadsIndex } from "@/routes/portal/leads";
 import { index as projectsIndex } from "@/routes/portal/projects";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
     Card,
     CardAction,
@@ -43,6 +43,8 @@ import { HEAT_LABELS } from "@/lib/heat";
 import { cn } from "@/lib/utils";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const STATUS_LABELS = {
     AVAILABLE: "Available",
@@ -168,7 +170,7 @@ function LeadMiniRow({ lead }) {
 }
 
 function Dashboard({
-    stats = {},
+    stats,
     pipeline = [],
     heat = [],
     inventory = [],
@@ -231,6 +233,16 @@ function Dashboard({
         ])
     );
 
+    if (isPagePending(stats)) {
+        return (
+            <PageSkeleton
+                title="Dashboard"
+                breadcrumbs={[]}
+                variant="dashboard"
+            />
+        );
+    }
+
     return (
         <Layout>
             <Layout.Header metaTitle="Dashboard" breadcrumbs={[]} />
@@ -289,17 +301,16 @@ function Dashboard({
                                         {formatCount(pipelineTotal)} leads across stages
                                     </CardDescription>
                                     <CardAction>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            render={<Link href={leadsIndex.url()} />}
+                                        <Link
+                                            href={leadsIndex.url()}
+                                            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
                                         >
                                             View all
-                                        </Button>
+                                        </Link>
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="pt-4">
+                                    <Deferred data="pipeline" fallback={<Skeleton className="h-56 w-full rounded-lg" />}>
                                     {pipelineTotal === 0 ? (
                                         <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
                                             No leads in the pipeline yet
@@ -343,6 +354,7 @@ function Dashboard({
                                             </BarChart>
                                         </ChartContainer>
                                     )}
+                                    </Deferred>
                                 </CardContent>
                             </Card>
 
@@ -353,17 +365,16 @@ function Dashboard({
                                         {formatCount(inventoryTotal)} units by status
                                     </CardDescription>
                                     <CardAction>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            render={<Link href={inventoryIndex.url()} />}
+                                        <Link
+                                            href={inventoryIndex.url()}
+                                            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
                                         >
                                             Inventory
-                                        </Button>
+                                        </Link>
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="pt-4">
+                                    <Deferred data="inventory" fallback={<Skeleton className="h-56 w-full rounded-lg" />}>
                                     {inventoryTotal === 0 ? (
                                         <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
                                             No inventory units yet
@@ -427,6 +438,7 @@ function Dashboard({
                                             </ul>
                                         </div>
                                     )}
+                                    </Deferred>
                                 </CardContent>
                             </Card>
                         </div>
@@ -440,6 +452,7 @@ function Dashboard({
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-3 pt-4">
+                                    <Deferred data="heat" fallback={<Skeleton className="h-40 w-full rounded-lg" />}>
                                     {heat.every((row) => row.count === 0) ? (
                                         <p className="py-8 text-center text-sm text-muted-foreground">
                                             No heat tags to show yet
@@ -470,6 +483,7 @@ function Dashboard({
                                             </div>
                                         ))
                                     )}
+                                    </Deferred>
                                 </CardContent>
                             </Card>
 
@@ -479,6 +493,7 @@ function Dashboard({
                                     <CardDescription>Where enquiries come from</CardDescription>
                                 </CardHeader>
                                 <CardContent className="pt-4">
+                                    <Deferred data="leadSources" fallback={<Skeleton className="h-48 w-full rounded-lg" />}>
                                     {sourceChartData.length === 0 ? (
                                         <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
                                             No source data yet
@@ -515,6 +530,7 @@ function Dashboard({
                                             </BarChart>
                                         </ChartContainer>
                                     )}
+                                    </Deferred>
                                 </CardContent>
                             </Card>
 
@@ -526,17 +542,16 @@ function Dashboard({
                                         {formatCount(stats.projects_total)}
                                     </CardDescription>
                                     <CardAction>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            render={<Link href={projectsIndex.url()} />}
+                                        <Link
+                                            href={projectsIndex.url()}
+                                            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
                                         >
                                             All
-                                        </Button>
+                                        </Link>
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="space-y-4 pt-4">
+                                    <Deferred data="projects" fallback={<Skeleton className="h-48 w-full rounded-lg" />}>
                                     {projects.length === 0 ? (
                                         <p className="py-8 text-center text-sm text-muted-foreground">
                                             No projects yet
@@ -565,6 +580,7 @@ function Dashboard({
                                             </div>
                                         ))
                                     )}
+                                    </Deferred>
                                 </CardContent>
                             </Card>
                         </div>
@@ -578,17 +594,16 @@ function Dashboard({
                                         {formatCount(stats.due_soon)} due in 7 days
                                     </CardDescription>
                                     <CardAction>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            render={<Link href={leadsIndex.url()} />}
+                                        <Link
+                                            href={leadsIndex.url()}
+                                            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
                                         >
                                             Open leads
-                                        </Button>
+                                        </Link>
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="pt-2">
+                                    <Deferred data="dueSoon" fallback={<Skeleton className="h-48 w-full rounded-lg" />}>
                                     {dueSoon.length === 0 ? (
                                         <p className="py-10 text-center text-sm text-muted-foreground">
                                             Nothing due soon — nice and clear.
@@ -600,6 +615,7 @@ function Dashboard({
                                             ))}
                                         </div>
                                     )}
+                                    </Deferred>
                                 </CardContent>
                             </Card>
 
@@ -608,17 +624,16 @@ function Dashboard({
                                     <CardTitle>Recent leads</CardTitle>
                                     <CardDescription>Latest enquiries added</CardDescription>
                                     <CardAction>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            render={<Link href={leadsIndex.url()} />}
+                                        <Link
+                                            href={leadsIndex.url()}
+                                            className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
                                         >
                                             View all
-                                        </Button>
+                                        </Link>
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="pt-2">
+                                    <Deferred data="recentLeads" fallback={<Skeleton className="h-48 w-full rounded-lg" />}>
                                     {recentLeads.length === 0 ? (
                                         <p className="py-10 text-center text-sm text-muted-foreground">
                                             New leads will show up here.
@@ -630,6 +645,7 @@ function Dashboard({
                                             ))}
                                         </div>
                                     )}
+                                    </Deferred>
                                 </CardContent>
                             </Card>
                         </div>

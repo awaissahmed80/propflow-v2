@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Portal;
 
 use App\Models\Role;
+use App\Models\Tenant;
+use App\Models\TenantUser;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -20,7 +22,11 @@ class UpdateUserRequest extends FormRequest
      */
     public function rules(): array
     {
-        $userId = (int) $this->route('user');
+        $membershipCode = (string) $this->route('user');
+        $userId = TenantUser::query()
+            ->where('tenant_id', Tenant::current()?->id)
+            ->where('code', $membershipCode)
+            ->value('user_id');
 
         return [
             'first_name' => ['required', 'string', 'max:100'],

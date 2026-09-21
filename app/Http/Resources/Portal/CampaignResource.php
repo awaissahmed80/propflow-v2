@@ -19,7 +19,11 @@ class CampaignResource extends JsonResource
     public function toArray(Request $request): array
     {
         $identifier = Tenant::current()?->identifier;
-        $landingPath = $identifier
+        $isExternalIntake = in_array($this->source_type, [
+            Campaign::SOURCE_FACEBOOK,
+            Campaign::SOURCE_WHATSAPP,
+        ], true);
+        $landingPath = ! $isExternalIntake && $identifier
             ? '/'.$identifier.'/c/'.($this->slug ?: $this->public_id)
             : null;
 
@@ -31,6 +35,7 @@ class CampaignResource extends JsonResource
             'description' => $this->description,
             'purpose' => $this->purpose,
             'source_type' => $this->source_type,
+            'source_config' => $this->source_config ?? [],
             'channel' => $this->channel,
             'owner_id' => $this->owner_id,
             'budget' => $this->budget !== null ? (float) $this->budget : null,
@@ -57,9 +62,9 @@ class CampaignResource extends JsonResource
                 'name' => $this->form->name,
                 'status' => $this->form->status,
             ] : null),
-            'landing_url' => $landingPath ? Domain::app($landingPath) : null,
+            'landing_url' => $landingPath ? Domain::campaign($landingPath) : null,
             'embed_snippet' => $this->when(
-                $this->relationLoaded('form') && $this->form && $identifier,
+                ! $isExternalIntake && $this->relationLoaded('form') && $this->form && $identifier,
                 fn () => $this->embedSnippet($identifier, $this->form->public_id),
             ),
             'created_at' => $this->created_at?->toIso8601String(),
@@ -69,7 +74,7 @@ class CampaignResource extends JsonResource
 
     protected function embedSnippet(string $identifier, string $formPublicId): string
     {
-        $src = Domain::app('/'.$identifier.'/form.js?id='.$formPublicId);
+        $src = Domain::campaign('/'.$identifier.'/form.js?id='.$formPublicId);
 
         return <<<HTML
 <!-- PropFlow Lead Form Embed -->

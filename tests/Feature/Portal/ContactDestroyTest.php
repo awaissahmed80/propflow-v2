@@ -36,7 +36,7 @@ class ContactDestroyTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $response = $this->delete(Domain::portal('/contacts/'.$contact->id));
+        $response = $this->delete(Domain::portal('/contacts/'.$contact->uuid));
 
         $response->assertRedirect(Domain::portal('/contacts'));
 

@@ -38,7 +38,14 @@ function isHomePath(path) {
     return path === "/" || path === "/dashboard";
 }
 
-export const NavLink = ({ href, children, end = false, className, ...rest }) => {
+export const NavLink = ({
+    href,
+    children,
+    end = false,
+    className,
+    component,
+    ...rest
+}) => {
     const { url } = usePage();
     const current = normalizePath(url);
     const target = normalizePath(href);
@@ -52,6 +59,7 @@ export const NavLink = ({ href, children, end = false, className, ...rest }) => 
     return (
         <Link
             href={href}
+            component={component}
             prefetch={false}
             preserveState={false}
             preserveScroll={false}

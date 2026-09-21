@@ -39,7 +39,7 @@ class TeamDestroyTest extends TestCase
         $this->actingAs($actor);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->delete(Domain::portal('/teams/'.$team->id))
+        $this->delete(Domain::portal('/teams/'.$team->code))
             ->assertRedirect(Domain::portal('/teams'));
 
         $tenant->makeCurrent();

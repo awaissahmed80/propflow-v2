@@ -39,6 +39,11 @@ class Contact extends Model
 {
     use HasFactory, LogUserActivity, SoftDeletes;
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     public const TAG_INVESTOR = 'INVESTOR';
 
     public const TAG_AFFILIATE = 'AFFILIATE';

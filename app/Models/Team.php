@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -14,7 +15,12 @@ use Illuminate\Support\Facades\DB;
 #[Connection('tenant')]
 class Team extends Model
 {
-    use SoftDeletes;
+    use LogUserActivity, SoftDeletes;
+
+    public function getRouteKeyName(): string
+    {
+        return 'code';
+    }
 
     protected static function booted(): void
     {

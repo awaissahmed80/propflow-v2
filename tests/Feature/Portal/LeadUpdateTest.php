@@ -53,7 +53,7 @@ class LeadUpdateTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $response = $this->from(Domain::portal('/leads'))
-            ->put(Domain::portal('/leads/'.$lead->id), [
+            ->put(Domain::portal('/leads/'.$lead->code), [
                 'contact' => [
                     'first_name' => 'Updated',
                     'last_name' => 'Name',
@@ -103,7 +103,7 @@ class LeadUpdateTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $response = $this->from(Domain::portal('/leads'))
-            ->patch(Domain::portal('/leads/'.$lead->id), [
+            ->patch(Domain::portal('/leads/'.$lead->code), [
                 'lead_stage_id' => $contacted->id,
                 'tag' => Lead::TAG_HOT,
             ]);

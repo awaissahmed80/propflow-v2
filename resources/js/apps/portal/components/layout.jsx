@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/breadcrumb"
 import { useOS } from "@/hooks/use-os"
 import { SpotlightSearch } from "./spotlight-search"
+import { AssistantModal } from "./assistant-modal"
+import { NotificationMenu } from "./notification-menu"
 import { IconButton } from "@/components/ui/icon-button"
 import { useAuth } from "@/hooks/use-auth"
 import dayjs from "dayjs"
@@ -115,10 +117,12 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
                 </div>             
                 {children}
             </div>            
-            <div className="flex-row items-center space-x-3">        
-                <IconButton size="sm" variant="outline" icon="discuss-line" />       
-                <IconButton size="sm" variant="outline" icon="notification-3-line" />
-                
+            <div className="flex shrink-0 items-center gap-3">
+                <IconButton size="sm" variant="outline" icon="discuss-line" />
+                <AssistantModal />
+                <div className="relative size-6 min-w-6 shrink-0">
+                    <NotificationMenu />
+                </div>
             </div>
         </div>
         <SpotlightSearch isOpen={isOpen} onClose={() => setOpen(false)} />

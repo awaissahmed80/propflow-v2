@@ -8,7 +8,7 @@ import { index as leadsIndex } from "@/routes/portal/leads";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
     Card,
     CardAction,
@@ -477,9 +477,12 @@ function InventoryPanel({ project, stats, units }) {
             title="Inventory"
             icon="shape-line"
             action={
-                <Button type="button" size="sm" variant="outline" render={<Link href={inventoryUrl} />}>
+                <Link
+                    href={inventoryUrl}
+                    className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+                >
                     View inventory
-                </Button>
+                </Link>
             }
         >
             <div className="space-y-4">

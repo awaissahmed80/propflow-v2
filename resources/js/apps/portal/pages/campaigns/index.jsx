@@ -3,6 +3,7 @@ import { router } from "@inertiajs/react";
 import { index, show } from "@/routes/portal/campaigns";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Button } from "@/components/ui/button";
 import { FilterInput } from "@/components/ui/filter-input";
 import { Icon } from "@/components/ui/icon";
@@ -32,11 +33,13 @@ function statusTone(status) {
 }
 
 export default function CampaignsIndex({
-    campaigns = [],
+    campaigns: campaignsProp,
     pagination = emptyPagination,
     filters = {},
     formOptions = {},
 }) {
+    const pending = isPagePending(campaignsProp);
+    const campaigns = campaignsProp ?? [];
     const [search, setSearch] = useState(filters.q || "");
     const [createOpen, setCreateOpen] = useState(false);
     const searchTimeout = useRef(null);
@@ -84,6 +87,10 @@ export default function CampaignsIndex({
             visit({ q: value.trim() });
         }, 300);
     };
+
+    if (pending) {
+        return <PageSkeleton title="Campaigns" variant="cards" />;
+    }
 
     return (
         <Layout>
@@ -151,12 +158,12 @@ export default function CampaignsIndex({
                                                 tabIndex={0}
                                                 className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/40"
                                                 onClick={() =>
-                                                    router.visit(show.url(campaign.id))
+                                                    router.visit(show.url(campaign.slug))
                                                 }
                                                 onKeyDown={(event) => {
                                                     if (event.key === "Enter" || event.key === " ") {
                                                         event.preventDefault();
-                                                        router.visit(show.url(campaign.id));
+                                                        router.visit(show.url(campaign.slug));
                                                     }
                                                 }}
                                             >

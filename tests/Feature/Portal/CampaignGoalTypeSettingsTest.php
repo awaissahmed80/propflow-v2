@@ -62,7 +62,7 @@ class CampaignGoalTypeSettingsTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->put(Domain::portal('/settings/campaign-goals/'.$goal->id), [
+        $this->put(Domain::portal('/settings/campaign-goals/'.$goal->label), [
             'title' => 'All Leads',
             'color' => '#EF4444',
         ])->assertRedirect();
@@ -116,7 +116,7 @@ class CampaignGoalTypeSettingsTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->delete(Domain::portal('/settings/campaign-goals/'.$drop->id))
+        $this->delete(Domain::portal('/settings/campaign-goals/'.$drop->label))
             ->assertRedirect();
 
         $tenant->makeCurrent();
@@ -145,7 +145,7 @@ class CampaignGoalTypeSettingsTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $this->from(Domain::portal('/settings/campaigns'))
-            ->delete(Domain::portal('/settings/campaign-goals/'.$goal->id))
+            ->delete(Domain::portal('/settings/campaign-goals/'.$goal->label))
             ->assertRedirect(Domain::portal('/settings/campaigns'))
             ->assertSessionHasErrors('goal_type');
 

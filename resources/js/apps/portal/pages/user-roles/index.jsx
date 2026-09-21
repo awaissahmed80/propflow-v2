@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { destroy } from "@/actions/App/Http/Controllers/Portal/RoleController";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -44,7 +45,10 @@ function RolePermissions({ permissions }) {
     );
 }
 
-function UserRoles({ roles = [], permissionGroups = [] }) {
+function UserRoles({ roles: rolesProp, permissionGroups: permissionGroupsProp }) {
+    const pending = isPagePending(rolesProp);
+    const roles = rolesProp ?? [];
+    const permissionGroups = permissionGroupsProp ?? [];
     const [roleFormOpen, setRoleFormOpen] = useState(false);
     const [editingRole, setEditingRole] = useState(null);
 
@@ -75,7 +79,7 @@ function UserRoles({ roles = [], permissionGroups = [] }) {
 
         toast.promise(
             new Promise((resolve, reject) => {
-                router.delete(destroy.url(role.id), {
+                router.delete(destroy.url(role.name), {
                     preserveScroll: true,
                     onSuccess: () => resolve(),
                     onError: (errors) =>
@@ -89,6 +93,10 @@ function UserRoles({ roles = [], permissionGroups = [] }) {
             }
         );
     };
+
+    if (pending) {
+        return <PageSkeleton title="Roles" variant="table" />;
+    }
 
     return (
         <Layout>

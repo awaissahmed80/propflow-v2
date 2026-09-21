@@ -34,7 +34,7 @@ class PublicFormSubmitTest extends TestCase
     {
         [$tenant, $form] = $this->createActiveFormTenant('tenant_public_form_embed');
 
-        $response = $this->postJson(Domain::app('/'.$tenant->identifier.'/forms/'.$form->public_id.'/submit'), [
+        $response = $this->postJson(Domain::campaign('/'.$tenant->identifier.'/forms/'.$form->public_id.'/submit'), [
             'first_name' => 'Sara',
             'last_name' => 'Khan',
             'phone_number' => '+923001112233',
@@ -61,7 +61,7 @@ class PublicFormSubmitTest extends TestCase
     {
         [$tenant, $form, $campaign, $project] = $this->createActiveCampaignTenant('tenant_public_form_landing');
 
-        $response = $this->postJson(Domain::app('/'.$tenant->identifier.'/forms/'.$form->public_id.'/submit'), [
+        $response = $this->postJson(Domain::campaign('/'.$tenant->identifier.'/forms/'.$form->public_id.'/submit'), [
             'first_name' => 'Ali',
             'phone_number' => '+923004445566',
             'channel' => 'landing',
@@ -90,7 +90,7 @@ class PublicFormSubmitTest extends TestCase
         ]);
         Tenant::forgetCurrent();
 
-        $response = $this->postJson(Domain::app('/'.$tenant->identifier.'/forms/'.$form->public_id.'/submit'), [
+        $response = $this->postJson(Domain::campaign('/'.$tenant->identifier.'/forms/'.$form->public_id.'/submit'), [
             'first_name' => 'Updated',
             'email_address' => 'reuse@example.com',
             'channel' => 'embed',
@@ -118,7 +118,7 @@ class PublicFormSubmitTest extends TestCase
         ]);
         Tenant::forgetCurrent();
 
-        $this->postJson(Domain::app('/'.$tenant->identifier.'/forms/'.$form->public_id.'/submit'), [
+        $this->postJson(Domain::campaign('/'.$tenant->identifier.'/forms/'.$form->public_id.'/submit'), [
             'first_name' => 'Nope',
             'email_address' => 'nope@example.com',
         ])->assertNotFound();
@@ -128,13 +128,44 @@ class PublicFormSubmitTest extends TestCase
     {
         [$tenant, $form, $campaign] = $this->createActiveCampaignTenant('tenant_public_landing_page');
 
-        $this->get(Domain::app('/'.$tenant->identifier.'/c/'.$campaign->public_id))
+        $this->get(Domain::campaign('/'.$tenant->identifier.'/c/'.$campaign->public_id))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('campaigns/landing', false)
                 ->where('campaign.public_id', $campaign->public_id)
                 ->where('form.id', $form->public_id)
+                ->where('isPreview', false)
             );
+    }
+
+    public function test_landing_page_renders_draft_campaign_as_preview(): void
+    {
+        [$tenant, $form, $campaign] = $this->createActiveCampaignTenant('tenant_public_landing_draft');
+
+        $tenant->makeCurrent();
+        $campaign->update(['status' => Campaign::STATUS_DRAFT, 'slug' => 'test-draft']);
+        Tenant::forgetCurrent();
+
+        $this->get(Domain::campaign('/'.$tenant->identifier.'/c/test-draft'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('campaigns/landing', false)
+                ->where('campaign.slug', 'test-draft')
+                ->where('isPreview', true)
+                ->where('form.id', $form->public_id)
+            );
+    }
+
+    public function test_archived_campaign_landing_returns_not_found(): void
+    {
+        [$tenant, $form, $campaign] = $this->createActiveCampaignTenant('tenant_public_landing_archived');
+
+        $tenant->makeCurrent();
+        $campaign->update(['status' => Campaign::STATUS_ARCHIVED, 'slug' => 'gone']);
+        Tenant::forgetCurrent();
+
+        $this->get(Domain::campaign('/'.$tenant->identifier.'/c/gone'))
+            ->assertNotFound();
     }
 
     /**

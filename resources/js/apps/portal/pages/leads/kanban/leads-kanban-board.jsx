@@ -133,13 +133,19 @@ export function LeadsKanbanBoard({
                 return;
             }
 
+            const lead = sourceColumn.leads.find((item) => Number(item.id) === Number(leadId));
+
+            if (!lead?.code) {
+                return;
+            }
+
             const previous = columns;
             const next = moveLeadOnBoard(columns, leadId, stageId, targetColumn.stage);
 
             setColumns(next);
 
             router.patch(
-                update.url(leadId),
+                update.url(lead.code),
                 { lead_stage_id: stageId },
                 {
                     preserveScroll: true,

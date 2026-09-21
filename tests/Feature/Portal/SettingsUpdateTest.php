@@ -9,6 +9,7 @@ use App\Models\TenantUser;
 use App\Models\User;
 use App\Services\TenantContext;
 use App\Support\Domain;
+use App\Support\Notifications\NotificationSettings;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
@@ -136,6 +137,42 @@ class SettingsUpdateTest extends TestCase
         $this->assertTrue((bool) $data['flag_stale_leads']);
         $this->assertSame(21, (int) $data['stale_after_days']);
         Tenant::forgetCurrent();
+    }
+
+    public function test_notification_settings_can_be_updated(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_settings_notifications');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $payload = NotificationSettings::defaults();
+        $payload['email'] = false;
+        $payload['lead_stage_changed'] = true;
+        $payload['task_due'] = false;
+
+        $this->put(Domain::portal('/settings/notifications'), $payload)
+            ->assertRedirect();
+
+        $tenant->makeCurrent();
+        $data = Setting::group(Setting::GROUP_NOTIFICATIONS);
+        $this->assertFalse((bool) $data['email']);
+        $this->assertTrue((bool) $data['in_app']);
+        $this->assertTrue((bool) $data['lead_stage_changed']);
+        $this->assertFalse((bool) $data['task_due']);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_notification_settings_require_every_preference(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_settings_notifications_invalid');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->put(Domain::portal('/settings/notifications'), [
+            'in_app' => true,
+        ])->assertSessionHasErrors('email');
     }
 
     public function test_meta_data_can_be_updated_and_deleted(): void

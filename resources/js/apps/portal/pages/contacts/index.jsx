@@ -3,6 +3,7 @@ import { router } from "@inertiajs/react";
 import { index } from "@/routes/portal/contacts";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -150,11 +151,13 @@ function ContactRow({ contact, selected = false, onOpen }) {
 }
 
 function Contacts({
-    contacts = [],
+    contacts: contactsProp,
     pagination = emptyPagination,
     filters = {},
     formOptions = {},
 }) {
+    const pending = isPagePending(contactsProp);
+    const contacts = contactsProp ?? [];
     const [search, setSearch] = useState(filters.q || "");
     const [createOpen, setCreateOpen] = useState(false);
     const [selectedContact, setSelectedContact] = useState(null);
@@ -302,6 +305,10 @@ function Contacts({
         pagination.total > 0
             ? `Showing ${pagination.from}–${pagination.to} of ${pagination.total}`
             : "No results";
+
+    if (pending) {
+        return <PageSkeleton title="Contacts" variant="table" />;
+    }
 
     return (
         <Layout>

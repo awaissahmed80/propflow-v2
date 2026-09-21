@@ -11,4 +11,9 @@ class Role extends SpatieRole
     {
         return PermissionConnection::name();
     }
+
+    public function getRouteKeyName(): string
+    {
+        return 'name';
+    }
 }

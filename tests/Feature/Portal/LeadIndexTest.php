@@ -67,7 +67,35 @@ class LeadIndexTest extends TestCase
             ->has('formOptions.projects')
             ->has('formOptions.stages')
             ->has('formOptions.tags')
+            ->where('openedLead', null)
         );
+    }
+
+    public function test_lead_query_includes_that_lead_for_the_detail_panel(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_leads_opened');
+
+        $tenant->makeCurrent();
+        $stage = LeadStage::factory()->newLead()->create();
+        $lead = Lead::factory()->create([
+            'user_id' => $user->id,
+            'lead_stage_id' => $stage->id,
+            'source' => 'Referral',
+        ]);
+        $contactName = $lead->contact->display_name;
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->get(Domain::portal('/leads?lead='.$lead->code))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('leads/index', false)
+                ->where('openedLead.id', $lead->id)
+                ->where('openedLead.source', 'Referral')
+                ->where('openedLead.contact.display_name', $contactName)
+            );
     }
 
     public function test_leads_are_paginated(): void

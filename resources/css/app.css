@@ -207,14 +207,53 @@
   }
 }
 
-#nprogress .bar {
-    height: 3px !important;
-    background: #4B5563 !important;
+.nav-progress {
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 10000;
+    height: 3px;
+    width: 100%;
+    transform: scaleX(0);
+    transform-origin: left center;
+    background: var(--primary);
+    box-shadow: 0 1px 6px color-mix(in oklab, var(--primary) 45%, transparent);
 }
 
-#nprogress .peg {
-    box-shadow: 0 0 8px #4B5563, 0 0 4px #4B5563 !important;
-    height: 100% !important;
+.nav-progress[data-state="loading"] {
+    animation: nav-progress 8s cubic-bezier(0.1, 0.45, 0.2, 1) forwards;
+}
+
+.nav-progress[data-state="done"] {
+    animation: none;
+    transform: scaleX(1);
+    opacity: 0;
+    transition:
+        transform 140ms ease-out,
+        opacity 180ms linear 80ms;
+}
+
+@keyframes nav-progress {
+    0% {
+        transform: scaleX(0.12);
+    }
+    20% {
+        transform: scaleX(0.4);
+    }
+    50% {
+        transform: scaleX(0.68);
+    }
+    100% {
+        transform: scaleX(0.92);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-progress[data-state="loading"] {
+        animation: none;
+        transform: scaleX(0.65);
+    }
 }
 
 @layer utilities {

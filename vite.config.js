@@ -60,6 +60,7 @@ export default defineConfig({
         // Recharts + es-toolkit@1.47 CJS interop crashes Vite 8 (`require_isUnsafeProperty`).
         // Pin es-toolkit via resolutions and prebundle recharts against it.
         include: ['recharts', 'es-toolkit'],
+        exclude: ['@huggingface/transformers'],
     },
     esbuild: {
         jsx: 'automatic',

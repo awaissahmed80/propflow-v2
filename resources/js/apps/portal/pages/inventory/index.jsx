@@ -5,6 +5,7 @@ import { destroy } from "@/actions/App/Http/Controllers/Portal/UnitController";
 import { index } from "@/routes/portal/inventory";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -197,11 +198,13 @@ function UnitRow({ unit, onEdit, onDelete }) {
 }
 
 function Inventory({
-    units = [],
+    units: unitsProp,
     pagination = emptyPagination,
     filters = {},
     formOptions = {},
 }) {
+    const pending = isPagePending(unitsProp);
+    const units = unitsProp ?? [];
     const [search, setSearch] = useState(filters.q || "");
     const [unitFormOpen, setUnitFormOpen] = useState(false);
     const [editingUnit, setEditingUnit] = useState(null);
@@ -414,7 +417,7 @@ function Inventory({
 
         toast.promise(
             new Promise((resolve, reject) => {
-                router.delete(destroy.url(unit.id), {
+                router.delete(destroy.url(unit.code), {
                     preserveScroll: true,
                     onSuccess: () => resolve(),
                     onError: () => reject(new Error("Unable to delete unit")),
@@ -427,6 +430,10 @@ function Inventory({
             }
         );
     };
+
+    if (pending) {
+        return <PageSkeleton title="Inventory" variant="table" />;
+    }
 
     return (
         <Layout>

@@ -63,13 +63,13 @@ class DashboardController extends Controller
                 'due_soon' => $dueSoonCount,
                 'overdue' => $overdueCount,
             ],
-            'pipeline' => $this->pipelineByStage(),
-            'heat' => $this->heatDistribution(),
-            'inventory' => $this->inventoryByStatus(),
-            'leadSources' => $this->leadSources(),
-            'projects' => $this->projectProgress(),
-            'dueSoon' => $this->dueSoonLeads($now, $dueUntil),
-            'recentLeads' => $this->recentLeads(),
+            'pipeline' => Inertia::defer(fn (): array => $this->pipelineByStage(), 'widgets'),
+            'heat' => Inertia::defer(fn (): array => $this->heatDistribution(), 'widgets'),
+            'inventory' => Inertia::defer(fn (): array => $this->inventoryByStatus(), 'widgets'),
+            'leadSources' => Inertia::defer(fn (): array => $this->leadSources(), 'widgets'),
+            'projects' => Inertia::defer(fn (): array => $this->projectProgress(), 'widgets'),
+            'dueSoon' => Inertia::defer(fn (): array => $this->dueSoonLeads($now, $dueUntil), 'widgets'),
+            'recentLeads' => Inertia::defer(fn (): array => $this->recentLeads(), 'widgets'),
         ]);
     }
 

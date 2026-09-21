@@ -51,7 +51,7 @@ class TeamUpdateTest extends TestCase
         $this->actingAs($actor);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->put(Domain::portal('/teams/'.$team->id), [
+        $this->put(Domain::portal('/teams/'.$team->code), [
             'title' => 'Sales Central',
             'description' => 'Updated focus',
             'color' => '#b45309',
@@ -97,7 +97,7 @@ class TeamUpdateTest extends TestCase
         $this->actingAs($actor);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->put(Domain::portal('/teams/'.$team->id), [
+        $this->put(Domain::portal('/teams/'.$team->code), [
             'title' => 'Sales North',
             'member_ids' => [$actor->id],
         ])->assertSessionHasErrors('leader_id');

@@ -7,6 +7,9 @@ import {
     restore as restoreLead,
     update,
 } from "@/actions/App/Http/Controllers/Portal/LeadController";
+import { store as storeLeadTask } from "@/actions/App/Http/Controllers/Portal/LeadTaskController";
+import { FileManagerPicker } from "@/components/file-manager-picker";
+import { FilePreview, FilePreviewTile } from "@/components/file-preview";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatDateTime, formatRelativeTime, toDayjs } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import CloseDealForm from "./close-deal-form";
 
 const TABS = [
     { id: "tasks", label: "Tasks & Updates" },
@@ -53,6 +57,177 @@ const NEXT_ACTION_TYPES = [
     "Do Nothing",
 ];
 
+const ACTIVITY_ICONS = {
+    Call: "phone-line",
+    Meeting: "team-line",
+    "Site Visit": "map-pin-line",
+    Email: "mail-line",
+    Message: "chat-1-line",
+    "WhatsApp Call": "whatsapp-line",
+    "WhatsApp Message": "whatsapp-line",
+    Note: "sticky-note-line",
+    "Follow-up": "calendar-check-line",
+    "Arrange Site Visit": "map-pin-line",
+    "Arrange Meeting": "team-line",
+    "Lead created": "user-add-line",
+    "Stage changed": "git-commit-line",
+    "Assignee changed": "user-shared-line",
+    "Lead archived": "archive-line",
+    "Lead restored": "arrow-go-back-line",
+};
+
+function timelineEntries(lead) {
+    const tasks = Array.isArray(lead?.tasks) ? lead.tasks : [];
+    const hasCreated = tasks.some((task) => task.action === "Lead created");
+
+    if (hasCreated || !lead?.created_at) {
+        return tasks;
+    }
+
+    const creator = lead.creator?.display_name;
+
+    return [
+        ...tasks,
+        {
+            id: `created-${lead.id}`,
+            action: "Lead created",
+            comments: creator ? `${creator} created this lead.` : "Created automatically.",
+            status: "COMPLETED",
+            type: "LOG",
+            created_at: lead.created_at,
+            user: lead.creator || null,
+        },
+    ].sort((left, right) => new Date(right.created_at) - new Date(left.created_at));
+}
+
+function ActivityTimeline({ lead }) {
+    const entries = timelineEntries(lead);
+    const scheduled = entries.filter((entry) => entry.status === "PENDING");
+    const history = entries.filter((entry) => entry.status !== "PENDING");
+
+    if (entries.length === 0) {
+        return (
+            <div className="flex min-h-48 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-4 text-center text-sm text-muted-foreground">
+                Nothing has been scheduled
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-5">
+            {scheduled.length > 0 ? (
+                <div className="space-y-2">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                        Scheduled
+                    </p>
+                    {scheduled.map((entry) => (
+                        <ActivityRow key={entry.id} entry={entry} lead={lead} scheduled />
+                    ))}
+                </div>
+            ) : (
+                <div className="rounded-md border border-dashed border-border bg-muted/20 px-4 py-3 text-center text-sm text-muted-foreground">
+                    Nothing has been scheduled
+                </div>
+            )}
+
+            {history.length > 0 ? (
+                <div className="space-y-2">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                        Activity
+                    </p>
+                    <ol className="space-y-3">
+                        {history.map((entry) => (
+                            <li key={entry.id}>
+                                <ActivityRow entry={entry} lead={lead} />
+                            </li>
+                        ))}
+                    </ol>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function ActivityAttachments({ files }) {
+    const [open, setOpen] = useState(false);
+    const [index, setIndex] = useState(0);
+
+    return (
+        <>
+            <div className="mt-2 flex flex-wrap gap-2">
+                {files.map((file, fileIndex) => (
+                    <FilePreviewTile
+                        key={`${file.kind}-${file.id}`}
+                        file={file}
+                        onPreview={() => {
+                            setIndex(fileIndex);
+                            setOpen(true);
+                        }}
+                    />
+                ))}
+            </div>
+            <FilePreview
+                open={open}
+                onOpenChange={setOpen}
+                files={files}
+                index={index}
+                onIndexChange={setIndex}
+            />
+        </>
+    );
+}
+
+function ActivityRow({ entry, lead, scheduled = false }) {
+    const system = entry.type === "LOG";
+    const icon = ACTIVITY_ICONS[entry.action] || (system ? "history-line" : "checkbox-circle-line");
+    const actor = entry.user?.display_name;
+
+    return (
+        <div
+            className={cn(
+                "flex gap-3 rounded-xl border px-3 py-3",
+                scheduled
+                    ? "border-primary/30 bg-primary/[0.06]"
+                    : "border-border/80 bg-background"
+            )}
+        >
+            <span
+                className={cn(
+                    "flex size-8 shrink-0 items-center justify-center rounded-lg",
+                    scheduled
+                        ? "bg-primary text-primary-foreground"
+                        : system
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-primary/10 text-primary"
+                )}
+            >
+                <Icon name={icon} className="text-base" />
+            </span>
+            <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <p className="text-sm font-semibold text-foreground">{entry.action}</p>
+                    {scheduled ? (
+                        <span className="text-xs text-muted-foreground">
+                            {formatDateTime(lead.due_date)}
+                        </span>
+                    ) : null}
+                </div>
+                {entry.comments ? (
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        {entry.comments}
+                    </p>
+                ) : null}
+                {entry.attachments?.length ? (
+                    <ActivityAttachments files={entry.attachments} />
+                ) : null}
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                    {[actor, formatRelativeTime(entry.created_at)].filter(Boolean).join(" · ")}
+                </p>
+            </div>
+        </div>
+    );
+}
+
 function phoneDigits(phone) {
     return String(phone || "").replace(/\D+/g, "");
 }
@@ -70,7 +245,7 @@ function telUrl(phone) {
 }
 
 function patchLead(lead, payload, successMessage = "Lead updated") {
-    router.patch(update.url(lead.id), payload, {
+    router.patch(update.url(lead.code), payload, {
         preserveScroll: true,
         onSuccess: () => toast.success(successMessage),
         onError: () => toast.error("Could not update lead"),
@@ -282,12 +457,17 @@ function DetailField({ label, children }) {
     );
 }
 
-function UpdateComposer({ leadId }) {
+function UpdateComposer({ leadCode }) {
     const [expanded, setExpanded] = useState(false);
     const [activityType, setActivityType] = useState(ACTIVITY_TYPES[0]);
     const [notes, setNotes] = useState("");
     const [nextActionType, setNextActionType] = useState(NEXT_ACTION_TYPES[0]);
     const [nextAt, setNextAt] = useState(() => new Date());
+    const [attachments, setAttachments] = useState([]);
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [previewIndex, setPreviewIndex] = useState(0);
+    const [submitting, setSubmitting] = useState(false);
 
     const reset = () => {
         setExpanded(false);
@@ -295,11 +475,58 @@ function UpdateComposer({ leadId }) {
         setNotes("");
         setNextActionType(NEXT_ACTION_TYPES[0]);
         setNextAt(new Date());
+        setAttachments([]);
+        setPickerOpen(false);
+        setPreviewOpen(false);
+        setSubmitting(false);
+    };
+
+    const submitUpdate = () => {
+        if (!notes.trim() || submitting) {
+            return;
+        }
+
+        setSubmitting(true);
+
+        router.post(
+            storeLeadTask.url(leadCode),
+            {
+                action: activityType,
+                comments: notes.trim(),
+                next_action: nextActionType,
+                due_date:
+                    nextActionType === "Do Nothing" ? null : nextAt.toISOString(),
+                media_ids: attachments
+                    .filter((file) => file.kind === "media")
+                    .map((file) => file.id),
+                document_ids: attachments
+                    .filter((file) => file.kind === "document")
+                    .map((file) => file.id),
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success("Update recorded");
+                    reset();
+                },
+                onError: (errors) => {
+                    toast.error(
+                        errors.comments ||
+                            errors.action ||
+                            errors.due_date ||
+                            errors.next_action ||
+                            "Could not save update"
+                    );
+                    setSubmitting(false);
+                },
+                onFinish: () => setSubmitting(false),
+            }
+        );
     };
 
     useEffect(() => {
         reset();
-    }, [leadId]);
+    }, [leadCode]);
 
     if (!expanded) {
         return (
@@ -384,7 +611,7 @@ function UpdateComposer({ leadId }) {
                         variant="ghost"
                         icon="attachment-2"
                         aria-label="Attach file"
-                        onClick={() => toast.message("Attachments coming soon")}
+                        onClick={() => setPickerOpen(true)}
                     />
                     <Button
                         type="button"
@@ -398,11 +625,9 @@ function UpdateComposer({ leadId }) {
                     <Button
                         type="button"
                         size="sm"
+                        loading={submitting}
                         disabled={!notes.trim()}
-                        onClick={() => {
-                            toast.message("Lead updates coming soon");
-                            reset();
-                        }}
+                        onClick={submitUpdate}
                     >
                         Submit
                     </Button>
@@ -416,6 +641,80 @@ function UpdateComposer({ leadId }) {
                 rows={3}
                 autoFocus
                 className="min-h-20 resize-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
+            />
+
+            {attachments.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                    {attachments.map((file, fileIndex) => {
+                        const image =
+                            file.kind === "media" ||
+                            String(file.type || "").startsWith("image/");
+
+                        return (
+                            <span
+                                key={`${file.kind}-${file.id}`}
+                                className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background py-1 pr-1 pl-1.5 text-xs text-foreground"
+                            >
+                                <button
+                                    type="button"
+                                    className="inline-flex min-w-0 items-center gap-1.5"
+                                    aria-label={`Preview ${file.name || "file"}`}
+                                    onClick={() => {
+                                        setPreviewIndex(fileIndex);
+                                        setPreviewOpen(true);
+                                    }}
+                                >
+                                    {image && (file.thumbnail_url || file.url) ? (
+                                        <img
+                                            src={file.thumbnail_url || file.url}
+                                            alt=""
+                                            className="size-8 rounded-sm object-cover"
+                                        />
+                                    ) : (
+                                        <Icon
+                                            name="file-text-line"
+                                            className="shrink-0 text-sm text-muted-foreground"
+                                        />
+                                    )}
+                                    <span className="max-w-40 truncate">{file.name}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-sm text-muted-foreground hover:text-foreground"
+                                    aria-label={`Remove ${file.name}`}
+                                    onClick={() =>
+                                        setAttachments((current) =>
+                                            current.filter(
+                                                (item) =>
+                                                    !(
+                                                        item.kind === file.kind &&
+                                                        item.id === file.id
+                                                    )
+                                            )
+                                        )
+                                    }
+                                >
+                                    <Icon name="close-line" className="text-sm" />
+                                </button>
+                            </span>
+                        );
+                    })}
+                </div>
+            ) : null}
+
+            <FilePreview
+                open={previewOpen}
+                onOpenChange={setPreviewOpen}
+                files={attachments}
+                index={previewIndex}
+                onIndexChange={setPreviewIndex}
+            />
+
+            <FileManagerPicker
+                open={pickerOpen}
+                onOpenChange={setPickerOpen}
+                value={attachments}
+                onApply={setAttachments}
             />
 
             <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -480,6 +779,7 @@ export default function LeadDetailPanel({
     lead,
     stages = [],
     projects = [],
+    units = [],
     assignees = [],
     onClose,
     onEdit,
@@ -505,7 +805,7 @@ export default function LeadDetailPanel({
         }
 
         router.post(
-            archiveLead.url(lead.id),
+            archiveLead.url(lead.code),
             {},
             {
                 preserveScroll: true,
@@ -520,7 +820,7 @@ export default function LeadDetailPanel({
 
     const handleRestore = () => {
         router.post(
-            restoreLead.url(lead.id),
+            restoreLead.url(lead.code),
             {},
             {
                 preserveScroll: true,
@@ -543,7 +843,7 @@ export default function LeadDetailPanel({
             return;
         }
 
-        router.delete(destroyLead.url(lead.id), {
+        router.delete(destroyLead.url(lead.code), {
             preserveScroll: true,
             onSuccess: () => {
                 toast.success("Lead deleted");
@@ -655,11 +955,7 @@ export default function LeadDetailPanel({
 
             <ScrollArea className="min-h-0 flex-1">
                 <div className="px-5 py-5">
-                    {tab === "tasks" ? (
-                        <div className="flex min-h-48 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-4 text-center text-sm text-amber-600 dark:text-amber-400">
-                            Nothing has been scheduled
-                        </div>
-                    ) : null}
+                    {tab === "tasks" ? <ActivityTimeline lead={lead} /> : null}
 
                     {tab === "details" ? (
                         <div className="space-y-5">
@@ -737,53 +1033,23 @@ export default function LeadDetailPanel({
                     ) : null}
 
                     {tab === "close" && !isArchived ? (
-                        <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-md border border-dashed border-border bg-muted/20 px-4 text-center">
-                            <p className="text-sm text-muted-foreground">
-                                Mark this lead as won or lost to close the deal.
-                            </p>
-                            <div className="flex flex-wrap justify-center gap-2">
-                                <Button
-                                    type="button"
-                                    onClick={() => {
-                                        const won = stages.find(
-                                            (stage) => stage.label === "closed_won"
-                                        );
-                                        if (won) {
-                                            patchLead(
-                                                lead,
-                                                { lead_stage_id: Number(won.id) },
-                                                "Lead marked as won"
-                                            );
-                                        }
-                                    }}
-                                >
-                                    Close as won
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => {
-                                        const lost = stages.find(
-                                            (stage) => stage.label === "closed_lost"
-                                        );
-                                        if (lost) {
-                                            patchLead(
-                                                lead,
-                                                { lead_stage_id: Number(lost.id) },
-                                                "Lead marked as lost"
-                                            );
-                                        }
-                                    }}
-                                >
-                                    Close as lost
-                                </Button>
-                            </div>
-                        </div>
+                        <CloseDealForm
+                            lead={lead}
+                            projects={projects}
+                            units={units}
+                            onLost={() => {
+                                const lost = stages.find((stage) => stage.label === "closed_lost");
+
+                                if (lost) {
+                                    patchLead(lead, { lead_stage_id: Number(lost.id) }, "Lead marked as lost");
+                                }
+                            }}
+                        />
                     ) : null}
                 </div>
             </ScrollArea>
 
-            {tab === "tasks" ? <UpdateComposer leadId={lead.id} /> : null}
+            {tab === "tasks" ? <UpdateComposer leadCode={lead.code} /> : null}
         </div>
     );
 }

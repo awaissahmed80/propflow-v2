@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Database\Factories\AssetFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Asset extends Model
 {
     /** @use HasFactory<AssetFactory> */
-    use HasFactory, SoftDeletes;
+    use HasFactory, LogUserActivity, SoftDeletes;
 
     /**
      * @return HasMany<AssetLink, $this>

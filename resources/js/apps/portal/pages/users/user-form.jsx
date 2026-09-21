@@ -274,7 +274,7 @@ export default function UserForm({
 
         if (isEditing) {
             router.post(
-                update.url(data.id),
+                update.url(data.code),
                 { ...payload, _method: "put" },
                 {
                     forceFormData: true,

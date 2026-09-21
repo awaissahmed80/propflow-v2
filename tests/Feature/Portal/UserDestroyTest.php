@@ -37,7 +37,7 @@ class UserDestroyTest extends TestCase
         $this->actingAs($actor);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->delete(Domain::portal('/users/'.$member->id))
+        $this->delete(Domain::portal('/users/'.$membership->code))
             ->assertRedirect(Domain::portal('/users'));
 
         $this->assertSoftDeleted('tenant_users', ['id' => $membership->id], 'landlord');
@@ -50,7 +50,7 @@ class UserDestroyTest extends TestCase
     {
         [$actor, $tenant] = $this->createTenantUser('tenant_users_destroy_owner');
         $owner = User::factory()->tenant()->create();
-        TenantUser::factory()->owner()->create([
+        $ownerMembership = TenantUser::factory()->owner()->create([
             'user_id' => $owner->id,
             'tenant_id' => $tenant->id,
         ]);
@@ -58,7 +58,7 @@ class UserDestroyTest extends TestCase
         $this->actingAs($actor);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->delete(Domain::portal('/users/'.$owner->id))
+        $this->delete(Domain::portal('/users/'.$ownerMembership->code))
             ->assertRedirect()
             ->assertSessionHasErrors('message');
 

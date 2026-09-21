@@ -36,7 +36,7 @@ class SubmitPublicFormRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $rules = [
             'first_name' => ['nullable', 'string', 'max:150'],
             'last_name' => ['nullable', 'string', 'max:150'],
             'phone_number' => ['nullable', 'string', 'max:50'],
@@ -52,6 +52,25 @@ class SubmitPublicFormRequest extends FormRequest
             'utm.*' => ['nullable', 'string', 'max:255'],
             'company_website' => ['nullable', 'string', 'max:255'],
         ];
+
+        if ($this->campaignForm) {
+            foreach ($this->campaignForm->enabledFields() as $field) {
+                $key = $field['key'] ?? null;
+
+                if (! is_string($key) || $key === '' || array_key_exists($key, $rules)) {
+                    continue;
+                }
+
+                $rules[$key] = match ($field['type'] ?? 'text') {
+                    'number' => ['nullable', 'numeric'],
+                    'email' => ['nullable', 'email', 'max:255'],
+                    'textarea' => ['nullable', 'string', 'max:5000'],
+                    default => ['nullable', 'string', 'max:255'],
+                };
+            }
+        }
+
+        return $rules;
     }
 
     public function withValidator(Validator $validator): void

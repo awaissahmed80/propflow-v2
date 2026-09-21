@@ -11,6 +11,7 @@ use App\Http\Requests\Portal\UpdateUserRequest;
 use App\Http\Resources\Portal\UserDetailResource;
 use App\Http\Resources\Portal\UserListResource;
 use App\Models\Lead;
+use App\Models\Order;
 use App\Models\Role;
 use App\Models\TeamUser;
 use App\Models\Tenant;
@@ -111,7 +112,7 @@ class UserController extends Controller
         ]);
     }
 
-    public function update(UpdateUserRequest $request, int $user): RedirectResponse
+    public function update(UpdateUserRequest $request, string $user): RedirectResponse
     {
         /** @var Tenant $tenant */
         $tenant = Tenant::current();
@@ -119,10 +120,10 @@ class UserController extends Controller
 
         $membership = TenantUser::query()
             ->where('tenant_id', $tenant->id)
-            ->where('user_id', $user)
+            ->where('code', $user)
             ->firstOrFail();
 
-        $userModel = User::query()->findOrFail($user);
+        $userModel = $membership->user()->firstOrFail();
 
         DB::connection('landlord')->transaction(function () use ($validated, $userModel, $membership): void {
             $payload = [
@@ -168,15 +169,17 @@ class UserController extends Controller
         ]);
     }
 
-    public function destroy(int $user): RedirectResponse
+    public function destroy(string $user): RedirectResponse
     {
         /** @var Tenant $tenant */
         $tenant = Tenant::current();
 
         $membership = TenantUser::query()
             ->where('tenant_id', $tenant->id)
-            ->where('user_id', $user)
+            ->where('code', $user)
             ->firstOrFail();
+
+        $userModel = $membership->user()->firstOrFail();
 
         if ($membership->is_owner) {
             return back()->withErrors([
@@ -184,15 +187,13 @@ class UserController extends Controller
             ]);
         }
 
-        if ((int) $user === (int) auth()->id()) {
+        if ((int) $userModel->id === (int) auth()->id()) {
             return back()->withErrors([
                 'message' => 'You cannot delete your own account.',
             ]);
         }
 
-        $userModel = User::query()->findOrFail($user);
-
-        TeamUser::query()->where('user_id', $user)->delete();
+        TeamUser::query()->where('user_id', $userModel->id)->delete();
         $userModel->syncRoles([]);
 
         DB::connection('landlord')->transaction(function () use ($membership, $userModel): void {
@@ -420,7 +421,10 @@ class UserController extends Controller
             'leads' => $leadsCount,
             'teams' => $teams->count(),
             'tasks_due' => 0,
-            'closed_deals' => 0,
+            'closed_deals' => Order::query()
+                ->where('assigned_to', $userId)
+                ->whereIn('status', [Order::STATUS_ALLOCATED, Order::STATUS_DELIVERED])
+                ->count(),
         ]);
         $membership->setAttribute(
             'manager_data',

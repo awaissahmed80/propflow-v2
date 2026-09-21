@@ -9,6 +9,7 @@ use App\Models\Contact;
 use App\Models\Lead;
 use App\Models\LeadStage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class LeadIntakeService
 {
@@ -60,12 +61,47 @@ class LeadIntakeService
                 ? ($settings['landing_source'] ?? 'Campaign landing')
                 : ($settings['source'] ?? 'Website form');
 
-            $notes = trim(implode("\n", array_filter([
+            $notesParts = [
                 filled($payload['notes'] ?? null) ? (string) $payload['notes'] : null,
                 filled($payload['preferred_contact_time'] ?? null)
                     ? 'Preferred contact time: '.$payload['preferred_contact_time']
                     : null,
-            ])));
+            ];
+
+            $knownKeys = [
+                'first_name',
+                'last_name',
+                'phone_number',
+                'email_address',
+                'budget',
+                'notes',
+                'preferred_contact_time',
+                'campaign_public_id',
+                'channel',
+                'page_url',
+                'referrer',
+                'utm',
+                'company_website',
+            ];
+
+            foreach ($form->enabledFields() as $field) {
+                $key = $field['key'] ?? null;
+
+                if (! is_string($key) || $key === '' || in_array($key, $knownKeys, true)) {
+                    continue;
+                }
+
+                $value = $payload[$key] ?? null;
+
+                if (blank($value)) {
+                    continue;
+                }
+
+                $label = $field['label'] ?? Str::title(str_replace('_', ' ', $key));
+                $notesParts[] = $label.': '.$value;
+            }
+
+            $notes = trim(implode("\n", array_filter($notesParts)));
 
             $lead = Lead::query()->create([
                 'contact_id' => $contact->id,

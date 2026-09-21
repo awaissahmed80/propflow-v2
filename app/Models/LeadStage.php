@@ -16,6 +16,11 @@ class LeadStage extends Model
 {
     use HasFactory, LogUserActivity;
 
+    public function getRouteKeyName(): string
+    {
+        return 'label';
+    }
+
     public function leads()
     {
         return $this->hasMany(Lead::class);

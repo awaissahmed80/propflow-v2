@@ -46,8 +46,8 @@ class Domain
         return self::url('portal', $path);
     }
 
-    public static function app(string $path = '/'): string
+    public static function campaign(string $path = '/'): string
     {
-        return self::url('app', $path);
+        return self::url('campaign', $path);
     }
 }

@@ -5,6 +5,7 @@ import { destroy } from "@/actions/App/Http/Controllers/Portal/TeamController";
 import { index } from "@/routes/portal/teams";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Avatar, AvatarGroup } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -283,10 +284,12 @@ function TeamDetailSheet({ team, open, onOpenChange, onEdit, onDelete }) {
 }
 
 function TeamsIndex({
-    teams = [],
+    teams: teamsProp,
     filters = { q: "" },
     formOptions = { members: [] },
 }) {
+    const pending = isPagePending(teamsProp);
+    const teams = teamsProp ?? [];
     const [search, setSearch] = useState(filters.q ?? "");
     const [teamFormOpen, setTeamFormOpen] = useState(false);
     const [editingTeam, setEditingTeam] = useState(null);
@@ -374,7 +377,7 @@ function TeamsIndex({
 
         toast.promise(
             new Promise((resolve, reject) => {
-                router.delete(destroy.url(team.id), {
+                router.delete(destroy.url(team.code), {
                     preserveScroll: true,
                     onSuccess: () => {
                         setDetailOpen(false);
@@ -391,6 +394,10 @@ function TeamsIndex({
             }
         );
     };
+
+    if (pending) {
+        return <PageSkeleton title="Teams" variant="cards" />;
+    }
 
     return (
         <Layout>

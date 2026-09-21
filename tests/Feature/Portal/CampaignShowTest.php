@@ -56,16 +56,23 @@ class CampaignShowTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->get(Domain::portal('/campaigns/'.$campaign->id))
+        $this->get(Domain::portal('/campaigns/'.$campaign->slug))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('campaigns/show', false)
+                ->component('campaigns/details', false)
                 ->where('campaign.title', 'Launch Insights')
+                ->where('campaign.slug', $campaign->slug)
+                ->where(
+                    'campaign.landing_url',
+                    Domain::campaign('/'.$tenant->identifier.'/c/'.$campaign->slug)
+                )
                 ->where('insights.leads_count', 3)
                 ->where('insights.submissions_count', 0)
                 ->has('insights.goals')
                 ->has('form')
                 ->has('formOptions')
+                ->has('campaign.gallery')
+                ->where('campaign.hero_image_id', null)
             );
     }
 

@@ -6,6 +6,7 @@
 /public/hot
 /public/storage
 /public/assets
+/public/models
 /resources/js/actions
 /resources/js/routes
 /resources/js/wayfinder

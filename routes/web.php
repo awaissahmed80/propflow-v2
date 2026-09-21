@@ -1,19 +1,30 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Portal\ActivityLogController;
+use App\Http\Controllers\Portal\AssistantController;
 use App\Http\Controllers\Portal\CampaignController;
 use App\Http\Controllers\Portal\CampaignFormController;
+use App\Http\Controllers\Portal\CampaignFormFieldController;
 use App\Http\Controllers\Portal\CampaignGoalTypeController;
 use App\Http\Controllers\Portal\ContactController;
 use App\Http\Controllers\Portal\DashboardController;
+use App\Http\Controllers\Portal\DealController;
 use App\Http\Controllers\Portal\DocumentController;
 use App\Http\Controllers\Portal\DocumentFolderController;
 use App\Http\Controllers\Portal\DocumentLabelController;
 use App\Http\Controllers\Portal\InventoryController;
 use App\Http\Controllers\Portal\LeadController;
 use App\Http\Controllers\Portal\LeadStageController;
+use App\Http\Controllers\Portal\LeadTaskController;
+use App\Http\Controllers\Portal\LeadWebhookController;
 use App\Http\Controllers\Portal\MediaController;
 use App\Http\Controllers\Portal\MetaDataController;
+use App\Http\Controllers\Portal\MetaIntegrationController;
+use App\Http\Controllers\Portal\NotificationController;
+use App\Http\Controllers\Portal\OrderController;
+use App\Http\Controllers\Portal\PaymentInstallmentController;
+use App\Http\Controllers\Portal\PaymentPlanController;
 use App\Http\Controllers\Portal\ProjectBlockController;
 use App\Http\Controllers\Portal\ProjectController;
 use App\Http\Controllers\Portal\ProjectProgressController;
@@ -22,9 +33,14 @@ use App\Http\Controllers\Portal\SettingsController;
 use App\Http\Controllers\Portal\TeamController;
 use App\Http\Controllers\Portal\UnitController;
 use App\Http\Controllers\Portal\UserController;
+use App\Http\Controllers\Portal\WhatsAppIntegrationController;
 use App\Http\Controllers\Public\CampaignLandingController;
+use App\Http\Controllers\Public\LeadWebhookController as PublicLeadWebhookController;
+use App\Http\Controllers\Public\MetaWebhookController;
 use App\Http\Controllers\Public\PublicFormController;
+use App\Http\Controllers\Public\WhatsAppWebhookController;
 use App\Http\Middleware\ResolveTenantByIdentifier;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -36,8 +52,26 @@ Route::middleware(['web', 'public'])->group(function () use ($baseDomain) {
     });
 });
 
+Route::middleware(['api'])
+    ->domain('campaign.'.$baseDomain)
+    ->group(function () {
+        Route::get('/webhooks/meta/{identifier}', [MetaWebhookController::class, 'verify'])
+            ->name('webhooks.meta.verify');
+        Route::post('/webhooks/meta/{identifier}', [MetaWebhookController::class, 'receive'])
+            ->middleware('throttle:60,1')
+            ->name('webhooks.meta.receive');
+        Route::get('/webhooks/whatsapp/{identifier}', [WhatsAppWebhookController::class, 'verify'])
+            ->name('webhooks.whatsapp.verify');
+        Route::post('/webhooks/whatsapp/{identifier}', [WhatsAppWebhookController::class, 'receive'])
+            ->middleware('throttle:60,1')
+            ->name('webhooks.whatsapp.receive');
+        Route::post('/webhooks/leads/{identifier}', [PublicLeadWebhookController::class, 'receive'])
+            ->middleware('throttle:60,1')
+            ->name('webhooks.leads.receive');
+    });
+
 Route::middleware(['api', ResolveTenantByIdentifier::class])
-    ->domain('app.'.$baseDomain)
+    ->domain('campaign.'.$baseDomain)
     ->group(function () {
         Route::get('/{identifier}/form.js', [PublicFormController::class, 'script'])
             ->name('public.forms.script');
@@ -50,7 +84,7 @@ Route::middleware(['api', ResolveTenantByIdentifier::class])
     });
 
 Route::middleware(['web', 'public', ResolveTenantByIdentifier::class])
-    ->domain('app.'.$baseDomain)
+    ->domain('campaign.'.$baseDomain)
     ->group(function () {
         Route::get('/{identifier}/c/{campaign}', [CampaignLandingController::class, 'show'])
             ->name('public.campaigns.landing');
@@ -72,16 +106,41 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
     });
 
     Route::domain('portal.'.$baseDomain)->middleware(['auth', 'tenant'])->group(function () {
+        Broadcast::routes(['middleware' => ['web', 'auth', 'tenant']]);
+
         Route::get('/', [DashboardController::class, 'index'])->name('portal.home');
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('portal.dashboard');
+        Route::get('/activity', [ActivityLogController::class, 'index'])->name('portal.activity.index');
+        Route::get('/notifications', [NotificationController::class, 'index'])->name('portal.notifications.index');
+        Route::post('/notifications/read', [NotificationController::class, 'readAll'])->name('portal.notifications.read-all');
+        Route::post('/notifications/{notification}/read', [NotificationController::class, 'read'])->name('portal.notifications.read');
+        Route::get('/assistant/brief', [AssistantController::class, 'brief'])->name('portal.assistant.brief');
+        Route::post('/assistant/interpret', [AssistantController::class, 'interpret'])->name('portal.assistant.interpret');
         Route::get('/leads', [LeadController::class, 'index'])->name('portal.leads.index');
         Route::get('/leads/board/{stage}', [LeadController::class, 'boardColumn'])->name('portal.leads.board-column');
         Route::post('/leads', [LeadController::class, 'store'])->name('portal.leads.store');
+        Route::post('/leads/{lead}/tasks', [LeadTaskController::class, 'store'])->name('portal.leads.tasks.store');
         Route::post('/leads/bulk', [LeadController::class, 'bulk'])->name('portal.leads.bulk');
         Route::match(['put', 'patch'], '/leads/{lead}', [LeadController::class, 'update'])->name('portal.leads.update');
         Route::post('/leads/{lead}/archive', [LeadController::class, 'archive'])->name('portal.leads.archive');
         Route::post('/leads/{lead}/restore', [LeadController::class, 'restore'])->name('portal.leads.restore');
+        Route::post('/leads/{lead}/convert', [LeadController::class, 'convert'])->name('portal.leads.convert');
         Route::delete('/leads/{lead}', [LeadController::class, 'destroy'])->name('portal.leads.destroy');
+        Route::get('/orders', [OrderController::class, 'index'])->name('portal.orders.index');
+        Route::get('/orders/{order}', [OrderController::class, 'show'])->name('portal.orders.show');
+        Route::get('/orders/{order}/booking-form', [DealController::class, 'bookingForm'])->name('portal.orders.booking-form');
+        Route::post('/orders/{order}/booking', [DealController::class, 'booking'])->name('portal.orders.booking');
+        Route::post('/orders/{order}/plan', [DealController::class, 'plan'])->name('portal.orders.plan');
+        Route::post('/orders/{order}/payments', [DealController::class, 'payment'])->name('portal.orders.payments.store');
+        Route::post('/orders/{order}/ballot', [DealController::class, 'ballot'])->name('portal.orders.ballot');
+        Route::post('/orders/{order}/transfer', [DealController::class, 'transfer'])->name('portal.orders.transfer');
+        Route::post('/orders/{order}/handover', [DealController::class, 'handover'])->name('portal.orders.handover');
+        Route::post('/orders/{order}/deliver', [DealController::class, 'deliver'])->name('portal.orders.deliver');
+        Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('portal.orders.cancel');
+        Route::post('/orders/{order}/allocate', [OrderController::class, 'allocate'])->name('portal.orders.allocate');
+        Route::get('/payment-plans', [PaymentPlanController::class, 'index'])->name('portal.payment-plans.index');
+        Route::post('/orders/{order}/installments/{sequence}/pay', [PaymentInstallmentController::class, 'pay'])->name('portal.payment-installments.pay');
+        Route::get('/allocation', [AllocationController::class, 'index'])->name('portal.allocation.index');
         Route::get('/contacts', [ContactController::class, 'index'])->name('portal.contacts.index');
         Route::post('/contacts', [ContactController::class, 'store'])->name('portal.contacts.store');
         Route::match(['put', 'patch'], '/contacts/{contact}', [ContactController::class, 'update'])->name('portal.contacts.update');
@@ -115,6 +174,9 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::post('/settings/general', [SettingsController::class, 'updateGeneral'])->name('portal.settings.general');
         Route::put('/settings/configuration', [SettingsController::class, 'updateConfiguration'])->name('portal.settings.configuration');
         Route::put('/settings/pipeline-rules', [SettingsController::class, 'updatePipelineRules'])->name('portal.settings.pipeline-rules');
+        Route::put('/settings/notifications', [SettingsController::class, 'updateNotifications'])->name('portal.settings.notifications');
+        Route::put('/settings/lead-webhook', [LeadWebhookController::class, 'update'])->name('portal.settings.lead-webhook.update');
+        Route::post('/settings/lead-webhook/rotate', [LeadWebhookController::class, 'rotate'])->name('portal.settings.lead-webhook.rotate');
         Route::post('/settings/stages', [LeadStageController::class, 'store'])->name('portal.settings.stages.store');
         Route::put('/settings/stages/reorder', [LeadStageController::class, 'reorder'])->name('portal.settings.stages.reorder');
         Route::put('/settings/stages/{stage}', [LeadStageController::class, 'update'])->name('portal.settings.stages.update');
@@ -123,6 +185,19 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::put('/settings/campaign-goals/reorder', [CampaignGoalTypeController::class, 'reorder'])->name('portal.settings.campaign-goals.reorder');
         Route::put('/settings/campaign-goals/{goalType}', [CampaignGoalTypeController::class, 'update'])->name('portal.settings.campaign-goals.update');
         Route::delete('/settings/campaign-goals/{goalType}', [CampaignGoalTypeController::class, 'destroy'])->name('portal.settings.campaign-goals.destroy');
+        Route::post('/settings/campaign-form-fields', [CampaignFormFieldController::class, 'store'])->name('portal.settings.campaign-form-fields.store');
+        Route::put('/settings/campaign-form-fields/reorder', [CampaignFormFieldController::class, 'reorder'])->name('portal.settings.campaign-form-fields.reorder');
+        Route::put('/settings/campaign-form-fields/{field}', [CampaignFormFieldController::class, 'update'])->name('portal.settings.campaign-form-fields.update');
+        Route::delete('/settings/campaign-form-fields/{field}', [CampaignFormFieldController::class, 'destroy'])->name('portal.settings.campaign-form-fields.destroy');
+        Route::get('/settings/integrations/meta/connect', [MetaIntegrationController::class, 'redirect'])->name('portal.settings.integrations.meta.connect');
+        Route::get('/settings/integrations/meta/callback', [MetaIntegrationController::class, 'callback'])->name('portal.settings.integrations.meta.callback');
+        Route::get('/settings/integrations/meta/forms', [MetaIntegrationController::class, 'forms'])->name('portal.settings.integrations.meta.forms');
+        Route::put('/settings/integrations/meta', [MetaIntegrationController::class, 'update'])->name('portal.settings.integrations.meta.update');
+        Route::delete('/settings/integrations/meta', [MetaIntegrationController::class, 'disconnect'])->name('portal.settings.integrations.meta.disconnect');
+        Route::get('/settings/integrations/whatsapp/connect', [WhatsAppIntegrationController::class, 'redirect'])->name('portal.settings.integrations.whatsapp.connect');
+        Route::get('/settings/integrations/whatsapp/callback', [WhatsAppIntegrationController::class, 'callback'])->name('portal.settings.integrations.whatsapp.callback');
+        Route::put('/settings/integrations/whatsapp', [WhatsAppIntegrationController::class, 'update'])->name('portal.settings.integrations.whatsapp.update');
+        Route::delete('/settings/integrations/whatsapp', [WhatsAppIntegrationController::class, 'disconnect'])->name('portal.settings.integrations.whatsapp.disconnect');
         Route::get('/media', [MediaController::class, 'index'])->name('portal.media.index');
         Route::post('/media', [MediaController::class, 'store'])->name('portal.media.store');
         Route::post('/media/sync', [MediaController::class, 'sync'])->name('portal.media.sync');

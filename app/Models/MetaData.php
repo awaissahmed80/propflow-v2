@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Table;
@@ -14,6 +15,8 @@ use Illuminate\Support\Collection;
 #[Table(timestamps: false)]
 class MetaData extends Model
 {
+    use LogUserActivity;
+
     public const TYPE_CITY = 'CITY';
 
     public const TYPE_COUNTRY = 'COUNTRY';

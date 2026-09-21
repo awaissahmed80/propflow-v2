@@ -62,7 +62,7 @@ class LeadStageSettingsTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->put(Domain::portal('/settings/stages/'.$stage->id), [
+        $this->put(Domain::portal('/settings/stages/'.$stage->label), [
             'title' => 'Hot Prospect',
             'color' => '#EF4444',
         ])->assertRedirect();
@@ -112,7 +112,7 @@ class LeadStageSettingsTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->delete(Domain::portal('/settings/stages/'.$drop->id))
+        $this->delete(Domain::portal('/settings/stages/'.$drop->label))
             ->assertRedirect();
 
         $tenant->makeCurrent();
@@ -143,7 +143,7 @@ class LeadStageSettingsTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $this->from(Domain::portal('/settings/pipeline'))
-            ->delete(Domain::portal('/settings/stages/'.$stage->id))
+            ->delete(Domain::portal('/settings/stages/'.$stage->label))
             ->assertRedirect(Domain::portal('/settings/pipeline'))
             ->assertSessionHasErrors('stage');
 

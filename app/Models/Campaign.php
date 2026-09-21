@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\AssetManager;
+use App\Traits\LogUserActivity;
 use Database\Factories\CampaignFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -9,6 +11,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Support\Str;
 
 #[Fillable([
@@ -18,6 +22,7 @@ use Illuminate\Support\Str;
     'description',
     'purpose',
     'source_type',
+    'source_config',
     'owner_id',
     'channel',
     'budget',
@@ -38,7 +43,7 @@ use Illuminate\Support\Str;
 class Campaign extends Model
 {
     /** @use HasFactory<CampaignFactory> */
-    use HasFactory;
+    use HasFactory, LogUserActivity;
 
     public const STATUS_DRAFT = 'draft';
 
@@ -49,6 +54,8 @@ class Campaign extends Model
     public const SOURCE_CUSTOM_FORM = 'custom_form';
 
     public const SOURCE_FACEBOOK = 'facebook';
+
+    public const SOURCE_WHATSAPP = 'whatsapp';
 
     public const PURPOSE_LEAD_GENERATION = 'lead_generation';
 
@@ -94,6 +101,7 @@ class Campaign extends Model
         return [
             self::SOURCE_CUSTOM_FORM,
             self::SOURCE_FACEBOOK,
+            self::SOURCE_WHATSAPP,
         ];
     }
 
@@ -170,6 +178,7 @@ class Campaign extends Model
             'target_cpl' => 'decimal:2',
             'tags' => 'array',
             'utm' => 'array',
+            'source_config' => 'array',
             'landing' => 'array',
             'goals' => 'array',
             'starts_at' => 'datetime',
@@ -207,6 +216,29 @@ class Campaign extends Model
     public function isActive(): bool
     {
         return $this->status === self::STATUS_ACTIVE;
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'slug';
+    }
+
+    /**
+     * @return MorphOne<AssetLink, $this>
+     */
+    public function thumbnail(): MorphOne
+    {
+        return $this->morphOne(AssetLink::class, 'assetable')
+            ->where('linkage', AssetManager::LINKAGE_THUMBNAIL);
+    }
+
+    /**
+     * @return MorphMany<AssetLink, $this>
+     */
+    public function gallery(): MorphMany
+    {
+        return $this->morphMany(AssetLink::class, 'assetable')
+            ->where('linkage', AssetManager::LINKAGE_GALLERY);
     }
 
     /**

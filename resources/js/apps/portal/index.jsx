@@ -7,6 +7,21 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 import { initializeTheme } from '@/hooks/use-appearance';
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+
+if (import.meta.env.VITE_REVERB_APP_KEY) {
+    window.Pusher = Pusher;
+    window.Echo = new Echo({
+        broadcaster: 'reverb',
+        key: import.meta.env.VITE_REVERB_APP_KEY,
+        wsHost: import.meta.env.VITE_REVERB_HOST,
+        wsPort: import.meta.env.VITE_REVERB_PORT ?? 80,
+        wssPort: import.meta.env.VITE_REVERB_PORT ?? 443,
+        forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
+        enabledTransports: ['ws', 'wss'],
+    });
+}
 
 function redirectToAuth(authUrl) {
     if (!authUrl) {
@@ -62,12 +77,7 @@ createInertiaApp({
             </Provider>
         );
     },
-    progress: {
-        color: '#0270D2',        
-        delay: 0,
-    
-        // delay: 2500,
-    },
+    progress: false,
 });
 
 // This will set light / dark mode on load...

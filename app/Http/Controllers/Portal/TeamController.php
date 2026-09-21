@@ -61,9 +61,8 @@ class TeamController extends Controller
         return to_route('portal.teams.index');
     }
 
-    public function update(UpdateTeamRequest $request, int $team): RedirectResponse
+    public function update(UpdateTeamRequest $request, Team $team): RedirectResponse
     {
-        $teamModel = Team::query()->findOrFail($team);
         $validated = $request->validated();
         $leaderId = (int) $validated['leader_id'];
         $memberIds = $this->normalizedMemberIds(
@@ -71,23 +70,23 @@ class TeamController extends Controller
             $leaderId,
         );
 
-        DB::connection('tenant')->transaction(function () use ($teamModel, $validated, $memberIds, $leaderId): void {
-            $teamModel->forceFill([
+        DB::connection('tenant')->transaction(function () use ($team, $validated, $memberIds, $leaderId): void {
+            $team->forceFill([
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
                 'color' => $validated['color'] ?? '#3847d0',
                 'user_id' => $leaderId,
             ])->save();
 
-            $this->syncMembers($teamModel, $memberIds, $leaderId);
+            $this->syncMembers($team, $memberIds, $leaderId);
         });
 
         return to_route('portal.teams.index');
     }
 
-    public function destroy(int $team): RedirectResponse
+    public function destroy(Team $team): RedirectResponse
     {
-        Team::query()->findOrFail($team)->delete();
+        $team->delete();
 
         return to_route('portal.teams.index');
     }

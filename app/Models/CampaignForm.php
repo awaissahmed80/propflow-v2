@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Database\Factories\CampaignFormFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -22,7 +23,7 @@ use Illuminate\Support\Str;
 class CampaignForm extends Model
 {
     /** @use HasFactory<CampaignFormFactory> */
-    use HasFactory;
+    use HasFactory, LogUserActivity;
 
     public const STATUS_DRAFT = 'draft';
 
@@ -47,64 +48,7 @@ class CampaignForm extends Model
      */
     public static function defaultFields(): array
     {
-        return [
-            [
-                'key' => 'first_name',
-                'label' => 'First name',
-                'type' => 'text',
-                'required' => true,
-                'enabled' => true,
-                'placeholder' => 'First name',
-            ],
-            [
-                'key' => 'last_name',
-                'label' => 'Last name',
-                'type' => 'text',
-                'required' => false,
-                'enabled' => true,
-                'placeholder' => 'Last name',
-            ],
-            [
-                'key' => 'phone_number',
-                'label' => 'Phone',
-                'type' => 'tel',
-                'required' => false,
-                'enabled' => true,
-                'placeholder' => 'Phone number',
-            ],
-            [
-                'key' => 'email_address',
-                'label' => 'Email',
-                'type' => 'email',
-                'required' => false,
-                'enabled' => true,
-                'placeholder' => 'Email address',
-            ],
-            [
-                'key' => 'budget',
-                'label' => 'Budget',
-                'type' => 'number',
-                'required' => false,
-                'enabled' => false,
-                'placeholder' => 'Budget',
-            ],
-            [
-                'key' => 'notes',
-                'label' => 'Notes',
-                'type' => 'textarea',
-                'required' => false,
-                'enabled' => false,
-                'placeholder' => 'Anything we should know?',
-            ],
-            [
-                'key' => 'preferred_contact_time',
-                'label' => 'Preferred contact time',
-                'type' => 'text',
-                'required' => false,
-                'enabled' => false,
-                'placeholder' => 'e.g. Weekday evenings',
-            ],
-        ];
+        return CustomField::campaignFormFieldDefinitions();
     }
 
     /**
@@ -122,6 +66,11 @@ class CampaignForm extends Model
             'redirect_url' => null,
             'honeypot_field' => 'company_website',
         ];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'public_id';
     }
 
     protected function casts(): array

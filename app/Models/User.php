@@ -7,6 +7,7 @@ use App\Enums\TenantStatus;
 use App\Enums\UserStatus;
 use App\Enums\UserType;
 use App\Support\PermissionConnection;
+use App\Traits\LogUserActivity;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -39,7 +40,7 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, Notifiable, SoftDeletes;
+    use HasFactory, HasRoles, LogUserActivity, Notifiable, SoftDeletes;
 
     protected string $guard_name = 'web';
 

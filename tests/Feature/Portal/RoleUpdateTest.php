@@ -32,7 +32,7 @@ class RoleUpdateTest extends TestCase
         [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_update_guest');
         $role = Role::query()->where('name', 'Manager')->firstOrFail();
 
-        $this->put(Domain::portal('/user-roles/'.$role->id), [
+        $this->put(Domain::portal('/user-roles/'.$role->name), [
             'name' => 'Updated Manager',
             'description' => 'Updated',
             'permissions' => ['view users'],
@@ -51,7 +51,7 @@ class RoleUpdateTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
         Tenant::forgetCurrent();
 
-        $response = $this->put(Domain::portal('/user-roles/'.$role->id), [
+        $response = $this->put(Domain::portal('/user-roles/'.$role->name), [
             'name' => 'Updated Manager',
             'description' => 'Updated management role',
             'permissions' => ['view users', 'view teams'],
@@ -81,7 +81,7 @@ class RoleUpdateTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
         Tenant::forgetCurrent();
 
-        $this->put(Domain::portal('/user-roles/'.$role->id), [
+        $this->put(Domain::portal('/user-roles/'.$role->name), [
             'name' => 'Admin',
             'description' => 'Duplicate',
             'permissions' => [],

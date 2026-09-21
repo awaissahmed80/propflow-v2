@@ -11,6 +11,7 @@ use App\Models\TenantUser;
 use App\Models\User;
 use App\Services\TenantContext;
 use App\Support\Domain;
+use App\Support\Notifications\NotificationSettings;
 use Tests\TestCase;
 
 class SettingsIndexTest extends TestCase
@@ -140,6 +141,27 @@ class SettingsIndexTest extends TestCase
 
         $this->get(Domain::portal('/settings/not-a-section'))
             ->assertNotFound();
+    }
+
+    public function test_notifications_section_loads_workspace_defaults(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_settings_notifications');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->get(Domain::portal('/settings/notifications'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('settings/index', false)
+                ->where('section', 'notifications')
+                ->where('notifications.in_app', true)
+                ->where('notifications.email', true)
+                ->where('notifications.lead_created', true)
+                ->where('notifications.lead_stage_changed', false)
+                ->where('notifications.task_due', true)
+                ->has('notificationCatalog', count(NotificationSettings::catalog()))
+            );
     }
 
     /**

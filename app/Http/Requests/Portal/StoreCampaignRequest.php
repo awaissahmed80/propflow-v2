@@ -4,6 +4,7 @@ namespace App\Http\Requests\Portal;
 
 use App\Models\Campaign;
 use App\Models\CampaignForm;
+use App\Models\Integration;
 use App\Models\LeadStage;
 use App\Models\Project;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -22,11 +23,53 @@ class StoreCampaignRequest extends FormRequest
      */
     public function rules(): array
     {
+        $metaConnected = Integration::query()
+            ->where('provider', Integration::PROVIDER_META)
+            ->where('status', Integration::STATUS_CONNECTED)
+            ->exists();
+
+        $whatsappConnected = Integration::query()
+            ->where('provider', Integration::PROVIDER_WHATSAPP)
+            ->where('status', Integration::STATUS_CONNECTED)
+            ->exists();
+
         return [
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'purpose' => ['nullable', 'string', Rule::in(Campaign::purposes())],
-            'source_type' => ['nullable', 'string', Rule::in(Campaign::sourceTypes())],
+            'source_type' => [
+                'nullable',
+                'string',
+                Rule::in(Campaign::sourceTypes()),
+                function (string $attribute, mixed $value, \Closure $fail) use ($metaConnected, $whatsappConnected): void {
+                    if ($value === Campaign::SOURCE_FACEBOOK && ! $metaConnected) {
+                        $fail('Connect Meta in Settings → Integrations before creating a Meta campaign.');
+                    }
+
+                    if ($value === Campaign::SOURCE_WHATSAPP && ! $whatsappConnected) {
+                        $fail('Connect WhatsApp in Settings → Integrations before creating a WhatsApp campaign.');
+                    }
+                },
+            ],
+            'source_config' => ['nullable', 'array'],
+            'source_config.page_id' => [
+                Rule::requiredIf(fn (): bool => $this->input('source_type') === Campaign::SOURCE_FACEBOOK),
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'source_config.page_name' => ['nullable', 'string', 'max:255'],
+            'source_config.form_id' => ['nullable', 'string', 'max:100'],
+            'source_config.form_name' => ['nullable', 'string', 'max:255'],
+            'source_config.phone_number_id' => [
+                Rule::requiredIf(fn (): bool => $this->input('source_type') === Campaign::SOURCE_WHATSAPP),
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'source_config.phone_number' => ['nullable', 'string', 'max:50'],
+            'source_config.phone_name' => ['nullable', 'string', 'max:255'],
+            'source_config.waba_id' => ['nullable', 'string', 'max:100'],
             'channel' => ['nullable', 'string', Rule::in(Campaign::channels())],
             'status' => ['nullable', 'string', Rule::in(Campaign::statuses())],
             'project_id' => ['nullable', 'integer', Rule::exists(Project::class, 'id')],
@@ -73,7 +116,10 @@ class StoreCampaignRequest extends FormRequest
             'purpose' => $this->input('purpose') ?: Campaign::PURPOSE_LEAD_GENERATION,
             'source_type' => $this->input('source_type') ?: Campaign::SOURCE_CUSTOM_FORM,
             'status' => $this->input('status') ?: Campaign::STATUS_DRAFT,
-            'channel' => $this->input('channel') ?: Campaign::CHANNEL_WEBSITE,
+            'channel' => $this->input('channel')
+                ?: (in_array($this->input('source_type'), [Campaign::SOURCE_FACEBOOK, Campaign::SOURCE_WHATSAPP], true)
+                    ? Campaign::CHANNEL_SOCIAL
+                    : Campaign::CHANNEL_WEBSITE),
         ]);
     }
 }

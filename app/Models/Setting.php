@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -10,11 +11,15 @@ use Illuminate\Database\Eloquent\Model;
 #[Connection('tenant')]
 class Setting extends Model
 {
+    use LogUserActivity;
+
     public const GROUP_GENERAL = 'general';
 
     public const GROUP_CONFIGURATION = 'configuration';
 
     public const GROUP_PIPELINE_RULES = 'pipeline_rules';
+
+    public const GROUP_NOTIFICATIONS = 'notifications';
 
     /**
      * @return array<string, string>

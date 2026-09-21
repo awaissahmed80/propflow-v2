@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Database\Factories\CampaignGoalTypeFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -15,7 +16,12 @@ use Illuminate\Database\Eloquent\Model;
 class CampaignGoalType extends Model
 {
     /** @use HasFactory<CampaignGoalTypeFactory> */
-    use HasFactory;
+    use HasFactory, LogUserActivity;
+
+    public function getRouteKeyName(): string
+    {
+        return 'label';
+    }
 
     /**
      * @return list<array{label: string, title: string, priority: int, color: string}>

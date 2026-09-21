@@ -32,7 +32,7 @@ class RoleDestroyTest extends TestCase
         [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_destroy_guest');
         $role = Role::query()->where('name', 'Manager')->firstOrFail();
 
-        $this->delete(Domain::portal('/user-roles/'.$role->id))
+        $this->delete(Domain::portal('/user-roles/'.$role->name))
             ->assertRedirect(Domain::auth());
 
         $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Manager'], 'tenant');
@@ -52,7 +52,7 @@ class RoleDestroyTest extends TestCase
         Tenant::forgetCurrent();
 
         $this->from(Domain::portal('/user-roles'))
-            ->delete(Domain::portal('/user-roles/'.$roleId))
+            ->delete(Domain::portal('/user-roles/'.$role->name))
             ->assertRedirect(Domain::portal('/user-roles'));
 
         $tenant->makeCurrent();

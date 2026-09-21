@@ -272,7 +272,7 @@ export default function UnitForm({
             };
 
             if (isEditing) {
-                router.put(update.url(data.id), payload, visit);
+                router.put(update.url(data.code), payload, visit);
             } else {
                 router.post(store.url(), payload, visit);
             }

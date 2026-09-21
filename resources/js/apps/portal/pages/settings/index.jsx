@@ -5,10 +5,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import ComingSoonPanel from "./coming-soon-panel";
 import CampaignsPanel from "./campaigns-panel";
+import DeveloperPanel from "./developer-panel";
 import GeneralPanel from "./general-panel";
+import IntegrationsPanel from "./integrations-panel";
 import MetaDataPanel from "./meta-data-panel";
+import NotificationsPanel from "./notifications-panel";
 import PipelinePanel from "./pipeline-panel";
 
 function pathFrom(url) {
@@ -32,20 +36,35 @@ const PANEL_BY_SECTION = {
     "meta-data": MetaDataPanel,
     pipeline: PipelinePanel,
     campaigns: CampaignsPanel,
+    integrations: IntegrationsPanel,
+    notifications: NotificationsPanel,
+    developer: DeveloperPanel,
 };
 
 export default function SettingsIndex({
     section = "general",
-    sections = [],
+    sections: sectionsProp,
     general = {},
     configuration = {},
     pipelineRules = {},
     metaTypes = [],
     stages = [],
     campaignGoalTypes = [],
+    campaignFormFields = [],
+    integrations = [],
+    notifications = {},
+    notificationCatalog = [],
+    assignees = [],
+    leadWebhook = null,
 }) {
+    const pending = isPagePending(sectionsProp);
+    const sections = sectionsProp ?? [];
     const active = sections.find((item) => item.id === section) ?? sections[0];
     const Panel = PANEL_BY_SECTION[section] ?? ComingSoonPanel;
+
+    if (pending) {
+        return <PageSkeleton title="Settings" variant="settings" />;
+    }
 
     return (
         <Layout>
@@ -136,7 +155,7 @@ export default function SettingsIndex({
 
                         <ScrollArea className="min-h-0 flex-1">
                             <div className="w-full px-6 py-4 text-left">
-                                {!["general", "meta-data", "pipeline", "campaigns"].includes(section) ? (
+                                {!["general", "meta-data", "pipeline", "campaigns", "integrations", "notifications", "developer"].includes(section) ? (
                                     <div className="mb-5 flex items-center gap-2.5">
                                         <span className="flex size-8 items-center justify-center rounded-md bg-background shadow-xs ring-1 ring-border/70">
                                             <Icon
@@ -158,6 +177,12 @@ export default function SettingsIndex({
                                     metaTypes={metaTypes}
                                     stages={stages}
                                     campaignGoalTypes={campaignGoalTypes}
+                                    campaignFormFields={campaignFormFields}
+                                    integrations={integrations}
+                                    notifications={notifications}
+                                    notificationCatalog={notificationCatalog}
+                                    assignees={assignees}
+                                    leadWebhook={leadWebhook}
                                 />
                             </div>
                         </ScrollArea>

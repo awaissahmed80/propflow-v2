@@ -4,6 +4,7 @@ namespace Tests\Feature\Portal;
 
 use App\Models\Campaign;
 use App\Models\CampaignForm;
+use App\Models\Integration;
 use App\Models\LeadStage;
 use App\Models\Project;
 use App\Models\Tenant;
@@ -106,7 +107,7 @@ class CampaignStoreTest extends TestCase
         $this->assertSame('City Vista landing', data_get($form->settings, 'source'));
         Tenant::forgetCurrent();
 
-        $response->assertRedirect(Domain::portal('/campaigns/'.$campaign->id));
+        $response->assertRedirect(Domain::portal('/campaigns/'.$campaign->slug));
     }
 
     public function test_campaign_can_be_created_with_title_only(): void
@@ -134,7 +135,7 @@ class CampaignStoreTest extends TestCase
         $this->assertSame(1, CampaignForm::query()->count());
         Tenant::forgetCurrent();
 
-        $response->assertRedirect(Domain::portal('/campaigns/'.$campaign->id));
+        $response->assertRedirect(Domain::portal('/campaigns/'.$campaign->slug));
     }
 
     public function test_campaign_store_requires_title(): void
@@ -152,6 +153,159 @@ class CampaignStoreTest extends TestCase
 
         $response->assertRedirect(Domain::portal('/campaigns'));
         $response->assertSessionHasErrors(['title']);
+    }
+
+    public function test_meta_campaign_can_be_created_when_connected(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_campaign_meta');
+
+        $tenant->makeCurrent();
+        Integration::factory()->connected()->create([
+            'provider' => Integration::PROVIDER_META,
+            'external_id' => 'page-111',
+            'external_name' => 'Acme Properties',
+            'settings' => [
+                'pages' => [
+                    [
+                        'id' => 'page-111',
+                        'name' => 'Acme Properties',
+                        'access_token' => 'encrypted',
+                        'tasks' => [],
+                    ],
+                ],
+            ],
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->from(Domain::portal('/campaigns'))
+            ->post(Domain::portal('/campaigns'), [
+                'title' => 'Meta Spring Leads',
+                'source_type' => 'facebook',
+                'status' => 'active',
+                'source_config' => [
+                    'page_id' => 'page-111',
+                    'page_name' => 'Acme Properties',
+                    'form_id' => 'form-55',
+                    'form_name' => 'Spring Lead Form',
+                ],
+                'create_form' => false,
+            ]);
+
+        $tenant->makeCurrent();
+        $campaign = Campaign::query()->latest('id')->first();
+        $this->assertNotNull($campaign);
+        $this->assertSame('facebook', $campaign->source_type);
+        $this->assertSame('social', $campaign->channel);
+        $this->assertSame('page-111', data_get($campaign->source_config, 'page_id'));
+        $this->assertSame('form-55', data_get($campaign->source_config, 'form_id'));
+        $this->assertSame('Spring Lead Form', data_get($campaign->source_config, 'form_name'));
+        $this->assertNull($campaign->landing);
+        $this->assertNull($campaign->campaign_form_id);
+        $this->assertSame(0, CampaignForm::query()->count());
+        Tenant::forgetCurrent();
+
+        $response->assertRedirect(Domain::portal('/campaigns/'.$campaign->slug));
+    }
+
+    public function test_meta_campaign_requires_connected_integration(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_campaign_meta_required');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->from(Domain::portal('/campaigns'))
+            ->post(Domain::portal('/campaigns'), [
+                'title' => 'Blocked Meta Campaign',
+                'source_type' => 'facebook',
+                'source_config' => [
+                    'page_id' => 'page-111',
+                ],
+            ])
+            ->assertRedirect(Domain::portal('/campaigns'))
+            ->assertSessionHasErrors(['source_type']);
+    }
+
+    public function test_whatsapp_campaign_can_be_created_when_connected(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_campaign_whatsapp');
+
+        $tenant->makeCurrent();
+        Integration::factory()->connected()->create([
+            'provider' => Integration::PROVIDER_WHATSAPP,
+            'external_id' => 'phone-111',
+            'external_name' => 'Acme Sales',
+            'settings' => [
+                'wabas' => [
+                    [
+                        'id' => 'waba-111',
+                        'name' => 'Acme WABA',
+                        'phone_numbers' => [
+                            [
+                                'id' => 'phone-111',
+                                'display_phone_number' => '+1 555 0100',
+                                'verified_name' => 'Acme Sales',
+                                'quality_rating' => 'GREEN',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->from(Domain::portal('/campaigns'))
+            ->post(Domain::portal('/campaigns'), [
+                'title' => 'WhatsApp Spring Leads',
+                'source_type' => 'whatsapp',
+                'status' => 'active',
+                'source_config' => [
+                    'phone_number_id' => 'phone-111',
+                    'phone_number' => '+1 555 0100',
+                    'phone_name' => 'Acme Sales',
+                    'waba_id' => 'waba-111',
+                ],
+                'create_form' => false,
+            ]);
+
+        $tenant->makeCurrent();
+        $campaign = Campaign::query()->latest('id')->first();
+        $this->assertNotNull($campaign);
+        $this->assertSame('whatsapp', $campaign->source_type);
+        $this->assertSame('social', $campaign->channel);
+        $this->assertSame('phone-111', data_get($campaign->source_config, 'phone_number_id'));
+        $this->assertSame('waba-111', data_get($campaign->source_config, 'waba_id'));
+        $this->assertNull($campaign->landing);
+        $this->assertNull($campaign->campaign_form_id);
+        $this->assertSame(0, CampaignForm::query()->count());
+        Tenant::forgetCurrent();
+
+        $response->assertRedirect(Domain::portal('/campaigns/'.$campaign->slug));
+    }
+
+    public function test_whatsapp_campaign_requires_connected_integration(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_campaign_whatsapp_required');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->from(Domain::portal('/campaigns'))
+            ->post(Domain::portal('/campaigns'), [
+                'title' => 'Blocked WhatsApp Campaign',
+                'source_type' => 'whatsapp',
+                'source_config' => [
+                    'phone_number_id' => 'phone-111',
+                ],
+            ])
+            ->assertRedirect(Domain::portal('/campaigns'))
+            ->assertSessionHasErrors(['source_type']);
     }
 
     /**

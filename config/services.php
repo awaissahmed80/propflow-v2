@@ -35,4 +35,41 @@ return [
         ],
     ],
 
+    'meta' => [
+        'app_id' => env('META_APP_ID'),
+        'app_secret' => env('META_APP_SECRET'),
+        'redirect' => env('META_REDIRECT_URI'),
+        'graph_version' => env('META_GRAPH_VERSION', 'v21.0'),
+        'scopes' => array_values(array_filter(array_map(
+            static fn (string $scope): string => trim($scope),
+            explode(',', (string) env(
+                'META_SCOPES',
+                'pages_show_list,pages_manage_ads,pages_manage_metadata,pages_read_engagement,leads_retrieval,ads_management,pages_messaging,instagram_basic,instagram_manage_messages,business_management'
+            ))
+        ))),
+        'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN'),
+    ],
+
+    /*
+    | WhatsApp Cloud API uses the Meta platform app by default.
+    | Tenants connect their own WABA; messaging charges stay with Meta.
+    */
+    'whatsapp' => [
+        'app_id' => env('WHATSAPP_APP_ID', env('META_APP_ID')),
+        'app_secret' => env('WHATSAPP_APP_SECRET', env('META_APP_SECRET')),
+        'redirect' => env('WHATSAPP_REDIRECT_URI'),
+        'graph_version' => env('WHATSAPP_GRAPH_VERSION', env('META_GRAPH_VERSION', 'v21.0')),
+        'scopes' => array_values(array_filter(array_map(
+            static fn (string $scope): string => trim($scope),
+            explode(',', (string) env(
+                'WHATSAPP_SCOPES',
+                'whatsapp_business_management,whatsapp_business_messaging,business_management'
+            ))
+        ))),
+        'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN', env('META_WEBHOOK_VERIFY_TOKEN')),
+        // WhatsApp-only Login for Business / Embedded Signup configuration.
+        // Must not reuse a Meta Lead Ads (Pages/Instagram) configuration.
+        'config_id' => env('WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID'),
+    ],
+
 ];

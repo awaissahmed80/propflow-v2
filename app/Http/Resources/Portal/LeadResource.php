@@ -2,7 +2,10 @@
 
 namespace App\Http\Resources\Portal;
 
+use App\Models\AssetLink;
 use App\Models\Lead;
+use App\Models\Task;
+use App\Support\AssetManager;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -60,6 +63,8 @@ class LeadResource extends JsonResource
                 'id' => $this->unit->id,
                 'code' => $this->unit->code,
                 'name' => $this->unit->name,
+                'price' => $this->unit->price !== null ? (float) $this->unit->price : null,
+                'status' => $this->unit->status,
             ] : null),
             'stage' => $this->whenLoaded('stage', fn () => $this->stage ? [
                 'id' => $this->stage->id,
@@ -73,6 +78,11 @@ class LeadResource extends JsonResource
                 'title' => $this->campaign->title,
                 'public_id' => $this->campaign->public_id,
             ] : null),
+            'active_order' => $this->whenLoaded('activeOrder', fn () => $this->activeOrder ? [
+                'id' => $this->activeOrder->id,
+                'code' => $this->activeOrder->code,
+                'status' => $this->activeOrder->status,
+            ] : null),
             'assignee' => $this->when(
                 $this->relationLoaded('assignee'),
                 fn () => $this->assignee ? [
@@ -81,8 +91,80 @@ class LeadResource extends JsonResource
                     'avatar' => $this->assignee->getAttribute('avatar'),
                 ] : null,
             ),
+            'creator' => $this->when(
+                $this->relationLoaded('creator'),
+                fn () => $this->creator ? [
+                    'id' => $this->creator->id,
+                    'display_name' => $this->creator->display_name,
+                ] : null,
+            ),
+            'tasks' => $this->whenLoaded('tasks', fn () => $this->tasks->map(fn (Task $task): array => [
+                'id' => $task->id,
+                'action' => $task->action,
+                'comments' => $task->comments,
+                'status' => $task->status,
+                'type' => $task->type,
+                'created_at' => $task->created_at?->toIso8601String(),
+                'user' => $task->relationLoaded('user') && $task->user ? [
+                    'id' => $task->user->id,
+                    'display_name' => $task->user->display_name,
+                ] : null,
+                'attachments' => $this->taskAttachments($task),
+            ])->values()->all()),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return list<array{id: int, name: string|null, url: string|null, thumbnail_url: string|null, type: string|null, kind: string}>
+     */
+    private function taskAttachments(Task $task): array
+    {
+        $assets = app(AssetManager::class);
+        $rows = [];
+
+        if ($task->relationLoaded('gallery')) {
+            foreach ($task->gallery as $link) {
+                $payload = $this->attachmentPayload($link, 'media', $assets);
+
+                if ($payload !== null) {
+                    $rows[] = $payload;
+                }
+            }
+        }
+
+        if ($task->relationLoaded('documents')) {
+            foreach ($task->documents as $link) {
+                $payload = $this->attachmentPayload($link, 'document', $assets);
+
+                if ($payload !== null) {
+                    $rows[] = $payload;
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array{id: int, name: string|null, url: string|null, thumbnail_url: string|null, type: string|null, kind: string}|null
+     */
+    private function attachmentPayload(AssetLink $link, string $kind, AssetManager $assets): ?array
+    {
+        $asset = $link->asset;
+
+        if ($asset === null) {
+            return null;
+        }
+
+        return [
+            'id' => $asset->id,
+            'name' => $asset->name,
+            'url' => $assets->url($asset),
+            'thumbnail_url' => filled($asset->thumbnail) ? url('assets/'.$asset->thumbnail) : null,
+            'type' => $asset->type,
+            'kind' => $kind,
         ];
     }
 }

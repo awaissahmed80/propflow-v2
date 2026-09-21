@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\AssetManager;
+use App\Traits\LogUserActivity;
 use Database\Factories\AssetFolderFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -17,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class AssetFolder extends Model
 {
     /** @use HasFactory<AssetFolderFactory> */
-    use HasFactory;
+    use HasFactory, LogUserActivity;
 
     public const MAX_DEPTH = 2;
 

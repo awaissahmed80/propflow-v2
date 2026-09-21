@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\Lead;
+use App\Models\Task;
+use App\Observers\LeadNotificationObserver;
+use App\Observers\TaskNotificationObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +28,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        Lead::observe(LeadNotificationObserver::class);
+        Task::observe(TaskNotificationObserver::class);
     }
 
     /**

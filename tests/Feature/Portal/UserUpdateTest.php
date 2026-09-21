@@ -42,7 +42,7 @@ class UserUpdateTest extends TestCase
     {
         [$actor, $tenant, $membership] = $this->createTenantUserWithSeededRoles('tenant_user_update_guest');
 
-        $this->put(Domain::portal('/users/'.$actor->id), [
+        $this->put(Domain::portal('/users/'.$membership->code), [
             'first_name' => 'Changed',
             'last_name' => 'Name',
             'title' => $membership->title,
@@ -93,7 +93,7 @@ class UserUpdateTest extends TestCase
 
         $replacement = UploadedFile::fake()->image('second.png', 140, 140);
 
-        $response = $this->put(Domain::portal('/users/'.$target->id), [
+        $response = $this->put(Domain::portal('/users/'.$membership->code), [
             'first_name' => 'Imran',
             'last_name' => 'Updated',
             'title' => 'Team Lead',
@@ -154,7 +154,7 @@ class UserUpdateTest extends TestCase
         $this->actingAs($actor);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->put(Domain::portal('/users/'.$target->id), [
+        $this->put(Domain::portal('/users/'.$membership->code), [
             'first_name' => $target->first_name,
             'last_name' => $target->last_name,
             'title' => $membership->title,

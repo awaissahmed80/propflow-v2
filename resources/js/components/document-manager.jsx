@@ -28,6 +28,7 @@ import {
   applyLibrarySelection,
   uploadLibraryFiles,
   useLibrarySelection,
+  useReportLibrarySelection,
 } from "@/components/asset-library-shell"
 import { cn } from "@/lib/utils"
 import {
@@ -151,10 +152,12 @@ function DocumentManager({
   assetableId,
   linkage = "DOCUMENT",
   selectedIds = EMPTY_SELECTED_IDS,
+  selectable: selectableProp,
+  onSelectionChange,
   onApplied,
 }) {
   const isOpen = embedded || open
-  const selectable = !embedded
+  const selectable = selectableProp ?? !embedded
   const [folders, setFolders] = useState([])
   const [items, setItems] = useState([])
   const [query, setQuery] = useState("")
@@ -177,6 +180,14 @@ function DocumentManager({
     selectedIds,
     multiple,
     enabled: selectable,
+  })
+
+  useReportLibrarySelection({
+    selection,
+    items,
+    kind: "document",
+    enabled: selectable && typeof onSelectionChange === "function",
+    onSelectionChange,
   })
 
   const currentFolder = useMemo(() => {
@@ -250,7 +261,7 @@ function DocumentManager({
     setNewFolderName("")
     setCreateFolderOpen(false)
     void bootstrap()
-  }, [isOpen, selectedIds])
+  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen) {

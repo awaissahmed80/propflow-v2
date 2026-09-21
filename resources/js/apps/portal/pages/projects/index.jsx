@@ -5,6 +5,7 @@ import { destroy } from "@/actions/App/Http/Controllers/Portal/ProjectController
 import { index, show } from "@/routes/portal/projects";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -265,7 +266,9 @@ function readStoredView() {
     return stored === "list" || stored === "grid" ? stored : "grid";
 }
 
-function ProjectsIndex({ projects = [], filters = { q: "" } }) {
+function ProjectsIndex({ projects: projectsProp, filters = { q: "" } }) {
+    const pending = isPagePending(projectsProp);
+    const projects = projectsProp ?? [];
     const [search, setSearch] = useState(filters.q ?? "");
     const [view, setView] = useState(readStoredView);
     const [projectFormOpen, setProjectFormOpen] = useState(false);
@@ -338,6 +341,10 @@ function ProjectsIndex({ projects = [], filters = { q: "" } }) {
             }
         );
     };
+
+    if (pending) {
+        return <PageSkeleton title="Projects" variant="cards" />;
+    }
 
     return (
         <Layout>

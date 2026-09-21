@@ -117,20 +117,20 @@ class LeadKanbanTest extends TestCase
             ->create([
                 'lead_stage_id' => $stage->id,
             ]);
-        $orderedIds = $leads->sortByDesc('id')->values()->pluck('id');
-        $cursor = $orderedIds->get(LeadController::KANBAN_COLUMN_PAGE_SIZE - 1);
+        $ordered = $leads->sortByDesc('id')->values();
+        $cursor = $ordered->get(LeadController::KANBAN_COLUMN_PAGE_SIZE - 1)->code;
         Tenant::forgetCurrent();
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $response = $this->getJson(Domain::portal('/leads/board/'.$stage->id.'?cursor='.$cursor));
+        $response = $this->getJson(Domain::portal('/leads/board/'.$stage->label.'?cursor='.$cursor));
 
         $response->assertOk();
         $response->assertJsonPath('has_more', false);
         $response->assertJsonCount(3, 'leads');
         $this->assertSame(
-            $orderedIds->slice(LeadController::KANBAN_COLUMN_PAGE_SIZE)->values()->all(),
+            $ordered->slice(LeadController::KANBAN_COLUMN_PAGE_SIZE)->pluck('id')->values()->all(),
             collect($response->json('leads'))->pluck('id')->all(),
         );
     }
@@ -156,7 +156,7 @@ class LeadKanbanTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $response = $this->from(Domain::portal('/leads'))
-            ->patch(Domain::portal('/leads/'.$lead->id), [
+            ->patch(Domain::portal('/leads/'.$lead->code), [
                 'lead_stage_id' => $qualified->id,
             ]);
 

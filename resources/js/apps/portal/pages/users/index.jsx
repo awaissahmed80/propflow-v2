@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { destroy } from "@/actions/App/Http/Controllers/Portal/UserController";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Avatar, AvatarGroup } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -352,11 +353,13 @@ function visitUsers({ q = "", code = "", only } = {}) {
 }
 
 function UsersIndex({
-    users = [],
+    users: usersProp,
     selectedUser = null,
     filters = { q: "" },
     formOptions = { roles: [], managers: [], departments: [] },
 }) {
+    const pending = isPagePending(usersProp);
+    const users = usersProp ?? [];
     const [search, setSearch] = useState(filters.q ?? "");
     const [userFormOpen, setUserFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
@@ -499,7 +502,7 @@ function UsersIndex({
 
         toast.promise(
             new Promise((resolve, reject) => {
-                router.delete(destroy.url(user.id), {
+                router.delete(destroy.url(user.code), {
                     preserveScroll: true,
                     onSuccess: () => {
                         if (selectedUser?.id === user.id) {
@@ -529,6 +532,10 @@ function UsersIndex({
             only: ["users", "selectedUser", "filters"],
         });
     };
+
+    if (pending) {
+        return <PageSkeleton title="Users" variant="table" />;
+    }
 
     return (
         <Layout>

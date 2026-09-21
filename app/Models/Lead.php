@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\LeadActivity;
 use App\Traits\LogUserActivity;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -103,6 +105,11 @@ class Lead extends Model
         ];
     }
 
+    public function getRouteKeyName(): string
+    {
+        return 'code';
+    }
+
     public static function boot(): void
     {
         parent::boot();
@@ -119,6 +126,10 @@ class Lead extends Model
                 ?? Tenant::query()->latest('id')->value('id')
                 ?? 0;
             $model->code = 'l'.$tenantId.$datePart.$numberPart;
+        });
+
+        static::created(function (Lead $lead): void {
+            app(LeadActivity::class)->created($lead);
         });
     }
 
@@ -209,6 +220,27 @@ class Lead extends Model
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /**
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
+     * @return HasOne<Order, $this>
+     */
+    public function activeOrder(): HasOne
+    {
+        return $this->hasOne(Order::class)->ofMany(
+            ['id' => 'max'],
+            function ($query): void {
+                $query->whereIn('status', Order::activeStatuses());
+            },
+        );
     }
 
     /**

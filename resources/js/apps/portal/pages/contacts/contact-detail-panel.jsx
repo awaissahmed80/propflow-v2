@@ -294,7 +294,7 @@ export default function ContactDetailPanel({
         const { first_name, last_name } = splitName(values.contact_name);
 
         router.patch(
-            update.url(contact.id),
+            update.url(contact.uuid),
             {
                 first_name,
                 last_name,
@@ -366,7 +366,7 @@ export default function ContactDetailPanel({
 
         toast.promise(
             new Promise((resolve, reject) => {
-                router.delete(destroy.url(contact.id), {
+                router.delete(destroy.url(contact.uuid), {
                     preserveScroll: true,
                     onSuccess: () => {
                         onClose();

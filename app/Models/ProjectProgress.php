@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\LogUserActivity;
 use Database\Factories\ProjectProgressFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -24,7 +25,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class ProjectProgress extends Model
 {
     /** @use HasFactory<ProjectProgressFactory> */
-    use HasFactory, SoftDeletes;
+    use HasFactory, LogUserActivity, SoftDeletes;
 
     public const STATUS_PLANNED = 'planned';
 

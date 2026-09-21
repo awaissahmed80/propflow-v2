@@ -5,7 +5,9 @@ namespace App\Support;
 use App\Models\Asset;
 use App\Models\AssetFolder;
 use App\Models\AssetLink;
+use App\Models\Campaign;
 use App\Models\Project;
+use App\Models\Task;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -35,7 +37,9 @@ class AssetManager
      */
     public const ASSETABLES = [
         'project' => Project::class,
+        'campaign' => Campaign::class,
         'user' => User::class,
+        'task' => Task::class,
     ];
 
     public function url(?Asset $asset): ?string

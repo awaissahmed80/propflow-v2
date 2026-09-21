@@ -53,6 +53,10 @@ class HandleInertiaRequests extends Middleware
             ],
             'flash' => [
                 'contact_reused' => fn () => $request->session()->get('contact_reused'),
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+                'open_meta_config' => fn () => $request->session()->get('open_meta_config'),
+                'open_whatsapp_config' => fn () => $request->session()->get('open_whatsapp_config'),
             ],
         ];
     }

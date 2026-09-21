@@ -43,7 +43,7 @@ class LeadDestroyTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $response = $this->delete(Domain::portal('/leads/'.$lead->id));
+        $response = $this->delete(Domain::portal('/leads/'.$lead->code));
 
         $response->assertRedirect(Domain::portal('/leads?view=archive'));
 
@@ -65,7 +65,7 @@ class LeadDestroyTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $this->from(Domain::portal('/leads'))
-            ->delete(Domain::portal('/leads/'.$lead->id))
+            ->delete(Domain::portal('/leads/'.$lead->code))
             ->assertRedirect(Domain::portal('/leads'))
             ->assertSessionHasErrors('lead');
 

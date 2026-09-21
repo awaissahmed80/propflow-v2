@@ -28,6 +28,7 @@ export function AppSidebar () {
                                                 group?.items?.map((item, i) =>
                                                     <NavLink
                                                         href={item?.to}
+                                                        component={item?.component}
                                                         end={Boolean(item?.end)}
                                                         key={`${item?.label}-${item?.to}`}
                                                         className="flex flex-row items-center rounded-md px-3 py-1 text-sm font-medium hover:bg-card"

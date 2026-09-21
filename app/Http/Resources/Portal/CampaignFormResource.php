@@ -20,7 +20,7 @@ class CampaignFormResource extends JsonResource
     {
         $identifier = Tenant::current()?->identifier;
         $scriptUrl = $identifier
-            ? Domain::app('/'.$identifier.'/form.js?id='.$this->public_id)
+            ? Domain::campaign('/'.$identifier.'/form.js?id='.$this->public_id)
             : null;
 
         return [

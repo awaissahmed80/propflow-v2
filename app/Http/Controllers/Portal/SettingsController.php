@@ -5,13 +5,20 @@ namespace App\Http\Controllers\Portal;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Portal\UpdateConfigurationSettingsRequest;
 use App\Http\Requests\Portal\UpdateGeneralSettingsRequest;
+use App\Http\Requests\Portal\UpdateNotificationSettingsRequest;
 use App\Http\Requests\Portal\UpdatePipelineRulesRequest;
 use App\Models\CampaignGoalType;
+use App\Models\CustomField;
 use App\Models\LeadStage;
 use App\Models\MetaData;
 use App\Models\Setting;
 use App\Models\Tenant;
+use App\Models\TenantUser;
+use App\Models\User;
 use App\Support\AssetManager;
+use App\Support\Integrations\IntegrationCatalog;
+use App\Support\LeadWebhooks\LeadWebhookSettings;
+use App\Support\Notifications\NotificationSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -29,7 +36,7 @@ class SettingsController extends Controller
         'pipeline',
         'campaigns',
         'integrations',
-        'custom-fields',
+        'notifications',
         'import-export',
         'developer',
     ];
@@ -39,6 +46,10 @@ class SettingsController extends Controller
     public function index(Request $request, ?string $section = null): Response|RedirectResponse
     {
         $section = $section ?: 'general';
+
+        if ($section === 'custom-fields') {
+            return redirect()->route('portal.settings.index', ['section' => 'campaigns']);
+        }
 
         if ($section === 'pipeline-rules') {
             return redirect()->route('portal.settings.index', ['section' => 'pipeline']);
@@ -74,6 +85,12 @@ class SettingsController extends Controller
                 ->values()
                 ->all(),
             'campaignGoalTypes' => CampaignGoalType::catalog(),
+            'campaignFormFields' => CustomField::campaignFormCatalog(),
+            'integrations' => IntegrationCatalog::forTenant(),
+            'notifications' => $this->notificationSettings(),
+            'notificationCatalog' => NotificationSettings::catalog(),
+            'assignees' => $this->assigneesPayload(),
+            'leadWebhook' => $section === 'developer' ? LeadWebhookSettings::forCurrent() : null,
         ]);
     }
 
@@ -135,6 +152,19 @@ class SettingsController extends Controller
         return back();
     }
 
+    public function updateNotifications(UpdateNotificationSettingsRequest $request): RedirectResponse
+    {
+        $data = [];
+
+        foreach ($request->validated() as $key => $value) {
+            $data[$key] = (bool) $value;
+        }
+
+        Setting::putGroup(Setting::GROUP_NOTIFICATIONS, 'Notifications', $data);
+
+        return back();
+    }
+
     /**
      * @return list<array{id: string, label: string, icon: string, coming_soon?: bool}>
      */
@@ -145,10 +175,10 @@ class SettingsController extends Controller
             ['id' => 'meta-data', 'label' => 'Meta data', 'icon' => 'database-2-line'],
             ['id' => 'pipeline', 'label' => 'Lead pipeline', 'icon' => 'flow-chart'],
             ['id' => 'campaigns', 'label' => 'Campaigns', 'icon' => 'megaphone-line'],
-            ['id' => 'integrations', 'label' => 'Integrations', 'icon' => 'plug-line', 'coming_soon' => true],
-            ['id' => 'custom-fields', 'label' => 'Custom fields', 'icon' => 'input-field', 'coming_soon' => true],
+            ['id' => 'integrations', 'label' => 'Integrations', 'icon' => 'plug-line'],
+            ['id' => 'notifications', 'label' => 'Notifications', 'icon' => 'notification-3-line'],
             ['id' => 'import-export', 'label' => 'Import / Export', 'icon' => 'swap-line', 'coming_soon' => true],
-            ['id' => 'developer', 'label' => 'Developer', 'icon' => 'code-s-slash-line', 'coming_soon' => true],
+            ['id' => 'developer', 'label' => 'Developer', 'icon' => 'code-s-slash-line'],
         ];
     }
 
@@ -231,6 +261,48 @@ class SettingsController extends Controller
             'flag_stale_leads' => false,
             'stale_after_days' => 14,
         ]);
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    protected function notificationSettings(): array
+    {
+        $stored = Setting::group(Setting::GROUP_NOTIFICATIONS, NotificationSettings::defaults());
+        $settings = [];
+
+        foreach (NotificationSettings::defaults() as $key => $default) {
+            $settings[$key] = (bool) ($stored[$key] ?? $default);
+        }
+
+        return $settings;
+    }
+
+    /**
+     * @return list<array{id: int, display_name: string}>
+     */
+    protected function assigneesPayload(): array
+    {
+        $tenant = Tenant::current();
+
+        if (! $tenant) {
+            return [];
+        }
+
+        $userIds = TenantUser::query()
+            ->where('tenant_id', $tenant->id)
+            ->pluck('user_id')
+            ->all();
+
+        return User::query()
+            ->whereIn('id', $userIds)
+            ->orderBy('display_name')
+            ->get(['id', 'display_name'])
+            ->map(fn (User $user): array => [
+                'id' => $user->id,
+                'display_name' => $user->display_name,
+            ])
+            ->all();
     }
 
     protected function deleteLogoFile(string $path): void

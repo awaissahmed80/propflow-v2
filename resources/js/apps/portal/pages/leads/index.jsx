@@ -5,6 +5,7 @@ import { bulk as bulkLeads } from "@/actions/App/Http/Controllers/Portal/LeadCon
 import { index } from "@/routes/portal/leads";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
+import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { Button } from "@/components/ui/button";
 import { CheckboxControl } from "@/components/ui/checkbox";
 import {
@@ -88,6 +89,44 @@ const emptyPagination = {
     from: null,
     to: null,
 };
+
+function leadCodeFromLocation() {
+    const hash = window.location.hash.replace(/^#/, "");
+
+    if (hash) {
+        try {
+            return decodeURIComponent(hash);
+        } catch {
+            return hash;
+        }
+    }
+
+    return new URLSearchParams(window.location.search).get("lead") || "";
+}
+
+function writeLeadHash(code) {
+    const url = new URL(window.location.href);
+
+    url.searchParams.delete("lead");
+    url.hash = code || "";
+
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+    if (next === current) {
+        return;
+    }
+
+    window.history.replaceState(window.history.state, "", next);
+}
+
+function findLoadedLead(code, leads, board) {
+    return (
+        leads.find((lead) => lead.code === code) ||
+        board.flatMap((column) => column.leads || []).find((lead) => lead.code === code) ||
+        null
+    );
+}
 
 function LeadRow({
     lead,
@@ -245,13 +284,17 @@ function LeadRow({
 }
 
 function Leads({
-    leads = [],
-    board = [],
+    leads: leadsProp,
+    board: boardProp,
     view = "table",
     pagination = emptyPagination,
     filters = {},
     formOptions = {},
+    openedLead = null,
 }) {
+    const pending = isPagePending(leadsProp);
+    const leads = leadsProp ?? [];
+    const board = boardProp ?? [];
     const isArchive = view === "archive";
     const currentView = isArchive ? "archive" : view === "kanban" ? "kanban" : "table";
     const layoutView = isArchive || currentView === "table" ? "table" : "kanban";
@@ -262,6 +305,8 @@ function Leads({
     const [checkedIds, setCheckedIds] = useState([]);
     const [bulkBusy, setBulkBusy] = useState(false);
     const searchTimeout = useRef(null);
+    const openLeadCode = useRef(null);
+    const requestedLeadCode = useRef(null);
 
     const appliedFilters = useMemo(
         () => ({
@@ -285,8 +330,58 @@ function Leads({
             return;
         }
 
+        if (openedLead && openedLead.id === selectedLead.id) {
+            return;
+        }
+
+        if (openLeadCode.current && openLeadCode.current === selectedLead.code) {
+            return;
+        }
+
+        if (leadCodeFromLocation() === selectedLead.code) {
+            return;
+        }
+
         setSelectedLead(null);
-    }, [leads, selectedLead?.id]);
+    }, [leads, selectedLead?.id, openedLead]);
+
+    useEffect(() => {
+        const code = leadCodeFromLocation();
+
+        if (!code || leadsProp === undefined) {
+            return;
+        }
+
+        if (openedLead?.code === code) {
+            openLeadCode.current = code;
+            setSelectedLead(openedLead);
+            writeLeadHash(code);
+
+            return;
+        }
+
+        const found = findLoadedLead(code, leads, board);
+
+        if (found) {
+            openLeadCode.current = code;
+            setSelectedLead((current) => (current?.id === found.id ? current : found));
+
+            return;
+        }
+
+        if (requestedLeadCode.current === code) {
+            return;
+        }
+
+        requestedLeadCode.current = code;
+        router.get(index.url(), { lead: code }, {
+            only: ["openedLead"],
+            preserveState: true,
+            preserveScroll: true,
+            preserveUrl: true,
+            replace: true,
+        });
+    }, [openedLead, leads, board, leadsProp]);
 
     const panelOpen = Boolean(selectedLead);
     const compact = panelOpen;
@@ -420,7 +515,8 @@ function Leads({
             preserveState: true,
             preserveScroll: true,
             replace: true,
-            only: ["leads", "board", "view", "pagination", "filters", "formOptions"],
+            only: ["leads", "board", "view", "pagination", "filters", "formOptions", "openedLead"],
+            onFinish: () => writeLeadHash(openLeadCode.current),
         });
     };
 
@@ -431,6 +527,7 @@ function Leads({
 
         setSelectedLead(null);
         setCheckedIds([]);
+        openLeadCode.current = null;
         visitLeads({ view: nextView, page: 1 });
     };
 
@@ -602,11 +699,19 @@ function Leads({
     };
 
     const openLead = (lead) => {
+        if (!lead?.code) {
+            return;
+        }
+
+        openLeadCode.current = lead.code;
         setSelectedLead(lead);
+        writeLeadHash(lead.code);
     };
 
     const clearSelection = () => {
+        openLeadCode.current = null;
         setSelectedLead(null);
+        writeLeadHash(null);
     };
 
     const openEdit = (lead) => {
@@ -625,6 +730,10 @@ function Leads({
         pagination.total > 0
             ? `Showing ${pagination.from}–${pagination.to} of ${pagination.total}`
             : "No results";
+
+    if (pending) {
+        return <PageSkeleton title="Leads" variant="table" />;
+    }
 
     return (
         <TooltipProvider delay={200}>
@@ -1073,6 +1182,7 @@ function Leads({
                                     lead={selectedLead}
                                     stages={formOptions.stages || []}
                                     projects={formOptions.projects || []}
+                                    units={formOptions.units || []}
                                     assignees={formOptions.assignees || []}
                                     onClose={clearSelection}
                                     onEdit={openEdit}

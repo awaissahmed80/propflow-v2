@@ -42,7 +42,7 @@ class ContactUpdateTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $response = $this->patch(Domain::portal('/contacts/'.$contact->id), [
+        $response = $this->patch(Domain::portal('/contacts/'.$contact->uuid), [
             'first_name' => 'Sonia',
             'last_name' => 'Koll',
             'phone_number' => '03009876543',

@@ -252,7 +252,7 @@ export default function TeamForm({
         };
 
         if (isEditing) {
-            router.put(update.url(data.id), payload, {
+            router.put(update.url(data.code), payload, {
                 preserveScroll: true,
                 preserveState: "errors",
                 onSuccess: () => {

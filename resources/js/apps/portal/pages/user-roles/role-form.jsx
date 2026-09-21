@@ -92,7 +92,7 @@ export default function RoleForm({ isOpen, onClose, data = null, permissionGroup
         const visit = isEditing
             ? {
                   method: "put",
-                  url: update.url(data.id),
+                  url: update.url(data.name),
                   successMessage: "Role updated successfully",
                   errorMessage: "Unable to update role",
               }

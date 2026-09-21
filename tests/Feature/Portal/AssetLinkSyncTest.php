@@ -4,6 +4,7 @@ namespace Tests\Feature\Portal;
 
 use App\Models\Asset;
 use App\Models\AssetLink;
+use App\Models\Campaign;
 use App\Models\Project;
 use App\Models\Tenant;
 use App\Models\TenantUser;
@@ -130,6 +131,49 @@ class AssetLinkSyncTest extends TestCase
             'asset_id' => $doc->id,
             'linkage' => AssetManager::LINKAGE_DOCUMENT,
         ], 'tenant');
+        Tenant::forgetCurrent();
+    }
+
+    public function test_sync_campaign_gallery_and_hero(): void
+    {
+        [$actor, $tenant] = $this->createTenantUser('tenant_asset_sync_campaign');
+
+        $tenant->makeCurrent();
+        $campaign = Campaign::factory()->create();
+        $hero = Asset::factory()->media()->create(['name' => 'hero.jpg']);
+        $galleryA = Asset::factory()->media()->create(['name' => 'a.jpg']);
+        $galleryB = Asset::factory()->media()->create(['name' => 'b.jpg']);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($actor);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->postJson(Domain::portal('/media/sync'), [
+            'assetable_type' => 'campaign',
+            'assetable_id' => $campaign->id,
+            'linkage' => AssetManager::LINKAGE_THUMBNAIL,
+            'asset_ids' => [$hero->id],
+        ])->assertOk();
+
+        $this->postJson(Domain::portal('/media/sync'), [
+            'assetable_type' => 'campaign',
+            'assetable_id' => $campaign->id,
+            'linkage' => AssetManager::LINKAGE_GALLERY,
+            'asset_ids' => [$galleryA->id, $galleryB->id],
+        ])->assertOk();
+
+        $tenant->makeCurrent();
+        $this->assertDatabaseHas('asset_links', [
+            'assetable_type' => Campaign::class,
+            'assetable_id' => $campaign->id,
+            'asset_id' => $hero->id,
+            'linkage' => AssetManager::LINKAGE_THUMBNAIL,
+        ], 'tenant');
+        $this->assertSame(2, AssetLink::query()
+            ->where('assetable_type', Campaign::class)
+            ->where('assetable_id', $campaign->id)
+            ->where('linkage', AssetManager::LINKAGE_GALLERY)
+            ->count());
         Tenant::forgetCurrent();
     }
 

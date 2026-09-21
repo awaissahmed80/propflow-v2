@@ -25,8 +25,8 @@ class PublicFormController extends Controller
             abort(404);
         }
 
-        $configUrl = Domain::app('/'.$identifier.'/forms/'.$formId);
-        $submitUrl = Domain::app('/'.$identifier.'/forms/'.$formId.'/submit');
+        $configUrl = Domain::campaign('/'.$identifier.'/forms/'.$formId);
+        $submitUrl = Domain::campaign('/'.$identifier.'/forms/'.$formId.'/submit');
 
         return response($this->embedScript($configUrl, $submitUrl), 200, [
             'Content-Type' => 'application/javascript; charset=UTF-8',

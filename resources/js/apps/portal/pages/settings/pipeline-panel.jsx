@@ -339,7 +339,9 @@ export default function PipelinePanel({
             prev.map((stage) => (stage.id === id ? { ...stage, ...payload } : stage))
         );
 
-        router.put(pathFrom(updateStage.url(id)), payload, {
+        const stage = items.find((item) => item.id === id);
+
+        router.put(pathFrom(updateStage.url(stage?.label ?? id)), payload, {
             preserveScroll: true,
             optimistic: (props) => ({
                 stages: (props.stages ?? []).map((stage) =>
@@ -412,7 +414,7 @@ export default function PipelinePanel({
         }
 
         setProcessing(true);
-        router.delete(pathFrom(destroyStage.url(stage.id)), {
+        router.delete(pathFrom(destroyStage.url(stage.label)), {
             preserveScroll: true,
             onSuccess: () =>
                 toast.success(

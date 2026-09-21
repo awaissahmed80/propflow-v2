@@ -56,24 +56,23 @@ class RoleController extends Controller
         return to_route('portal.roles.index');
     }
 
-    public function update(UpdateRoleRequest $request, int $role): RedirectResponse
+    public function update(UpdateRoleRequest $request, Role $role): RedirectResponse
     {
-        $roleModel = Role::query()->findOrFail($role);
         $validated = $request->validated();
 
-        $roleModel->forceFill([
+        $role->forceFill([
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
         ])->save();
 
-        $roleModel->syncPermissions($validated['permissions'] ?? []);
+        $role->syncPermissions($validated['permissions'] ?? []);
 
         return to_route('portal.roles.index');
     }
 
-    public function destroy(int $role): RedirectResponse
+    public function destroy(Role $role): RedirectResponse
     {
-        Role::query()->findOrFail($role)->delete();
+        $role->delete();
 
         return to_route('portal.roles.index');
     }

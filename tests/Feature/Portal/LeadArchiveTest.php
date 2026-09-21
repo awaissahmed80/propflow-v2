@@ -82,7 +82,7 @@ class LeadArchiveTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $this->from(Domain::portal('/leads'))
-            ->post(Domain::portal('/leads/'.$lead->id.'/archive'))
+            ->post(Domain::portal('/leads/'.$lead->code.'/archive'))
             ->assertRedirect(Domain::portal('/leads'));
 
         $tenant->makeCurrent();
@@ -105,7 +105,7 @@ class LeadArchiveTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $this->from(Domain::portal('/leads?view=archive'))
-            ->post(Domain::portal('/leads/'.$lead->id.'/restore'))
+            ->post(Domain::portal('/leads/'.$lead->code.'/restore'))
             ->assertRedirect(Domain::portal('/leads?view=archive'));
 
         $tenant->makeCurrent();
@@ -129,7 +129,7 @@ class LeadArchiveTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->post(Domain::portal('/leads/'.$lead->id.'/restore'))
+        $this->post(Domain::portal('/leads/'.$lead->code.'/restore'))
             ->assertRedirect();
 
         $tenant->makeCurrent();
@@ -152,7 +152,7 @@ class LeadArchiveTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $this->from(Domain::portal('/leads'))
-            ->delete(Domain::portal('/leads/'.$lead->id))
+            ->delete(Domain::portal('/leads/'.$lead->code))
             ->assertRedirect(Domain::portal('/leads'))
             ->assertSessionHasErrors('lead');
 
@@ -176,7 +176,7 @@ class LeadArchiveTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->delete(Domain::portal('/leads/'.$lead->id))
+        $this->delete(Domain::portal('/leads/'.$lead->code))
             ->assertRedirect(Domain::portal('/leads?view=archive'));
 
         $tenant->makeCurrent();

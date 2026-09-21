@@ -34,12 +34,13 @@ class UnitDestroyTest extends TestCase
         $project = Project::factory()->create();
         $unit = Unit::factory()->create(['project_id' => $project->id]);
         $unitId = $unit->id;
+        $code = $unit->code;
         Tenant::forgetCurrent();
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $response = $this->delete(Domain::portal('/units/'.$unitId));
+        $response = $this->delete(Domain::portal('/units/'.$code));
 
         $response->assertRedirect(Domain::portal('/inventory'));
 

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\AssetManager;
+use App\Traits\LogUserActivity;
 use Database\Factories\AssetLabelFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class AssetLabel extends Model
 {
     /** @use HasFactory<AssetLabelFactory> */
-    use HasFactory;
+    use HasFactory, LogUserActivity;
 
     /**
      * @return BelongsToMany<Asset, $this>
