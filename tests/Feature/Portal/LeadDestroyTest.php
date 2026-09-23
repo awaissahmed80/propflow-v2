@@ -27,7 +27,7 @@ class LeadDestroyTest extends TestCase
         $this->migrateTenant();
     }
 
-    public function test_archived_lead_can_be_soft_deleted(): void
+    public function test_archived_lead_can_be_hard_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_lead_destroy');
 
@@ -48,11 +48,11 @@ class LeadDestroyTest extends TestCase
         $response->assertRedirect(Domain::portal('/leads?view=archive'));
 
         $tenant->makeCurrent();
-        $this->assertSoftDeleted('leads', ['id' => $lead->id], 'tenant');
+        $this->assertDatabaseMissing('leads', ['id' => $lead->id], 'tenant');
         Tenant::forgetCurrent();
     }
 
-    public function test_active_lead_cannot_be_soft_deleted(): void
+    public function test_active_lead_cannot_be_hard_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_lead_destroy_active');
 
@@ -70,7 +70,7 @@ class LeadDestroyTest extends TestCase
             ->assertSessionHasErrors('lead');
 
         $tenant->makeCurrent();
-        $this->assertNotSoftDeleted('leads', ['id' => $lead->id], 'tenant');
+        $this->assertDatabaseHas('leads', ['id' => $lead->id, 'deleted_at' => null], 'tenant');
         Tenant::forgetCurrent();
     }
 

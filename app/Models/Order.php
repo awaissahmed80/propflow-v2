@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\AssetManager;
 use App\Traits\LogUserActivity;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 #[Fillable([
     'code',
@@ -61,11 +63,7 @@ class Order extends Model
 
     public const STATUS_HOLD = 'hold';
 
-    public const STATUS_VERIFIED = 'verified';
-
     public const STATUS_IN_PROGRESS = 'in_progress';
-
-    public const STATUS_CURRENT = 'current';
 
     public const STATUS_OVERDUE = 'overdue';
 
@@ -77,11 +75,17 @@ class Order extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
+    /** @deprecated Removed from catalog — maps to in_progress */
+    public const STATUS_VERIFIED = self::STATUS_IN_PROGRESS;
+
+    /** @deprecated Removed from catalog — maps to in_progress */
+    public const STATUS_CURRENT = self::STATUS_IN_PROGRESS;
+
     /** @deprecated Use STATUS_HOLD */
     public const STATUS_BOOKED = self::STATUS_HOLD;
 
-    /** @deprecated Use STATUS_CURRENT */
-    public const STATUS_ALLOCATED = self::STATUS_CURRENT;
+    /** @deprecated Use STATUS_IN_PROGRESS */
+    public const STATUS_ALLOCATED = self::STATUS_IN_PROGRESS;
 
     /** @deprecated Use STATUS_COMPLETED */
     public const STATUS_DELIVERED = self::STATUS_COMPLETED;
@@ -123,9 +127,34 @@ class Order extends Model
     {
         return [
             self::STATUS_HOLD,
-            self::STATUS_VERIFIED,
             self::STATUS_IN_PROGRESS,
-            self::STATUS_CURRENT,
+            self::STATUS_OVERDUE,
+            self::STATUS_DEFAULTER,
+            self::STATUS_LITIGATION,
+        ];
+    }
+
+    /**
+     * Statuses staff may set manually (pipeline owns the rest).
+     *
+     * @return list<string>
+     */
+    public static function manualStatuses(): array
+    {
+        return [
+            self::STATUS_HOLD,
+            self::STATUS_IN_PROGRESS,
+        ];
+    }
+
+    /**
+     * Statuses driven by DealPipeline automation — not manually selectable.
+     *
+     * @return list<string>
+     */
+    public static function automatedStatuses(): array
+    {
+        return [
             self::STATUS_OVERDUE,
             self::STATUS_DEFAULTER,
             self::STATUS_LITIGATION,
@@ -176,11 +205,51 @@ class Order extends Model
     }
 
     /**
-     * @return HasMany<Task, $this>
+     * @return MorphMany<Task, $this>
      */
-    public function activities(): HasMany
+    public function activities(): MorphMany
     {
-        return $this->hasMany(Task::class)->latest('id');
+        return $this->morphMany(Task::class, 'taskable')->latest('id');
+    }
+
+    /**
+     * @return MorphMany<Task, $this>
+     */
+    public function tasks(): MorphMany
+    {
+        return $this->morphMany(Task::class, 'taskable');
+    }
+
+    /**
+     * @return MorphMany<AssetLink, $this>
+     */
+    public function documents(): MorphMany
+    {
+        return $this->morphMany(AssetLink::class, 'assetable')
+            ->where('linkage', AssetManager::LINKAGE_DOCUMENT);
+    }
+
+    /**
+     * Pre-handover stages where sales agents remain the customer liaison.
+     *
+     * @return list<string>
+     */
+    public static function liaisonStages(): array
+    {
+        return [
+            self::STAGE_TOKEN,
+            self::STAGE_BOOKING_KYC,
+            self::STAGE_ACTIVE,
+        ];
+    }
+
+    public function isLiaisonActive(): bool
+    {
+        $stage = $this->stage ?: self::STAGE_TOKEN;
+
+        return in_array($stage, self::liaisonStages(), true)
+            && $this->status !== self::STATUS_CANCELLED
+            && ! $this->isClosed();
     }
 
     public function getRouteKeyName(): string

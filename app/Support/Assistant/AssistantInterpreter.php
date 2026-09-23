@@ -578,7 +578,7 @@ class AssistantInterpreter
 
         $page = strtolower($match[1]);
         $href = match ($page) {
-            'dashboard' => '/dashboard',
+            'dashboard' => '/',
             'leads' => '/leads',
             'contacts' => '/contacts',
             'campaigns' => '/campaigns',

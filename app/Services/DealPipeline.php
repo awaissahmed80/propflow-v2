@@ -34,12 +34,52 @@ class DealPipeline
     ) {}
 
     /**
+     * Verify the token and advance into Booking & KYC.
+     */
+    public function verify(Order $order, ?int $actorId): Order
+    {
+        return DB::connection('tenant')->transaction(function () use ($order, $actorId): Order {
+            $order = $this->lockOpen($order);
+
+            if ($order->stage !== Order::STAGE_TOKEN && $order->booking_verified_at === null) {
+                throw ValidationException::withMessages([
+                    'order' => 'Only token-stage bookings can be verified.',
+                ]);
+            }
+
+            if ($order->booking_verified_at !== null && $order->stage !== Order::STAGE_TOKEN) {
+                return $order;
+            }
+
+            $order->forceFill([
+                'booking_verified_at' => $order->booking_verified_at ?? now(),
+                'stage' => Order::STAGE_BOOKING_KYC,
+                'status' => Order::STATUS_IN_PROGRESS,
+            ])->save();
+
+            $this->orderActivity->log($order, 'Token verified', $order->contact?->display_name ?: 'Booking', $actorId);
+
+            if ($order->lead) {
+                $this->activity->log($order->lead, 'Token verified', $order->contact?->display_name ?: 'Booking', $actorId);
+            }
+
+            return $order;
+        });
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
-    public function verify(Order $order, array $data, ?int $actorId): Order
+    public function completeBookingKyc(Order $order, array $data, ?int $actorId): Order
     {
         return DB::connection('tenant')->transaction(function () use ($order, $data, $actorId): Order {
             $order = $this->lockOpen($order);
+
+            if ($order->booking_verified_at === null && $order->stage === Order::STAGE_TOKEN) {
+                throw ValidationException::withMessages([
+                    'order' => 'Verify the token before entering Booking & KYC details.',
+                ]);
+            }
 
             $order->forceFill([
                 'identity_kind' => $data['identity_kind'],
@@ -57,8 +97,8 @@ class DealPipeline
                 'premium' => $this->money($this->cents($data['premium'] ?? 0)),
                 'discount' => $this->money($this->cents($data['discount'] ?? 0)),
                 'booking_verified_at' => $order->booking_verified_at ?? now(),
-                'stage' => Order::STAGE_TOKEN,
-                'status' => Order::STATUS_VERIFIED,
+                'stage' => Order::STAGE_ACTIVE,
+                'status' => Order::STATUS_IN_PROGRESS,
             ])->save();
 
             $contact = $order->contact;
@@ -71,36 +111,24 @@ class DealPipeline
                 ])->save();
             }
 
-            $this->orderActivity->log($order, 'Booking verified', $order->contact?->display_name ?: 'Booking', $actorId);
+            $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
+
+            $this->orderActivity->log($order, 'Booking & KYC completed', $order->contact?->display_name ?: 'Booking', $actorId);
 
             if ($order->lead) {
-                $this->activity->log($order->lead, 'Booking verified', $order->contact?->display_name ?: 'Booking', $actorId);
+                $this->activity->log($order->lead, 'Booking & KYC completed', $order->contact?->display_name ?: 'Booking', $actorId);
             }
 
-            return $order;
+            return $order->fresh() ?? $order;
         });
     }
 
+    /**
+     * @deprecated Use verify() — kept for route compatibility.
+     */
     public function enterBookingKyc(Order $order, ?int $actorId): Order
     {
-        return DB::connection('tenant')->transaction(function () use ($order, $actorId): Order {
-            $order = $this->lockOpen($order);
-
-            if ($order->status !== Order::STATUS_VERIFIED && $order->booking_verified_at === null) {
-                throw ValidationException::withMessages([
-                    'order' => 'Verify the token before entering Booking & KYC.',
-                ]);
-            }
-
-            $order->forceFill([
-                'stage' => Order::STAGE_BOOKING_KYC,
-                'status' => Order::STATUS_IN_PROGRESS,
-            ])->save();
-
-            $this->orderActivity->log($order, 'Entered Booking & KYC', null, $actorId);
-
-            return $order;
-        });
+        return $this->verify($order, $actorId);
     }
 
     /**
@@ -114,6 +142,12 @@ class DealPipeline
             if ($order->booking_verified_at === null) {
                 throw ValidationException::withMessages([
                     'order' => 'Verify the booking before building a payment plan.',
+                ]);
+            }
+
+            if (! in_array($order->stage, [Order::STAGE_ACTIVE, Order::STAGE_BOOKING_KYC], true)) {
+                throw ValidationException::withMessages([
+                    'order' => 'Payment plans can only be set after the token is verified.',
                 ]);
             }
 
@@ -186,10 +220,12 @@ class DealPipeline
 
             $this->syncBookingPayment($order, $down);
 
-            $order->forceFill([
-                'stage' => Order::STAGE_ACTIVE,
-                'status' => Order::STATUS_CURRENT,
-            ])->save();
+            if ($order->stage !== Order::STAGE_ACTIVE) {
+                $order->forceFill([
+                    'stage' => Order::STAGE_ACTIVE,
+                    'status' => Order::STATUS_IN_PROGRESS,
+                ])->save();
+            }
 
             $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']));
 
@@ -211,65 +247,87 @@ class DealPipeline
     {
         return DB::connection('tenant')->transaction(function () use ($order, $data, $receipt): OrderPayment {
             $order = $this->lockOpen($order);
-            $plan = $order->paymentPlan()->first();
 
-            if ($plan === null || $plan->template === null) {
+            if ($order->stage !== Order::STAGE_ACTIVE) {
                 throw ValidationException::withMessages([
-                    'order' => 'Build a payment plan before recording a receipt.',
+                    'order' => 'Payments can only be recorded on Active bookings.',
                 ]);
             }
 
-            $left = $this->cents($data['amount']);
-            $firstId = null;
-            $rows = $plan->installments()->orderBy('sequence')->lockForUpdate()->get();
+            $plan = $order->paymentPlan()->first();
+            $hasSchedule = $plan !== null
+                && $plan->template !== null
+                && $plan->installments()->exists();
 
-            foreach ($rows as $row) {
-                if ($left <= 0) {
-                    break;
-                }
+            $amountCents = $this->cents($data['amount']);
+            $installmentId = null;
 
-                $fee = $this->lateFeeCents($row, $plan);
-                $remaining = $this->cents($row->amount) + $fee - $this->cents($row->paid_amount);
+            if ($hasSchedule) {
+                $left = $amountCents;
+                $rows = $plan->installments()->orderBy('sequence')->lockForUpdate()->get();
 
-                if ($remaining <= 0) {
-                    if ($row->isPending()) {
-                        $row->forceFill([
-                            'status' => PaymentInstallment::STATUS_PAID,
-                            'paid_at' => $row->paid_at ?? now(),
-                        ])->save();
+                foreach ($rows as $row) {
+                    if ($left <= 0) {
+                        break;
                     }
 
-                    continue;
+                    $fee = $this->lateFeeCents($row, $plan);
+                    $remaining = $this->cents($row->amount) + $fee - $this->cents($row->paid_amount);
+
+                    if ($remaining <= 0) {
+                        if ($row->isPending()) {
+                            $row->forceFill([
+                                'status' => PaymentInstallment::STATUS_PAID,
+                                'paid_at' => $row->paid_at ?? now(),
+                            ])->save();
+                        }
+
+                        continue;
+                    }
+
+                    $apply = min($left, $remaining);
+                    $paid = $this->cents($row->paid_amount) + $apply;
+                    $settled = $paid >= $this->cents($row->amount) + $fee;
+                    $row->forceFill([
+                        'paid_amount' => $this->money($paid),
+                        'status' => $settled ? PaymentInstallment::STATUS_PAID : PaymentInstallment::STATUS_PENDING,
+                        'paid_at' => $settled ? now() : null,
+                    ])->save();
+                    $installmentId ??= $row->id;
+                    $left -= $apply;
                 }
 
-                $apply = min($left, $remaining);
-                $paid = $this->cents($row->paid_amount) + $apply;
-                $settled = $paid >= $this->cents($row->amount) + $fee;
-                $row->forceFill([
-                    'paid_amount' => $this->money($paid),
-                    'status' => $settled ? PaymentInstallment::STATUS_PAID : PaymentInstallment::STATUS_PENDING,
-                    'paid_at' => $settled ? now() : null,
-                ])->save();
-                $firstId ??= $row->id;
-                $left -= $apply;
-            }
+                if ($installmentId === null) {
+                    throw ValidationException::withMessages([
+                        'amount' => 'There is nothing left to collect on this plan.',
+                    ]);
+                }
 
-            if ($firstId === null) {
-                throw ValidationException::withMessages([
-                    'amount' => 'There is nothing left to collect on this plan.',
-                ]);
-            }
+                if ($left > 0) {
+                    throw ValidationException::withMessages([
+                        'amount' => 'That amount is more than the outstanding balance.',
+                    ]);
+                }
+            } else {
+                $outstanding = $this->outstandingCents($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
 
-            if ($left > 0) {
-                throw ValidationException::withMessages([
-                    'amount' => 'That amount is more than the outstanding balance.',
-                ]);
+                if ($outstanding <= 0) {
+                    throw ValidationException::withMessages([
+                        'amount' => 'There is nothing left to collect on this booking.',
+                    ]);
+                }
+
+                if ($amountCents > $outstanding) {
+                    throw ValidationException::withMessages([
+                        'amount' => 'That amount is more than the outstanding balance.',
+                    ]);
+                }
             }
 
             $payment = OrderPayment::query()->create([
                 'order_id' => $order->id,
-                'payment_installment_id' => $firstId,
-                'amount' => $this->money($this->cents($data['amount'])),
+                'payment_installment_id' => $installmentId,
+                'amount' => $this->money($amountCents),
                 'method' => $data['method'],
                 'reference' => $data['reference'] ?? null,
                 'paid_on' => $data['paid_on'],
@@ -289,7 +347,7 @@ class DealPipeline
             $this->orderActivity->log(
                 $order->fresh() ?? $order,
                 'Payment recorded',
-                $this->money($this->cents($data['amount'])).' via '.$data['method'],
+                $this->money($amountCents).' via '.$data['method'],
                 null,
             );
 
@@ -342,13 +400,6 @@ class DealPipeline
     {
         return DB::connection('tenant')->transaction(function () use ($order, $data, $actorId): OrderTransfer {
             $order = $this->lockOpen($order);
-            $this->requirePlan($order);
-
-            if ($order->stage !== Order::STAGE_ACTIVE) {
-                throw ValidationException::withMessages([
-                    'order' => 'Transfers are only allowed while the booking is Active.',
-                ]);
-            }
 
             $fromName = $order->contact?->display_name ?: 'Previous buyer';
             $buyer = $this->resolveBuyer($data);
@@ -366,10 +417,11 @@ class DealPipeline
 
             $order->forceFill([
                 'contact_id' => $buyer->id,
-                'stage' => Order::STAGE_ACTIVE,
             ])->save();
 
-            $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
+            if ($order->stage === Order::STAGE_ACTIVE) {
+                $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
+            }
 
             $note = $fromName.' → '.$buyer->display_name.($transfer->ndc_cleared ? ' · NDC cleared' : ' · NDC outstanding');
             $this->orderActivity->log($order->fresh() ?? $order, 'Buyer transferred', $note, $actorId);
@@ -398,7 +450,7 @@ class DealPipeline
                 $order->forceFill(['status' => Order::STATUS_LITIGATION])->save();
                 $this->orderActivity->log($order, 'Litigation set', null, $actorId);
             } else {
-                $order->forceFill(['status' => Order::STATUS_CURRENT])->save();
+                $order->forceFill(['status' => Order::STATUS_IN_PROGRESS])->save();
                 $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
                 $this->orderActivity->log($order->fresh() ?? $order, 'Litigation cleared', null, $actorId);
             }
@@ -486,10 +538,9 @@ class DealPipeline
                 ]);
             }
 
-            if ($order->unit_id !== null) {
-                Unit::query()->whereKey($order->unit_id)->lockForUpdate()->update([
-                    'status' => Unit::STATUS_SOLD,
-                ]);
+            if ($order->unit_id !== null && $order->allocated_at === null) {
+                $unit = Unit::query()->whereKey($order->unit_id)->lockForUpdate()->first();
+                $unit?->consumeForSale();
             }
 
             $order->forceFill([
@@ -552,13 +603,36 @@ class DealPipeline
      */
     public function snapshot(Order $order): array
     {
-        $order->loadMissing(['paymentPlan.installments', 'payments', 'transfers.fromContact', 'transfers.toContact', 'contact', 'project', 'unit.block', 'activities.user', 'activities.gallery.asset', 'activities.documents.asset']);
+        $order->loadMissing([
+            'paymentPlan.installments',
+            'payments',
+            'transfers.fromContact',
+            'transfers.toContact',
+            'contact',
+            'project',
+            'unit.block',
+            'activities.user',
+            'activities.gallery.asset',
+            'activities.documents.asset',
+            'documents.asset',
+        ]);
         $plan = $order->paymentPlan;
         $ledger = $this->ledger($order);
+        $kycDocuments = $order->documents
+            ->map(fn ($link): ?array => $link->asset ? [
+                'id' => $link->asset->id,
+                'name' => $link->asset->name,
+                'url' => $this->assets->url($link->asset),
+                'type' => $link->asset->type,
+            ] : null)
+            ->filter()
+            ->values()
+            ->all();
 
         return [
             'stage' => $order->stage ?: Order::STAGE_TOKEN,
             'status' => $order->status ?: Order::STATUS_HOLD,
+            'liaison_active' => $order->isLiaisonActive(),
             'balloting_enabled' => (bool) ($order->project?->balloting_enabled ?? false),
             'net_price' => (float) $this->money($this->netCents($order)),
             'booking' => [
@@ -582,6 +656,8 @@ class DealPipeline
                 'dimensions' => $order->dimensions,
                 'balloted_at' => $order->balloted_at?->toIso8601String(),
             ],
+            'kyc_documents' => $kycDocuments,
+            'kyc_docs_ready' => $kycDocuments !== [],
             'plan' => $plan ? [
                 'template' => $plan->template,
                 'title' => $this->planTitle($plan->template),
@@ -813,7 +889,7 @@ class DealPipeline
         $ledger = $this->ledger($order);
         $overdueCents = $this->cents($ledger['overdue']);
 
-        $status = Order::STATUS_CURRENT;
+        $status = Order::STATUS_IN_PROGRESS;
 
         if ($overdueCents > 0) {
             $oldestOverdueDays = 0;

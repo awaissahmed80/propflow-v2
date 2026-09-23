@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\Auth\AcceptInviteController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Portal\ActivityLogController;
 use App\Http\Controllers\Portal\AllocationController;
+use App\Http\Controllers\Portal\AssetLinkController;
 use App\Http\Controllers\Portal\AssistantController;
 use App\Http\Controllers\Portal\CalendarController;
 use App\Http\Controllers\Portal\CampaignController;
@@ -30,6 +32,7 @@ use App\Http\Controllers\Portal\OrderActivityController;
 use App\Http\Controllers\Portal\OrderController;
 use App\Http\Controllers\Portal\OrderStageController;
 use App\Http\Controllers\Portal\OrderStatusController;
+use App\Http\Controllers\Portal\PaymentAccountController;
 use App\Http\Controllers\Portal\PaymentInstallmentController;
 use App\Http\Controllers\Portal\PaymentPlanController;
 use App\Http\Controllers\Portal\PaymentPlanTemplateController;
@@ -38,12 +41,15 @@ use App\Http\Controllers\Portal\ProjectController;
 use App\Http\Controllers\Portal\ProjectProgressController;
 use App\Http\Controllers\Portal\RoleController;
 use App\Http\Controllers\Portal\SalesController;
+use App\Http\Controllers\Portal\SearchController;
 use App\Http\Controllers\Portal\SettingsController;
 use App\Http\Controllers\Portal\TeamController;
 use App\Http\Controllers\Portal\TodoListController;
 use App\Http\Controllers\Portal\UnitController;
 use App\Http\Controllers\Portal\UserController;
+use App\Http\Controllers\Portal\VerificationQueueController;
 use App\Http\Controllers\Portal\WhatsAppIntegrationController;
+use App\Http\Controllers\Portal\WorkspaceController;
 use App\Http\Controllers\Public\CampaignLandingController;
 use App\Http\Controllers\Public\LeadWebhookController as PublicLeadWebhookController;
 use App\Http\Controllers\Public\MetaWebhookController;
@@ -110,23 +116,44 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
             Route::inertia('/forgot-password', 'auth/forgot-password')->name('auth.forgot-password');
         });
 
-        Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
-            ->middleware('auth')
-            ->name('auth.logout');
+        // Invite-only accounts: no public registration. Membership activates only after accept.
+        Route::get('/invites/{token}', [AcceptInviteController::class, 'show'])
+            ->name('auth.invites.show');
+        Route::post('/invites/{token}', [AcceptInviteController::class, 'store'])
+            ->middleware('throttle:login')
+            ->name('auth.invites.store');
+
+        Route::middleware('auth')->group(function () {
+            Route::get('/workspaces', [AuthenticatedSessionController::class, 'workspaces'])
+                ->name('auth.workspaces');
+            Route::post('/workspaces/select', [AuthenticatedSessionController::class, 'selectWorkspace'])
+                ->name('auth.workspaces.select');
+            Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
+                ->name('auth.logout');
+        });
     });
 
     Route::domain('portal.'.$baseDomain)->middleware(['auth', 'tenant'])->group(function () {
         Broadcast::routes(['middleware' => ['web', 'auth', 'tenant']]);
 
         Route::get('/', [DashboardController::class, 'index'])->name('portal.home');
-        Route::get('/dashboard', [DashboardController::class, 'index'])->name('portal.dashboard');
+        Route::permanentRedirect('/dashboard', '/')->name('portal.dashboard');
+        Route::post('/workspaces/switch', [WorkspaceController::class, 'switch'])
+            ->name('portal.workspaces.switch');
         Route::get('/todos', [TodoListController::class, 'index'])->name('portal.todos.index');
+        Route::post('/todos/reminders', [TodoListController::class, 'store'])->name('portal.todos.reminders.store');
+        Route::match(['put', 'patch'], '/todos/reminders/{reminder}', [TodoListController::class, 'update'])->name('portal.todos.reminders.update');
+        Route::delete('/todos/reminders/{reminder}', [TodoListController::class, 'destroy'])->name('portal.todos.reminders.destroy');
         Route::get('/activity', [ActivityLogController::class, 'index'])->name('portal.activity.index');
         Route::get('/notifications', [NotificationController::class, 'index'])->name('portal.notifications.index');
+        Route::get('/notifications/feed', [NotificationController::class, 'feed'])->name('portal.notifications.feed');
         Route::post('/notifications/read', [NotificationController::class, 'readAll'])->name('portal.notifications.read-all');
         Route::post('/notifications/{notification}/read', [NotificationController::class, 'read'])->name('portal.notifications.read');
+        Route::post('/notifications/{notification}/unread', [NotificationController::class, 'unread'])->name('portal.notifications.unread');
+        Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])->name('portal.notifications.destroy');
         Route::get('/assistant/brief', [AssistantController::class, 'brief'])->name('portal.assistant.brief');
         Route::post('/assistant/interpret', [AssistantController::class, 'interpret'])->name('portal.assistant.interpret');
+        Route::get('/search', [SearchController::class, 'index'])->name('portal.search');
         Route::get('/calendar', [CalendarController::class, 'index'])->name('portal.calendar');
         Route::get('/sales', [SalesController::class, 'overview'])->name('portal.sales.overview');
         Route::get('/leads', [LeadController::class, 'index'])->name('portal.leads.index');
@@ -139,12 +166,12 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::post('/leads/{lead}/restore', [LeadController::class, 'restore'])->name('portal.leads.restore');
         Route::post('/leads/{lead}/convert', [LeadController::class, 'convert'])->name('portal.leads.convert');
         Route::delete('/leads/{lead}', [LeadController::class, 'destroy'])->name('portal.leads.destroy');
-        Route::get('/operations', [OperationsController::class, 'overview'])->name('portal.operations.overview');
         Route::redirect('/orders', '/bookings');
         Route::get('/orders/{order}', fn (string $order) => redirect('/bookings/'.$order));
         Route::redirect('/bookings/applications', '/bookings');
         Route::get('/bookings/allotment', [AllocationController::class, 'index'])->name('portal.bookings.allotment');
         Route::get('/bookings', [OrderController::class, 'index'])->name('portal.orders.index');
+        Route::post('/bookings/bulk', [OrderController::class, 'bulk'])->name('portal.orders.bulk');
         Route::match(['put', 'patch'], '/bookings/{order}', [OrderController::class, 'update'])->name('portal.orders.update');
         Route::get('/bookings/{order}', [OrderController::class, 'show'])->name('portal.orders.show');
         Route::get('/bookings/{order}/booking-form', [DealController::class, 'showBookingForm'])->name('portal.orders.show-booking-form');
@@ -179,8 +206,7 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::get('/receivables/vouchers', [OperationsController::class, 'comingSoon'])
             ->defaults('section', 'vouchers')
             ->name('portal.receivables.vouchers');
-        Route::get('/receivables/verification', [OperationsController::class, 'comingSoon'])
-            ->defaults('section', 'verification')
+        Route::get('/receivables/verification', [VerificationQueueController::class, 'index'])
             ->name('portal.receivables.verification');
         Route::get('/receivables/statements', [OperationsController::class, 'comingSoon'])
             ->defaults('section', 'statements')
@@ -195,6 +221,7 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
             ->name('portal.commissions.dealers');
         Route::get('/contacts', [ContactController::class, 'index'])->name('portal.contacts.index');
         Route::post('/contacts', [ContactController::class, 'store'])->name('portal.contacts.store');
+        Route::get('/contacts/{contact}/card', [ContactController::class, 'card'])->name('portal.contacts.card');
         Route::match(['put', 'patch'], '/contacts/{contact}', [ContactController::class, 'update'])->name('portal.contacts.update');
         Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->name('portal.contacts.destroy');
         Route::get('/campaigns', [CampaignController::class, 'index'])->name('portal.campaigns.index');
@@ -208,6 +235,7 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::inertia('/file-manager', 'file-manager/index')->name('portal.file-manager');
         Route::get('/inventory', [InventoryController::class, 'index'])->name('portal.inventory.index');
         Route::post('/units', [UnitController::class, 'store'])->name('portal.units.store');
+        Route::post('/units/bulk', [UnitController::class, 'bulk'])->name('portal.units.bulk');
         Route::match(['put', 'patch'], '/units/{unit}', [UnitController::class, 'update'])->name('portal.units.update');
         Route::delete('/units/{unit}', [UnitController::class, 'destroy'])->name('portal.units.destroy');
         Route::get('/project-blocks', [ProjectBlockController::class, 'index'])->name('portal.project-blocks.index');
@@ -216,6 +244,7 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::delete('/project-blocks/{block}', [ProjectBlockController::class, 'destroy'])->name('portal.project-blocks.destroy');
         Route::get('/users', [UserController::class, 'index'])->name('portal.users.index');
         Route::post('/users', [UserController::class, 'store'])->name('portal.users.store');
+        Route::get('/users/{user}/card', [UserController::class, 'card'])->name('portal.users.card');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('portal.users.update');
         Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('portal.users.destroy');
         Route::get('/meta-data', [MetaDataController::class, 'index'])->name('portal.meta-data.index');
@@ -238,6 +267,9 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::put('/settings/order-stages/{stage}', [OrderStageController::class, 'update'])->name('portal.settings.order-stages.update');
         Route::delete('/settings/order-stages/{stage}', [OrderStageController::class, 'destroy'])->name('portal.settings.order-stages.destroy');
         Route::put('/settings/order-statuses/{status}', [OrderStatusController::class, 'update'])->name('portal.settings.order-statuses.update');
+        Route::post('/settings/payment-accounts', [PaymentAccountController::class, 'store'])->name('portal.settings.payment-accounts.store');
+        Route::put('/settings/payment-accounts/{paymentAccount}', [PaymentAccountController::class, 'update'])->name('portal.settings.payment-accounts.update');
+        Route::delete('/settings/payment-accounts/{paymentAccount}', [PaymentAccountController::class, 'destroy'])->name('portal.settings.payment-accounts.destroy');
         Route::post('/settings/lead-actions', [LeadActionTypeController::class, 'store'])->name('portal.settings.lead-actions.store');
         Route::put('/settings/lead-actions/reorder', [LeadActionTypeController::class, 'reorder'])->name('portal.settings.lead-actions.reorder');
         Route::put('/settings/lead-actions/{actionType}', [LeadActionTypeController::class, 'update'])->name('portal.settings.lead-actions.update');
@@ -267,6 +299,7 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::post('/documents', [DocumentController::class, 'store'])->name('portal.documents.store');
         Route::post('/documents/sync', [DocumentController::class, 'sync'])->name('portal.documents.sync');
         Route::delete('/documents/{document}', [DocumentController::class, 'destroy'])->name('portal.documents.destroy');
+        Route::match(['put', 'patch'], '/asset-links/{link}', [AssetLinkController::class, 'update'])->name('portal.asset-links.update');
         Route::get('/documents/folders', [DocumentFolderController::class, 'index'])->name('portal.documents.folders.index');
         Route::post('/documents/folders', [DocumentFolderController::class, 'store'])->name('portal.documents.folders.store');
         Route::post('/documents/folders/move', [DocumentFolderController::class, 'move'])->name('portal.documents.folders.move');
@@ -278,6 +311,7 @@ Route::middleware(['web', 'portal'])->group(function () use ($baseDomain) {
         Route::post('/documents/{document}/labels', [DocumentLabelController::class, 'sync'])->name('portal.documents.labels.sync');
         Route::get('/projects', [ProjectController::class, 'index'])->name('portal.projects.index');
         Route::post('/projects', [ProjectController::class, 'store'])->name('portal.projects.store');
+        Route::get('/projects/{project}/card', [ProjectController::class, 'card'])->name('portal.projects.card');
         Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('portal.projects.show');
         Route::match(['put', 'patch'], '/projects/{project}', [ProjectController::class, 'update'])->name('portal.projects.update');
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('portal.projects.destroy');

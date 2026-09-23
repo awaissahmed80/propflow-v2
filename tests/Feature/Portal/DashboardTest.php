@@ -108,8 +108,7 @@ class DashboardTest extends TestCase
         );
 
         $this->get(Domain::portal('/dashboard'))
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page->component('dashboard/index', false));
+            ->assertRedirect(Domain::portal());
     }
 
     public function test_dashboard_shares_configured_currency(): void

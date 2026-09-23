@@ -15,31 +15,50 @@ class WorkspaceNotifier
     /**
      * @param  Collection<int, User>|list<User>  $users
      */
-    public static function send(string $event, string $title, string $body, ?string $href, Collection|array $users): void
-    {
+    public static function send(
+        string $event,
+        string $title,
+        string $body,
+        ?string $href,
+        Collection|array $users,
+        bool $includeActor = false,
+        ?string $reference = null,
+    ): int {
         $tenant = Tenant::current();
 
         if ($tenant === null || ! self::enabled($event)) {
-            return;
+            return 0;
         }
 
         $actorId = auth()->id();
         $recipients = collect($users)
-            ->filter(fn (User $user): bool => $actorId === null || $user->id !== $actorId)
+            ->filter(fn (User $user): bool => $includeActor || $actorId === null || $user->id !== $actorId)
             ->unique(fn (User $user): int => $user->id)
             ->values();
 
         if ($recipients->isEmpty()) {
-            return;
+            return 0;
         }
 
-        $recipients->each->notify(new WorkspaceNotification([
-            'tenant_id' => $tenant->id,
-            'event' => $event,
-            'title' => $title,
-            'body' => $body,
-            'href' => $href,
-        ]));
+        $sent = 0;
+
+        $recipients->each(function (User $user) use ($tenant, $event, $title, $body, $href, $reference, &$sent): void {
+            if ($reference !== null && self::alreadyNotified($user, (int) $tenant->id, $reference)) {
+                return;
+            }
+
+            $user->notify(new WorkspaceNotification([
+                'tenant_id' => $tenant->id,
+                'event' => $event,
+                'title' => $title,
+                'body' => $body,
+                'href' => $href,
+                'reference' => $reference,
+            ]));
+            $sent++;
+        });
+
+        return $sent;
     }
 
     public static function enabled(string $event): bool
@@ -80,5 +99,13 @@ class WorkspaceNotifier
         }
 
         return self::members();
+    }
+
+    protected static function alreadyNotified(User $user, int $tenantId, string $reference): bool
+    {
+        return $user->notifications()
+            ->where('data->tenant_id', $tenantId)
+            ->where('data->reference', $reference)
+            ->exists();
     }
 }

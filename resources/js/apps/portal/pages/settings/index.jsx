@@ -15,6 +15,7 @@ import MetaDataPanel from "./meta-data-panel";
 import NotificationsPanel from "./notifications-panel";
 import PipelinePanel from "./pipeline-panel";
 import BookingsPanel from "./bookings-panel";
+import BankCashPanel from "./bank-cash-panel";
 import RolesPanel from "./roles-panel";
 
 function pathFrom(url) {
@@ -35,6 +36,7 @@ function pathFrom(url) {
 
 const PANEL_BY_SECTION = {
     general: GeneralPanel,
+    "bank-cash": BankCashPanel,
     "meta-data": MetaDataPanel,
     pipeline: PipelinePanel,
     bookings: BookingsPanel,
@@ -54,6 +56,8 @@ export default function SettingsIndex({
     metaTypes = [],
     stages = [],
     orderStages = [],
+    orderStatuses = [],
+    paymentAccounts = [],
     activityActionTypes = [],
     nextActionTypes = [],
     campaignGoalTypes = [],
@@ -186,6 +190,8 @@ export default function SettingsIndex({
                                     metaTypes={metaTypes}
                                     stages={stages}
                                     orderStages={orderStages}
+                                    orderStatuses={orderStatuses}
+                                    paymentAccounts={paymentAccounts}
                                     activityActionTypes={activityActionTypes}
                                     nextActionTypes={nextActionTypes}
                                     campaignGoalTypes={campaignGoalTypes}

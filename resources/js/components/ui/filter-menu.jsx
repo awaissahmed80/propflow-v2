@@ -11,7 +11,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Slider } from "@/components/ui/slider"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { heatMeta } from "@/lib/heat"
 import { cn } from "@/lib/utils"
 import { StageBadge } from "@/components/ui/stage-badge"
@@ -179,7 +184,7 @@ function FilterChip({ selected, onClick, className, children }) {
       data-selected={selected ? "true" : "false"}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-sm transition-colors",
+        "inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-[13px] transition-colors",
         selected
           ? "border-primary/40 bg-primary/10 text-primary"
           : "border-border bg-background text-foreground hover:bg-muted/50",
@@ -334,6 +339,48 @@ function FilterSectionOptions({ section, value, onToggle, onRangeChange }) {
                 selected={selected}
                 onClick={() => onToggle(option.value)}
               />
+            )
+          })}
+        </div>
+      </TooltipProvider>
+    )
+  }
+
+  if (type === "icons") {
+    return (
+      <TooltipProvider delay={200}>
+        <div className="flex flex-wrap gap-1.5">
+          {section.options.map((option) => {
+            const selected = isSelected(selectedValues, option.value)
+            const color = option.color || "var(--muted-foreground)"
+
+            return (
+              <Tooltip key={`${section.key}-${option.value}`}>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      data-selected={selected ? "true" : "false"}
+                      aria-label={option.label}
+                      aria-pressed={selected}
+                      onClick={() => onToggle(option.value)}
+                      className={cn(
+                        "inline-flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors",
+                        selected
+                          ? "border-primary/40 bg-primary/10 ring-1 ring-primary/30"
+                          : "border-border bg-background opacity-80 hover:bg-muted/50 hover:opacity-100"
+                      )}
+                    >
+                      <Icon
+                        name={option.icon || "circle-line"}
+                        className="text-base leading-none"
+                        style={{ color }}
+                      />
+                    </button>
+                  }
+                />
+                <TooltipContent side="top">{option.label}</TooltipContent>
+              </Tooltip>
             )
           })}
         </div>
@@ -587,7 +634,14 @@ function ActiveFilters({ sections = [], value = {}, onChange, onClear, className
         values: selected,
         sectionLabel: section.label,
         optionLabel: labels.join(", "),
-        kind: section.type === "heat" ? "heat" : section.type === "stage" ? "stage" : "list",
+        kind:
+          section.type === "heat"
+            ? "heat"
+            : section.type === "stage"
+              ? "stage"
+              : section.type === "icons"
+                ? "icons"
+                : "list",
         stageOptions:
           section.type === "stage"
             ? selected.map((selectedValue) => {
@@ -599,6 +653,21 @@ function ActiveFilters({ sections = [], value = {}, onChange, onClear, className
                   value: selectedValue,
                   label: option?.label || String(selectedValue),
                   color: option?.color,
+                }
+              })
+            : undefined,
+        iconOptions:
+          section.type === "icons"
+            ? selected.map((selectedValue) => {
+                const option = (section.options || []).find(
+                  (entry) => String(entry.value) === String(selectedValue)
+                )
+
+                return {
+                  value: selectedValue,
+                  label: option?.label || String(selectedValue),
+                  icon: option?.icon || "circle-line",
+                  color: option?.color || "var(--muted-foreground)",
                 }
               })
             : undefined,
@@ -651,63 +720,94 @@ function ActiveFilters({ sections = [], value = {}, onChange, onClear, className
           >
             <span className="text-sm text-muted-foreground">{chip.sectionLabel}:</span>
             {(chip.stageOptions || []).map((option) => (
-              <StageBadge
-                key={`${chip.key}-${option.value}`}
-                as="button"
-                type="button"
-                label={option.label}
-                color={option.color}
-                onClick={() => removeStageValue(chip.key, option.value)}
-                className="cursor-pointer hover:border-destructive/40 hover:bg-destructive/5"
-                title={`Remove ${chip.sectionLabel}: ${option.label}`}
-              />
+              <Tooltip key={`${chip.key}-${option.value}`}>
+                <TooltipTrigger
+                  render={
+                    <StageBadge
+                      as="button"
+                      type="button"
+                      label={option.label}
+                      color={option.color}
+                      onClick={() => removeStageValue(chip.key, option.value)}
+                      className="cursor-pointer hover:border-destructive/40 hover:bg-destructive/5"
+                      aria-label={`Remove ${chip.sectionLabel}: ${option.label}`}
+                    />
+                  }
+                />
+                <TooltipContent>
+                  {`Remove ${chip.sectionLabel}: ${option.label}`}
+                </TooltipContent>
+              </Tooltip>
             ))}
           </span>
         ) : (
-        <button
-          key={chip.key}
-          type="button"
-          onClick={() => removeChip(chip)}
-          className="inline-flex h-7 max-w-80 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/5"
-          title={`Remove ${chip.sectionLabel}: ${chip.optionLabel}`}
-        >
-          {chip.kind === "heat" ? (
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <span className="text-muted-foreground">{chip.sectionLabel}:</span>
-              <span className="inline-flex items-center gap-0.5">
-                {chip.values.map((value) => {
-                  const meta = heatMeta(value)
+        <Tooltip key={chip.key}>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={() => removeChip(chip)}
+                className="inline-flex h-7 max-w-80 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/5"
+                aria-label={`Remove ${chip.sectionLabel}: ${chip.optionLabel}`}
+              >
+                {chip.kind === "heat" ? (
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    <span className="text-muted-foreground">{chip.sectionLabel}:</span>
+                    <span className="inline-flex items-center gap-0.5">
+                      {chip.values.map((value) => {
+                        const meta = heatMeta(value)
 
-                  if (!meta) {
-                    return (
-                      <span key={value} className="truncate">
-                        {value}
-                      </span>
-                    )
-                  }
+                        if (!meta) {
+                          return (
+                            <span key={value} className="truncate">
+                              {value}
+                            </span>
+                          )
+                        }
 
-                  return (
-                    <Icon
-                      key={value}
-                      name={meta.icon}
-                      className={cn("text-sm", meta.className)}
-                      title={meta.label}
-                    />
-                  )
-                })}
-              </span>
-            </span>
-          ) : (
-            <span className="truncate">
-              <span className="text-muted-foreground">{chip.sectionLabel}:</span>{" "}
-              {chip.optionLabel}
-            </span>
-          )}
-          <Icon
-            name="close-line"
-            className="shrink-0 text-sm text-muted-foreground"
+                        return (
+                          <Icon
+                            key={value}
+                            name={meta.icon}
+                            className={cn("text-sm", meta.className)}
+                            aria-label={meta.label}
+                          />
+                        )
+                      })}
+                    </span>
+                  </span>
+                ) : chip.kind === "icons" ? (
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    <span className="text-muted-foreground">{chip.sectionLabel}:</span>
+                    <span className="inline-flex items-center gap-0.5">
+                      {(chip.iconOptions || []).map((option) => (
+                        <Icon
+                          key={option.value}
+                          name={option.icon}
+                          className="text-sm"
+                          style={{ color: option.color }}
+                          aria-label={option.label}
+                        />
+                      ))}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="truncate">
+                    <span className="text-muted-foreground">{chip.sectionLabel}:</span>{" "}
+                    {chip.optionLabel}
+                  </span>
+                )}
+                <Icon
+                  name="close-line"
+                  className="shrink-0 text-sm text-muted-foreground"
+                />
+              </button>
+            }
           />
-        </button>
+          <TooltipContent>
+            {`Remove ${chip.sectionLabel}: ${chip.optionLabel}`}
+          </TooltipContent>
+        </Tooltip>
         )
       )}
       {onClear ? (

@@ -52,6 +52,7 @@ class HandlePortalRequests extends Middleware
             ],
             'tenant' => [
                 'current' => Tenant::current()?->only(['id', 'name', 'identifier']),
+                'available' => $this->availableWorkspaces($request, $tenantContext),
                 'impersonating' => $tenantContext->isImpersonating(),
                 'impersonator' => $tenantContext->impersonator()?->only(['id', 'display_name', 'email_address']),
             ],
@@ -60,6 +61,36 @@ class HandlePortalRequests extends Middleware
             'meta' => Inertia::always(fn (): array => $this->sharedMeta()),
             'currency' => Inertia::always(fn (): array => $this->sharedCurrency()),
         ];
+    }
+
+    /**
+     * @return list<array{id: int, name: string, identifier: string|null}>
+     */
+    protected function availableWorkspaces(Request $request, TenantContext $tenantContext): array
+    {
+        $user = $request->user();
+
+        if ($user === null || ! $user->isTenantUser()) {
+            return [];
+        }
+
+        return $tenantContext->activeMembershipsFor($user)
+            ->map(function ($membership): ?array {
+                $tenant = $membership->tenant;
+
+                if ($tenant === null) {
+                    return null;
+                }
+
+                return [
+                    'id' => $tenant->id,
+                    'name' => $tenant->name,
+                    'identifier' => $tenant->identifier,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**

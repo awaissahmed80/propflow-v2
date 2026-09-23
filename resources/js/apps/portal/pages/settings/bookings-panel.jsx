@@ -4,8 +4,6 @@ import { BlockPicker } from "react-color";
 import { toast } from "sonner";
 import { update as updateStage } from "@/actions/App/Http/Controllers/Portal/OrderStageController";
 import { update as updateStatus } from "@/actions/App/Http/Controllers/Portal/OrderStatusController";
-import { Icon } from "@/components/ui/icon";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -46,16 +44,18 @@ function formatOrderCount(count) {
     return `${n} ${n === 1 ? "booking" : "bookings"}`;
 }
 
-function ColorSwatch({ value, onChange, label = "Change color" }) {
+function ColorSwatch({ value, onChange, disabled = false, label = "Change color" }) {
     const [open, setOpen] = useState(false);
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger
+                disabled={disabled}
                 aria-label={label}
                 className={cn(
                     "size-3 shrink-0 rounded-full ring-2 ring-background transition-transform hover:scale-110",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    disabled && "pointer-events-none opacity-50",
                 )}
                 style={{ backgroundColor: value || DEFAULT_COLOR }}
             />
@@ -75,39 +75,105 @@ function ColorSwatch({ value, onChange, label = "Change color" }) {
     );
 }
 
-function EditableTitle({ value, onSave }) {
-    const [draft, setDraft] = useState(value || "");
+function CatalogCard({ row, countLabel, processing, onSave }) {
+    const [editing, setEditing] = useState(false);
+    const [title, setTitle] = useState(row.title);
 
     useEffect(() => {
-        setDraft(value || "");
-    }, [value]);
+        if (!editing) {
+            setTitle(row.title);
+        }
+    }, [row.title, editing]);
+
+    const commitTitle = () => {
+        const next = title.trim();
+
+        setEditing(false);
+
+        if (!next || next === row.title) {
+            setTitle(row.title);
+            return;
+        }
+
+        onSave(row, { title: next, color: row.color });
+    };
 
     return (
-        <Input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onBlur={() => {
-                const next = draft.trim();
+        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-background px-3 py-3 shadow-xs transition-shadow hover:border-border hover:shadow-sm">
+            <ColorSwatch
+                value={row.color}
+                disabled={processing}
+                onChange={(color) => onSave(row, { title: row.title, color })}
+            />
 
-                if (!next || next === (value || "")) {
-                    setDraft(value || "");
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                {editing ? (
+                    <input
+                        value={title}
+                        autoFocus
+                        disabled={processing}
+                        onChange={(event) => setTitle(event.target.value)}
+                        onBlur={commitTitle}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                                event.preventDefault();
+                                commitTitle();
+                            }
+                            if (event.key === "Escape") {
+                                setTitle(row.title);
+                                setEditing(false);
+                            }
+                        }}
+                        className="min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-base font-bold tracking-tight text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+                    />
+                ) : (
+                    <button
+                        type="button"
+                        className="min-w-0 truncate text-left text-base font-bold tracking-tight text-foreground"
+                        onClick={() => setEditing(true)}
+                    >
+                        {row.title}
+                    </button>
+                )}
 
-                    return;
-                }
-
-                onSave(next);
-            }}
-            onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                    event.currentTarget.blur();
-                }
-            }}
-            className="h-control max-w-xs"
-        />
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {countLabel}
+                </span>
+            </div>
+        </div>
     );
 }
 
-export default function BookingsPanel({ orderStages = [] }) {
+function CatalogSection({ title, hint, rows, countLabel, processing, onSave }) {
+    return (
+        <section className="space-y-4">
+            <div>
+                <h3 className="text-base font-bold tracking-tight text-foreground">{title}</h3>
+                <p className="mt-0.5 text-sm text-muted-foreground">{hint}</p>
+            </div>
+
+            <div className="space-y-2">
+                {(rows || []).length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border/70 bg-muted/15 px-4 py-8 text-center text-sm text-muted-foreground">
+                        No items yet.
+                    </div>
+                ) : (
+                    (rows || []).map((row) => (
+                        <CatalogCard
+                            key={row.id}
+                            row={row}
+                            countLabel={countLabel(row)}
+                            processing={processing}
+                            onSave={onSave}
+                        />
+                    ))
+                )}
+            </div>
+        </section>
+    );
+}
+
+export default function BookingsPanel({ orderStages = [], orderStatuses = [] }) {
     const [processing, setProcessing] = useState(false);
 
     const saveStage = (stage, payload) => {
@@ -131,77 +197,24 @@ export default function BookingsPanel({ orderStages = [] }) {
     };
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h2 className="text-base font-semibold text-foreground">Booking lifecycle</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                    Stages and statuses are fixed. You can rename titles and change colors only.
-                    Optional balloting is configured per project.
-                </p>
-            </div>
+        <div className="space-y-8">
+            <CatalogSection
+                title="Booking stages"
+                hint="Lifecycle steps for every booking file. Titles and colors can be renamed; stages are fixed."
+                rows={orderStages}
+                countLabel={(row) => formatOrderCount(row.orders_count)}
+                onSave={saveStage}
+                processing={processing}
+            />
 
-            <div className="space-y-4">
-                {(orderStages || []).map((stage) => (
-                    <div
-                        key={stage.id}
-                        className="rounded-md border border-border bg-card p-4"
-                    >
-                        <div className="flex flex-wrap items-center gap-3">
-                            <ColorSwatch
-                                value={stage.color}
-                                onChange={(color) =>
-                                    !processing && saveStage(stage, { title: stage.title, color })
-                                }
-                            />
-                            <EditableTitle
-                                value={stage.title}
-                                onSave={(title) =>
-                                    !processing && saveStage(stage, { title, color: stage.color })
-                                }
-                            />
-                            <span className="text-xs text-muted-foreground">
-                                {stage.label} · {formatOrderCount(stage.orders_count)}
-                            </span>
-                        </div>
-
-                        <div className="mt-4 space-y-2 border-t border-border pt-3">
-                            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                <Icon name="price-tag-3-line" className="size-3.5" />
-                                Statuses
-                            </div>
-                            {(stage.statuses || []).map((status) => (
-                                <div
-                                    key={status.id}
-                                    className="flex flex-wrap items-center gap-3 rounded-md bg-muted/40 px-3 py-2"
-                                >
-                                    <ColorSwatch
-                                        value={status.color}
-                                        label="Change status color"
-                                        onChange={(color) =>
-                                            !processing &&
-                                            saveStatus(status, {
-                                                title: status.title,
-                                                color,
-                                            })
-                                        }
-                                    />
-                                    <EditableTitle
-                                        value={status.title}
-                                        onSave={(title) =>
-                                            !processing &&
-                                            saveStatus(status, {
-                                                title,
-                                                color: status.color,
-                                            })
-                                        }
-                                    />
-                                    <span className="text-xs text-muted-foreground">{status.label}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </div>
+            <CatalogSection
+                title="Booking statuses"
+                hint="Status labels apply independently of stage. Titles and colors can be renamed."
+                rows={orderStatuses}
+                countLabel={(row) => formatOrderCount(row.orders_count)}
+                onSave={saveStatus}
+                processing={processing}
+            />
         </div>
     );
 }

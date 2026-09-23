@@ -102,7 +102,7 @@ class LeadBulkTest extends TestCase
 
         $tenant->makeCurrent();
         $this->assertDatabaseHas('leads', ['id' => $active->id, 'deleted_at' => null], 'tenant');
-        $this->assertSoftDeleted('leads', ['id' => $archived->id], 'tenant');
+        $this->assertDatabaseMissing('leads', ['id' => $archived->id], 'tenant');
         Tenant::forgetCurrent();
     }
 

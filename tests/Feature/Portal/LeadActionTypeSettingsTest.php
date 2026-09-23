@@ -42,10 +42,12 @@ class LeadActionTypeSettingsTest extends TestCase
             ->has('nextActionTypes', 4)
             ->where('activityActionTypes.0.is_system', true)
             ->where('activityActionTypes.0.is_enabled', true)
+            ->where('activityActionTypes.0.color', '#64B5F6')
             ->where('nextActionTypes.3.is_system', true)
             ->where('nextActionTypes.3.is_enabled', true)
             ->where('nextActionTypes.3.label', 'do_nothing')
             ->where('nextActionTypes.3.title', 'Do Nothing')
+            ->where('nextActionTypes.3.color', '#FFB74D')
         );
     }
 

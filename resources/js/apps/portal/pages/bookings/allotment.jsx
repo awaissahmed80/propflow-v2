@@ -35,7 +35,7 @@ export default function BookingsAllotment({ orders, pagination }) {
         <Layout>
             <Layout.Header
                 metaTitle="Allotment & Transfers"
-                breadcrumbs={[{ label: "Operations" }, { label: "Allotment & Transfers" }]}
+                breadcrumbs={[{ label: "Sales" }, { label: "Allotment & Transfers" }]}
             />
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar>

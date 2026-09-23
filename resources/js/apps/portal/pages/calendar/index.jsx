@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, router } from "@inertiajs/react";
+import { router } from "@inertiajs/react";
 import { index as calendarIndex } from "@/actions/App/Http/Controllers/Portal/CalendarController";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,6 @@ import { Icon } from "@/components/ui/icon";
 import {
     Popover,
     PopoverContent,
-    PopoverDescription,
-    PopoverHeader,
-    PopoverTitle,
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -28,95 +25,18 @@ import dayjs from "dayjs";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
-
-const MODULE_DOT = {
-    yellow: "bg-yellow-500",
-    blue: "bg-blue-500",
-    emerald: "bg-emerald-500",
-    violet: "bg-violet-500",
-    slate: "bg-slate-500",
-};
-
-const MODULE_SOFT = {
-    yellow: "bg-yellow-500/12 border-yellow-500/25",
-    blue: "bg-blue-500/12 border-blue-500/25",
-    emerald: "bg-emerald-500/12 border-emerald-500/25",
-    violet: "bg-violet-500/12 border-violet-500/25",
-    slate: "bg-slate-500/12 border-slate-500/25",
-};
-
-const MODULE_BAR = {
-    yellow: "bg-yellow-500",
-    blue: "bg-blue-500",
-    emerald: "bg-emerald-500",
-    violet: "bg-violet-500",
-    slate: "bg-slate-500",
-};
-
-const MODULE_ICON = {
-    leads: "customer-service-line",
-    orders: "book-2-line",
-    payments: "money-dollar-circle-line",
-    campaigns: "focus-3-line",
-    projects: "community-line",
-};
-
-function toFilterParam(value) {
-    const list = toSelectedList(value);
-
-    return list.length > 0 ? list.join(",") : "";
-}
-
-function pathFrom(url) {
-    const raw = String(url || "/");
-
-    if (raw.startsWith("//") || raw.startsWith("http://") || raw.startsWith("https://")) {
-        try {
-            return new URL(raw.startsWith("//") ? `https:${raw}` : raw).pathname || "/";
-        } catch {
-            return "/";
-        }
-    }
-
-    return raw.startsWith("/") ? raw : `/${raw}`;
-}
-
-function eventTimeLabel(event) {
-    if (event?.allDay) {
-        return "All day";
-    }
-
-    const when = toDayjs(event?.when);
-
-    return when ? when.format("h:mm A") : "—";
-}
-
-function detailMatchesEvent(event, openedLead, openedOrder, openedCampaign, openedProject) {
-    const type = event?.subject?.type;
-    const code = event?.subject?.code;
-
-    if (!type || !code) {
-        return null;
-    }
-
-    if (type === "lead" && openedLead?.code === code) {
-        return { kind: "lead", data: openedLead };
-    }
-
-    if (type === "order" && openedOrder?.code === code) {
-        return { kind: "order", data: openedOrder };
-    }
-
-    if (type === "campaign" && (openedCampaign?.slug === code || openedCampaign?.public_id === code)) {
-        return { kind: "campaign", data: openedCampaign };
-    }
-
-    if (type === "project" && openedProject?.code === code) {
-        return { kind: "project", data: openedProject };
-    }
-
-    return null;
-}
+import { EventDetailPopover } from "./calendar-event-popover";
+import {
+    MODULE_BAR,
+    MODULE_DOT,
+    MODULE_ICON,
+    MODULE_SOFT,
+    detailMatchesEvent,
+    eventTimeLabel,
+    pathFrom,
+    toFilterParam,
+} from "./calendar-helpers";
+import { SidebarSection } from "./calendar-sidebar-section";
 
 function CalendarPage({
     filters = {},
@@ -777,207 +697,6 @@ function CalendarPage({
                 </ResizablePanelGroup>
             </Layout.Content>
         </Layout>
-    );
-}
-
-function SidebarSection({ title, children }) {
-    return (
-        <section className="space-y-2">
-            <h3 className="px-1 text-sm font-bold tracking-tight text-muted-foreground">
-                {title}
-            </h3>
-            {children}
-        </section>
-    );
-}
-
-function EventDetailPopover({ event, detail }) {
-    const kind = detail?.kind || event?.subject?.type;
-    const data = detail?.data;
-
-    if (kind === "lead") {
-        return (
-            <>
-                <PopoverHeader>
-                    <PopoverTitle>{data?.contact?.display_name || event.title}</PopoverTitle>
-                    <PopoverDescription>
-                        {[data?.project?.title, data?.stage?.title].filter(Boolean).join(" · ") ||
-                            event.subtitle}
-                    </PopoverDescription>
-                </PopoverHeader>
-                <div className="space-y-2">
-                    <DetailRow label="Next action" value={data?.next_action || event.subtitle} />
-                    <DetailRow
-                        label="Due"
-                        value={formatDateTime(data?.due_date || event.when)}
-                    />
-                    <DetailRow
-                        label="Assignee"
-                        value={
-                            data?.assignee?.display_name || event.assignee?.display_name
-                        }
-                    />
-                    <DetailRow label="Project" value={data?.project?.title} />
-                </div>
-                <PopoverActions
-                    href={event.href || `/leads?lead=${event.subject?.code}`}
-                    label="Open lead"
-                />
-            </>
-        );
-    }
-
-    if (kind === "order") {
-        return (
-            <>
-                <PopoverHeader>
-                    <PopoverTitle>
-                        {data?.contact?.display_name || event.title}
-                    </PopoverTitle>
-                    <PopoverDescription>
-                        {[data?.project?.title, data?.unit?.name].filter(Boolean).join(" · ") ||
-                            event.subtitle ||
-                            "Booking"}
-                    </PopoverDescription>
-                </PopoverHeader>
-                <div className="space-y-2">
-                    <DetailRow label="Status" value={data?.status || data?.stage} />
-                    <DetailRow label="Project" value={data?.project?.title} />
-                    <DetailRow label="Unit" value={data?.unit?.name} />
-                    <DetailRow
-                        label="Assignee"
-                        value={
-                            data?.assignee?.display_name || event.assignee?.display_name
-                        }
-                    />
-                    <DetailRow label="Booked" value={formatDateTime(data?.booked_at)} />
-                    <DetailRow label="When" value={eventTimeLabel(event)} />
-                </div>
-                <PopoverActions
-                    href={data?.href || event.href || `/bookings/${event.subject?.code}`}
-                    label="Open order"
-                />
-            </>
-        );
-    }
-
-    if (kind === "campaign") {
-        return (
-            <>
-                <PopoverHeader>
-                    <PopoverTitle>{data?.title || event.title}</PopoverTitle>
-                    <PopoverDescription>{data?.status || "Campaign"}</PopoverDescription>
-                </PopoverHeader>
-                <div className="space-y-2">
-                    <DetailRow
-                        label="Range"
-                        value={`${formatDateTime(data?.starts_at || event.when, "MMM D, YYYY")} – ${formatDateTime(data?.ends_at || event.end, "MMM D, YYYY")}`}
-                    />
-                    <DetailRow
-                        label="Owner"
-                        value={data?.owner?.display_name || event.assignee?.display_name}
-                    />
-                    <DetailRow label="Project" value={data?.project?.title} />
-                </div>
-                <PopoverActions
-                    href={
-                        data?.href ||
-                        event.href ||
-                        `/campaigns/${data?.slug || event.subject?.code}`
-                    }
-                    label="Open campaign"
-                />
-            </>
-        );
-    }
-
-    if (kind === "project") {
-        return (
-            <>
-                <PopoverHeader>
-                    <PopoverTitle>{data?.title || event.title}</PopoverTitle>
-                    <PopoverDescription>
-                        {data?.status || event.subtitle || "Project"}
-                    </PopoverDescription>
-                </PopoverHeader>
-                <div className="space-y-2">
-                    <DetailRow
-                        label="Range"
-                        value={`${formatDateTime(data?.start_date || event.when, "MMM D, YYYY")} – ${formatDateTime(data?.end_date || event.end, "MMM D, YYYY")}`}
-                    />
-                    <DetailRow
-                        label="Progress"
-                        value={data?.progress != null ? `${data.progress}%` : null}
-                    />
-                    {Array.isArray(data?.phases) && data.phases.length > 0 ? (
-                        <div className="pt-1">
-                            <p className="mb-1 text-xs font-medium text-muted-foreground">
-                                Phases
-                            </p>
-                            <ul className="space-y-1">
-                                {data.phases.slice(0, 4).map((phase) => (
-                                    <li
-                                        key={phase.id}
-                                        className="flex justify-between gap-2 text-xs"
-                                    >
-                                        <span className="truncate">{phase.title}</span>
-                                        <span className="shrink-0 text-muted-foreground">
-                                            {phase.status}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    ) : null}
-                </div>
-                <PopoverActions
-                    href={data?.href || event.href || `/projects/${event.subject?.code}`}
-                    label="Open project"
-                />
-            </>
-        );
-    }
-
-    return (
-        <>
-            <PopoverHeader>
-                <PopoverTitle>{event.title}</PopoverTitle>
-                <PopoverDescription>{event.subtitle}</PopoverDescription>
-            </PopoverHeader>
-            <div className="space-y-2">
-                <DetailRow label="When" value={eventTimeLabel(event)} />
-                <DetailRow label="Assignee" value={event.assignee?.display_name} />
-            </div>
-            {event.href ? <PopoverActions href={event.href} label="Open" /> : null}
-        </>
-    );
-}
-
-function PopoverActions({ href, label }) {
-    if (!href) {
-        return null;
-    }
-
-    return (
-        <div className="flex justify-end border-t border-border/70 pt-3">
-            <Button size="sm" nativeButton={false} render={<Link href={href} />}>
-                {label}
-                <Icon name="arrow-right-line" className="text-base" />
-            </Button>
-        </div>
-    );
-}
-
-function DetailRow({ label, value }) {
-    if (value == null || value === "" || value === "—") {
-        return null;
-    }
-
-    return (
-        <div className="flex items-start justify-between gap-4 text-sm">
-            <span className="text-muted-foreground">{label}</span>
-            <span className="text-right font-medium text-foreground">{value}</span>
-        </div>
     );
 }
 

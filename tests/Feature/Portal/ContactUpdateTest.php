@@ -42,15 +42,16 @@ class ContactUpdateTest extends TestCase
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $response = $this->patch(Domain::portal('/contacts/'.$contact->uuid), [
-            'first_name' => 'Sonia',
-            'last_name' => 'Koll',
-            'phone_number' => '03009876543',
-            'email_address' => 'sonia@example.com',
-            'type' => Contact::TYPE_CLIENT,
-            'tag' => Contact::TAG_AGENT,
-            'city' => 'Lahore',
-        ]);
+        $response = $this->from(Domain::portal('/contacts'))
+            ->patch(Domain::portal('/contacts/'.$contact->uuid), [
+                'first_name' => 'Sonia',
+                'last_name' => 'Koll',
+                'phone_number' => '03009876543',
+                'email_address' => 'sonia@example.com',
+                'type' => Contact::TYPE_CLIENT,
+                'tag' => Contact::TAG_AGENT,
+                'city' => 'Lahore',
+            ]);
 
         $response->assertRedirect(Domain::portal('/contacts'));
 

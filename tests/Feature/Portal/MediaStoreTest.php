@@ -54,6 +54,58 @@ class MediaStoreTest extends TestCase
         Tenant::forgetCurrent();
     }
 
+    public function test_authenticated_tenant_user_can_upload_audio_media(): void
+    {
+        [$actor, $tenant] = $this->createTenantUser('tenant_media_audio_store');
+
+        $this->actingAs($actor);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $file = UploadedFile::fake()->create('voice-note.mp3', 120, 'audio/mpeg');
+
+        $response = $this->postJson(Domain::portal('/media'), [
+            'file' => $file,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.name', 'voice-note.mp3')
+            ->assertJsonPath('data.tag', AssetManager::KIND_MEDIA);
+
+        $tenant->makeCurrent();
+        $asset = Asset::query()->where('name', 'voice-note.mp3')->first();
+        $this->assertNotNull($asset);
+        $this->assertFileExists(public_path('assets/'.$asset->path));
+        File::delete(public_path('assets/'.$asset->path));
+        Tenant::forgetCurrent();
+    }
+
+    public function test_authenticated_tenant_user_can_upload_webm_media(): void
+    {
+        [$actor, $tenant] = $this->createTenantUser('tenant_media_webm_store');
+
+        $this->actingAs($actor);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        // Use video/webm so Laravel's mime guesser resolves the extension to "webm"
+        // (audio/webm often maps to "weba", which fails the mimes:webm rule).
+        $file = UploadedFile::fake()->create('recording.webm', 180, 'video/webm');
+
+        $response = $this->postJson(Domain::portal('/media'), [
+            'file' => $file,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.name', 'recording.webm')
+            ->assertJsonPath('data.tag', AssetManager::KIND_MEDIA);
+
+        $tenant->makeCurrent();
+        $asset = Asset::query()->where('name', 'recording.webm')->first();
+        $this->assertNotNull($asset);
+        $this->assertFileExists(public_path('assets/'.$asset->path));
+        File::delete(public_path('assets/'.$asset->path));
+        Tenant::forgetCurrent();
+    }
+
     /**
      * @return array{0: User, 1: Tenant}
      */

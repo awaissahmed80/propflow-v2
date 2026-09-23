@@ -8,6 +8,8 @@ use App\Http\Requests\Portal\ConvertLeadRequest;
 use App\Http\Requests\Portal\StoreLeadRequest;
 use App\Http\Requests\Portal\UpdateLeadRequest;
 use App\Http\Resources\Portal\LeadResource;
+use App\Models\Campaign;
+use App\Models\Contact;
 use App\Models\Lead;
 use App\Models\LeadActionType;
 use App\Models\LeadStage;
@@ -149,6 +151,7 @@ class LeadController extends Controller
             'project_id',
             'unit_id',
             'assigned_to',
+            'campaign_id',
             'source',
             'lead_stage_id',
             'tag',
@@ -246,7 +249,7 @@ class LeadController extends Controller
             ]);
         }
 
-        $lead->delete();
+        $lead->forceDelete();
 
         return to_route('portal.leads.index', ['view' => 'archive']);
     }
@@ -294,7 +297,7 @@ class LeadController extends Controller
         if ($action === 'destroy') {
             $mutable->each(function (Lead $lead): void {
                 if ($lead->isArchived()) {
-                    $lead->delete();
+                    $lead->forceDelete();
                 }
             });
 
@@ -470,7 +473,7 @@ class LeadController extends Controller
     protected function leadDetailRelations(): array
     {
         return [
-            'contact:id,first_name,last_name,email_address,phone_number',
+            'contact:id,uuid,first_name,last_name,email_address,phone_number,reference',
             'project:id,title,code',
             'project.thumbnail.asset',
             'unit:id,code,name,project_id,price,status',
@@ -489,6 +492,8 @@ class LeadController extends Controller
      *         stage: list<string>,
      *         tag: list<string>,
      *         assigned_to: list<string>,
+     *         due_in: list<string>,
+     *         action: list<string>,
      *         next_action: list<string>
      *     },
      *     1: Builder<Lead>
@@ -503,6 +508,8 @@ class LeadController extends Controller
         $projectCodes = $this->listParam($request, 'project');
         $stageLabels = $this->listParam($request, 'stage');
         $tags = $this->listParam($request, 'tag');
+        $dueIns = $this->listParam($request, 'due_in');
+        $actions = $this->listParam($request, 'action');
         $nextActions = $this->listParam($request, 'next_action');
         $assignedTo = collect($this->listParam($request, 'assigned_to'))
             ->map(fn (string $value): int => (int) $value)
@@ -524,8 +531,22 @@ class LeadController extends Controller
                 ->pluck('id')
                 ->all();
 
+        $allowedDueIns = ['today', 'tomorrow', 'this_week', 'this_month', 'overdue'];
+        $dueIns = array_values(array_intersect($dueIns, $allowedDueIns));
+
+        $includeNoAction = in_array('none', $actions, true);
+        $allowedActions = LeadActionType::titles(LeadActionType::KIND_ACTIVITY);
+        $actionTitles = array_values(array_intersect($actions, $allowedActions));
+        $actions = $includeNoAction
+            ? array_values(array_unique(['none', ...$actionTitles]))
+            : $actionTitles;
+
+        $includeNoNextAction = in_array('none', $nextActions, true);
         $allowedNextActions = Lead::nextActions();
-        $nextActions = array_values(array_intersect($nextActions, $allowedNextActions));
+        $nextActionTitles = array_values(array_intersect($nextActions, $allowedNextActions));
+        $nextActions = $includeNoNextAction
+            ? array_values(array_unique(['none', ...$nextActionTitles]))
+            : $nextActionTitles;
 
         $leadsQuery = Lead::query()
             ->when($archived, fn (Builder $builder) => $builder->archived(), fn (Builder $builder) => $builder->active())
@@ -536,12 +557,7 @@ class LeadController extends Controller
                         ->orWhere('source', 'like', "%{$query}%")
                         ->orWhere('notes', 'like', "%{$query}%")
                         ->orWhere('next_action', 'like', "%{$query}%")
-                        ->orWhereHas('contact', function ($contactQuery) use ($query): void {
-                            $contactQuery->where('first_name', 'like', "%{$query}%")
-                                ->orWhere('last_name', 'like', "%{$query}%")
-                                ->orWhere('phone_number', 'like', "%{$query}%")
-                                ->orWhere('email_address', 'like', "%{$query}%");
-                        });
+                        ->orWhereHas('contact', fn ($contactQuery) => $contactQuery->matchingSearch($query));
                 });
             })
             ->when($projectCodes !== [], function ($builder) use ($projectIds): void {
@@ -563,7 +579,40 @@ class LeadController extends Controller
                 $builder->whereIn('lead_stage_id', $stageIds);
             })
             ->when($tags !== [], fn ($builder) => $builder->whereIn('tag', $tags))
-            ->when($nextActions !== [], fn ($builder) => $builder->whereIn('next_action', $nextActions))
+            ->when($dueIns !== [], fn (Builder $builder) => $this->applyDueInFilter($builder, $dueIns))
+            ->when($actions !== [], function (Builder $builder) use ($includeNoAction, $actionTitles): void {
+                $builder->where(function (Builder $query) use ($includeNoAction, $actionTitles): void {
+                    if ($actionTitles !== []) {
+                        $query->orWhereHas('tasks', function (Builder $taskQuery) use ($actionTitles): void {
+                            $taskQuery
+                                ->where('type', Task::TYPE_ACTION)
+                                ->where('status', Task::STATUS_COMPLETED)
+                                ->whereIn('action', $actionTitles);
+                        });
+                    }
+
+                    if ($includeNoAction) {
+                        $query->orWhereDoesntHave('tasks', function (Builder $taskQuery): void {
+                            $taskQuery
+                                ->where('type', Task::TYPE_ACTION)
+                                ->where('status', Task::STATUS_COMPLETED);
+                        });
+                    }
+                });
+            })
+            ->when($nextActions !== [], function (Builder $builder) use ($includeNoNextAction, $nextActionTitles): void {
+                $builder->where(function (Builder $query) use ($includeNoNextAction, $nextActionTitles): void {
+                    if ($nextActionTitles !== []) {
+                        $query->orWhereIn('next_action', $nextActionTitles);
+                    }
+
+                    if ($includeNoNextAction) {
+                        $query->orWhere(function (Builder $inner): void {
+                            $inner->whereNull('next_action')->orWhere('next_action', '');
+                        });
+                    }
+                });
+            })
             ->when($assignedTo !== [], fn ($builder) => $builder->whereIn('assigned_to', $assignedTo))
             ->when(
                 $archived,
@@ -578,10 +627,59 @@ class LeadController extends Controller
                 'stage' => $stageLabels,
                 'tag' => $tags,
                 'assigned_to' => array_map('strval', $assignedTo),
+                'due_in' => $dueIns,
+                'action' => $actions,
                 'next_action' => $nextActions,
             ],
             $leadsQuery,
         ];
+    }
+
+    /**
+     * @param  Builder<Lead>  $builder
+     * @param  list<string>  $dueIns
+     * @return Builder<Lead>
+     */
+    protected function applyDueInFilter(Builder $builder, array $dueIns): Builder
+    {
+        $now = now();
+
+        return $builder
+            ->whereNotNull('due_date')
+            ->where(function (Builder $query) use ($dueIns, $now): void {
+                if (in_array('today', $dueIns, true)) {
+                    $query->orWhereBetween('due_date', [
+                        $now->copy()->startOfDay(),
+                        $now->copy()->endOfDay(),
+                    ]);
+                }
+
+                if (in_array('tomorrow', $dueIns, true)) {
+                    $tomorrow = $now->copy()->addDay();
+                    $query->orWhereBetween('due_date', [
+                        $tomorrow->copy()->startOfDay(),
+                        $tomorrow->copy()->endOfDay(),
+                    ]);
+                }
+
+                if (in_array('this_week', $dueIns, true)) {
+                    $query->orWhereBetween('due_date', [
+                        $now->copy()->startOfWeek(),
+                        $now->copy()->endOfWeek(),
+                    ]);
+                }
+
+                if (in_array('this_month', $dueIns, true)) {
+                    $query->orWhereBetween('due_date', [
+                        $now->copy()->startOfMonth(),
+                        $now->copy()->endOfMonth(),
+                    ]);
+                }
+
+                if (in_array('overdue', $dueIns, true)) {
+                    $query->orWhere('due_date', '<', $now->copy()->startOfDay());
+                }
+            });
     }
 
     /**
@@ -672,8 +770,17 @@ class LeadController extends Controller
             AssetManager::LINKAGE_AVATAR,
         );
 
-        $users->each(function (User $user) use ($avatarUrls): void {
+        $tenant = Tenant::current();
+        $membershipCodes = $tenant
+            ? TenantUser::query()
+                ->where('tenant_id', $tenant->id)
+                ->whereIn('user_id', $userIds)
+                ->pluck('code', 'user_id')
+            : collect();
+
+        $users->each(function (User $user) use ($avatarUrls, $membershipCodes): void {
             $user->setAttribute('avatar', $avatarUrls->get($user->id));
+            $user->setAttribute('code', $membershipCodes->get($user->id));
         });
 
         $leads->each(function (Lead $lead) use ($users): void {
@@ -711,10 +818,18 @@ class LeadController extends Controller
      *     units: list<array{id: int, project_id: int, code: string, name: ?string, price: ?float, status: ?string}>,
      *     stages: list<array{id: int, label: string, title: string, color: ?string}>,
      *     tags: list<string>,
-     *     activity_types: list<array{id: int, kind: string, label: string, title: string, priority: int, icon: ?string, is_system: bool, is_enabled: bool}>,
-     *     next_actions: list<array{id: int, kind: string, label: string, title: string, priority: int, icon: ?string, is_system: bool, is_enabled: bool}>,
+     *     activity_types: list<array{id: int, kind: string, label: string, title: string, priority: int, icon: ?string, color: ?string, is_system: bool, is_enabled: bool}>,
+     *     next_actions: list<array{id: int, kind: string, label: string, title: string, priority: int, icon: ?string, color: ?string, is_system: bool, is_enabled: bool}>,
      *     assignees: list<array{id: int, display_name: string, title: ?string, avatar: ?string}>,
-     *     sources: list<string>
+     *     sources: list<string>,
+     *     campaigns: list<array{id: int, title: string}>,
+     *     contact_options: array{
+     *         tags: list<string>,
+     *         types: list<string>,
+     *         income_levels: list<string>,
+     *         affordability_levels: list<string>,
+     *         capability_levels: list<string>
+     *     }
      * }
      */
     protected function formOptions(): array
@@ -742,6 +857,10 @@ class LeadController extends Controller
             ->pluck('source')
             ->values()
             ->all();
+
+        $campaigns = Campaign::query()
+            ->orderBy('title')
+            ->get(['id', 'title']);
 
         $tenant = Tenant::current();
         $assignees = [];
@@ -807,6 +926,20 @@ class LeadController extends Controller
             'next_actions' => LeadActionType::catalog(LeadActionType::KIND_NEXT_ACTION, enabledOnly: true),
             'assignees' => $assignees,
             'sources' => $sources,
+            'campaigns' => $campaigns
+                ->map(fn (Campaign $campaign): array => [
+                    'id' => $campaign->id,
+                    'title' => $campaign->title,
+                ])
+                ->values()
+                ->all(),
+            'contact_options' => [
+                'tags' => Contact::tags(),
+                'types' => Contact::types(),
+                'income_levels' => Contact::incomeLevels(),
+                'affordability_levels' => Contact::affordabilityLevels(),
+                'capability_levels' => Contact::capabilityLevels(),
+            ],
         ];
     }
 }

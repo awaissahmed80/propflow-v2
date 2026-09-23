@@ -40,8 +40,10 @@ class OrderStageSettingsTest extends TestCase
                 ->where('section', 'bookings')
                 ->has('orderStages', 4)
                 ->where('orderStages.0.label', Order::STAGE_TOKEN)
-                ->has('orderStages.0.statuses')
+                ->has('orderStatuses', 7)
                 ->where('orderStages.2.label', Order::STAGE_ACTIVE)
+                ->where('orderStatuses.0.label', Order::STATUS_HOLD)
+                ->where('orderStatuses.1.label', Order::STATUS_IN_PROGRESS)
             );
     }
 

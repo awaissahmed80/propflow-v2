@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['stage_label', 'label', 'title', 'priority', 'color', 'is_system', 'is_enabled'])]
+#[Fillable(['label', 'title', 'priority', 'color', 'is_system', 'is_enabled'])]
 #[Connection('tenant')]
 #[Table(timestamps: false)]
 class OrderStatus extends Model
@@ -34,65 +34,76 @@ class OrderStatus extends Model
     }
 
     /**
-     * @param  Builder<static>  $query
-     * @return Builder<static>
-     */
-    public function scopeForStage(Builder $query, string $stageLabel): Builder
-    {
-        return $query->where('stage_label', $stageLabel);
-    }
-
-    /**
-     * @return list<array{stage_label: string, label: string, title: string, priority: int, color: string, is_system: bool, is_enabled: bool}>
+     * @return list<array{label: string, title: string, priority: int, color: string, is_system: bool, is_enabled: bool}>
      */
     public static function defaultDefinitions(): array
     {
         return [
-            ['stage_label' => Order::STAGE_TOKEN, 'label' => Order::STATUS_HOLD, 'title' => 'Hold', 'priority' => 1, 'color' => '#94A3B8', 'is_system' => true, 'is_enabled' => true],
-            ['stage_label' => Order::STAGE_TOKEN, 'label' => Order::STATUS_VERIFIED, 'title' => 'Verified', 'priority' => 2, 'color' => '#3B82F6', 'is_system' => true, 'is_enabled' => true],
-            ['stage_label' => Order::STAGE_BOOKING_KYC, 'label' => Order::STATUS_IN_PROGRESS, 'title' => 'In progress', 'priority' => 1, 'color' => '#8B5CF6', 'is_system' => true, 'is_enabled' => true],
-            ['stage_label' => Order::STAGE_ACTIVE, 'label' => Order::STATUS_CURRENT, 'title' => 'Current', 'priority' => 1, 'color' => '#06B6D4', 'is_system' => true, 'is_enabled' => true],
-            ['stage_label' => Order::STAGE_ACTIVE, 'label' => Order::STATUS_OVERDUE, 'title' => 'Overdue', 'priority' => 2, 'color' => '#F59E0B', 'is_system' => true, 'is_enabled' => true],
-            ['stage_label' => Order::STAGE_ACTIVE, 'label' => Order::STATUS_DEFAULTER, 'title' => 'Defaulter', 'priority' => 3, 'color' => '#EF4444', 'is_system' => true, 'is_enabled' => true],
-            ['stage_label' => Order::STAGE_ACTIVE, 'label' => Order::STATUS_LITIGATION, 'title' => 'Litigation', 'priority' => 4, 'color' => '#DC2626', 'is_system' => true, 'is_enabled' => true],
-            ['stage_label' => Order::STAGE_CLOSED, 'label' => Order::STATUS_COMPLETED, 'title' => 'Completed', 'priority' => 1, 'color' => '#059669', 'is_system' => true, 'is_enabled' => true],
-            ['stage_label' => Order::STAGE_CLOSED, 'label' => Order::STATUS_CANCELLED, 'title' => 'Cancelled', 'priority' => 2, 'color' => '#64748B', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STATUS_HOLD, 'title' => 'Hold', 'priority' => 1, 'color' => '#94A3B8', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STATUS_IN_PROGRESS, 'title' => 'In progress', 'priority' => 2, 'color' => '#EA580C', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STATUS_OVERDUE, 'title' => 'Overdue', 'priority' => 3, 'color' => '#D97706', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STATUS_DEFAULTER, 'title' => 'Defaulter', 'priority' => 4, 'color' => '#E11D48', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STATUS_LITIGATION, 'title' => 'Litigation', 'priority' => 5, 'color' => '#BE123C', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STATUS_COMPLETED, 'title' => 'Completed', 'priority' => 6, 'color' => '#16A34A', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STATUS_CANCELLED, 'title' => 'Cancelled', 'priority' => 7, 'color' => '#6B7280', 'is_system' => true, 'is_enabled' => true],
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function obsoleteLabels(): array
+    {
+        return ['verified', 'current'];
     }
 
     public static function ensureDefaults(): void
     {
-        if (static::query()->exists()) {
-            return;
+        if (static::query()->whereIn('label', static::obsoleteLabels())->exists()) {
+            Order::query()
+                ->whereIn('status', static::obsoleteLabels())
+                ->update(['status' => Order::STATUS_IN_PROGRESS]);
+
+            static::query()->whereIn('label', static::obsoleteLabels())->delete();
         }
 
-        foreach (static::defaultDefinitions() as $definition) {
+        $defaults = collect(static::defaultDefinitions())->keyBy('label');
+        $existing = static::query()->get()->keyBy('label');
+
+        foreach ($defaults as $label => $definition) {
+            if ($existing->has($label)) {
+                continue;
+            }
+
             static::query()->create($definition);
+        }
+
+        foreach ($defaults as $label => $definition) {
+            static::query()->where('label', $label)->update([
+                'priority' => $definition['priority'],
+                'is_system' => true,
+                'is_enabled' => true,
+            ]);
         }
     }
 
     /**
-     * @return list<array{id: int, stage_label: string, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool}>
+     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool}>
      */
-    public static function catalog(?string $stageLabel = null, bool $enabledOnly = true): array
+    public static function catalog(bool $enabledOnly = true): array
     {
         static::ensureDefaults();
 
-        $query = static::query()->orderBy('stage_label')->orderBy('priority');
-
-        if ($stageLabel !== null) {
-            $query->forStage($stageLabel);
-        }
+        $query = static::query()->orderBy('priority');
 
         if ($enabledOnly) {
             $query->enabled();
         }
 
         return $query
-            ->get(['id', 'stage_label', 'label', 'title', 'priority', 'color', 'is_system', 'is_enabled'])
+            ->get(['id', 'label', 'title', 'priority', 'color', 'is_system', 'is_enabled'])
             ->map(fn (self $status): array => [
                 'id' => $status->id,
-                'stage_label' => (string) $status->stage_label,
                 'label' => (string) $status->label,
                 'title' => (string) $status->title,
                 'priority' => (int) $status->priority,

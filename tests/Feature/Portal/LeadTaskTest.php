@@ -42,7 +42,7 @@ class LeadTaskTest extends TestCase
 
         $tenant->makeCurrent();
         $log = Task::query()
-            ->where('lead_id', $lead->id)
+            ->whereMorphedTo('taskable', $lead)
             ->where('action', 'Lead created')
             ->first();
 
@@ -88,11 +88,11 @@ class LeadTaskTest extends TestCase
         $this->assertTrue($lead->due_date?->equalTo($due));
 
         $update = Task::query()
-            ->where('lead_id', $lead->id)
+            ->whereMorphedTo('taskable', $lead)
             ->where('action', 'Call')
             ->first();
         $scheduled = Task::query()
-            ->where('lead_id', $lead->id)
+            ->whereMorphedTo('taskable', $lead)
             ->where('status', Task::STATUS_PENDING)
             ->first();
 
@@ -132,7 +132,7 @@ class LeadTaskTest extends TestCase
 
         $tenant->makeCurrent();
         $update = Task::query()
-            ->where('lead_id', $lead->id)
+            ->whereMorphedTo('taskable', $lead)
             ->where('action', 'Call')
             ->first();
 
@@ -222,7 +222,7 @@ class LeadTaskTest extends TestCase
 
         $tenant->makeCurrent();
         $log = Task::query()
-            ->where('lead_id', $lead->id)
+            ->whereMorphedTo('taskable', $lead)
             ->where('action', 'Stage changed')
             ->first();
 

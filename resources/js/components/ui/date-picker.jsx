@@ -11,7 +11,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { TimePicker, parseTimeValue, toTimeValue } from "@/components/ui/time-picker"
+import {
+  TimePicker,
+  formatDisplayTime,
+  parseTimeValue,
+  toTimeValue,
+} from "@/components/ui/time-picker"
 import { cn } from "@/lib/utils"
 
 const DEFAULT_YEARS_RANGE = 10
@@ -96,6 +101,28 @@ function toTimeString(date) {
 }
 
 /**
+ * @param {Date | undefined} date
+ * @param {string} draftTime
+ * @param {boolean} showTime
+ * @param {"12h" | "24h"} timeFormat
+ */
+function getHeaderSummary(date, draftTime, showTime, timeFormat) {
+  const displayDate = date ?? new Date()
+  const parsedTime = parseTimeValue(draftTime) || {
+    hours24: displayDate.getHours(),
+    minutes: displayDate.getMinutes(),
+  }
+
+  return {
+    year: format(displayDate, "yyyy"),
+    weekdayDate: format(displayDate, "EEE, d MMMM"),
+    time: showTime
+      ? formatDisplayTime(parsedTime.hours24, parsedTime.minutes, timeFormat)
+      : null,
+  }
+}
+
+/**
  * Reusable date / datetime picker built from Calendar + Popover.
  * Value / onChange use `yyyy-MM-dd` strings (empty string when cleared),
  * or `yyyy-MM-ddTHH:mm` when `showTime` is enabled.
@@ -150,11 +177,14 @@ function DatePicker({
   const selected = parseDateValue(value)
   const [month, setMonth] = React.useState(selected)
   const [draftTime, setDraftTime] = React.useState(() => toTimeString(selected))
+  const [calendarHeight, setCalendarHeight] = React.useState(null)
+  const calendarRef = React.useRef(null)
   const yearBounds = getYearBounds(yearsRange)
   const resolvedStartMonth = startMonth ?? yearBounds.startMonth
   const resolvedEndMonth = endMonth ?? yearBounds.endMonth
   const resolvedDisplayFormat =
     displayFormat || (showTime ? "d MMM yyyy h:mm a" : "PPP")
+  const header = getHeaderSummary(selected, draftTime, showTime, timeFormat)
 
   React.useEffect(() => {
     if (selected) {
@@ -162,6 +192,45 @@ function DatePicker({
       setDraftTime(toTimeString(selected))
     }
   }, [selected])
+
+  React.useLayoutEffect(() => {
+    if (!showTime || !open) {
+      setCalendarHeight(null)
+      return undefined
+    }
+
+    let frame = 0
+    /** @type {ResizeObserver | null} */
+    let observer = null
+
+    const attach = () => {
+      const node = calendarRef.current
+
+      if (!node) {
+        frame = window.requestAnimationFrame(attach)
+        return
+      }
+
+      const syncHeight = () => {
+        const next = Math.round(node.getBoundingClientRect().height)
+
+        if (next > 0) {
+          setCalendarHeight(next)
+        }
+      }
+
+      syncHeight()
+      observer = new ResizeObserver(syncHeight)
+      observer.observe(node)
+    }
+
+    attach()
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer?.disconnect()
+    }
+  }, [showTime, open, month])
 
   const emitChange = (date) => {
     if (!date) {
@@ -273,38 +342,83 @@ function DatePicker({
           align="start"
           side={side}
           sideOffset={4}
-          className="w-auto overflow-hidden p-0"
+          className="w-auto overflow-hidden rounded-xl border-border/80 bg-popover p-0 shadow-lg"
         >
-          <Calendar
-            mode="single"
-            captionLayout="dropdown"
-            selected={selected}
-            month={month}
-            onMonthChange={setMonth}
-            onSelect={handleSelect}
-            defaultMonth={selected}
-            startMonth={resolvedStartMonth}
-            endMonth={resolvedEndMonth}
-            disabled={[
-              ...(fromDate ? [{ before: fromDate }] : []),
-              ...(toDate ? [{ after: toDate }] : []),
-            ]}
-          />
+          <div className="flex items-start justify-between gap-3 border-b border-border/70 px-4 py-3">
+            <div className="min-w-0">
+              <div className="text-xs text-muted-foreground">{header.year}</div>
+              <div className="truncate text-base font-semibold tracking-tight text-foreground">
+                {header.weekdayDate}
+              </div>
+              {header.time ? (
+                <div className="mt-0.5 text-sm text-muted-foreground">{header.time}</div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => setOpen(false)}
+            >
+              <XIcon className="size-4" />
+            </button>
+          </div>
 
-          {showTime ? (
-            <div className="border-t border-border px-3 py-2.5">
-              <TimePicker
-                inline
-                id={id ? `${id}-time` : undefined}
-                label="Time"
-                value={draftTime}
-                onChange={handleTimeChange}
-                disabled={disabled}
-                displayFormat={timeFormat}
-                minuteStep={minuteStep}
+          <div
+            className={cn(
+              showTime && "flex flex-col sm:flex-row sm:items-start"
+            )}
+          >
+            <div ref={calendarRef} className="shrink-0">
+              <Calendar
+                mode="single"
+                captionLayout="dropdown"
+                selected={selected}
+                month={month}
+                onMonthChange={setMonth}
+                onSelect={handleSelect}
+                defaultMonth={selected}
+                startMonth={resolvedStartMonth}
+                endMonth={resolvedEndMonth}
+                formatters={{
+                  formatMonthDropdown: (date) => format(date, "MMMM"),
+                }}
+                className="bg-transparent p-3"
+                classNames={{
+                  month: "flex w-full flex-col gap-3",
+                  dropdowns: "flex h-(--cell-size) w-full items-center justify-center gap-2 text-sm font-medium",
+                  today: "rounded-(--cell-radius) bg-muted/60 text-foreground",
+                }}
+                disabled={[
+                  ...(fromDate ? [{ before: fromDate }] : []),
+                  ...(toDate ? [{ after: toDate }] : []),
+                ]}
               />
             </div>
-          ) : null}
+
+            {showTime ? (
+              <div
+                className="flex w-full min-h-0 shrink-0 flex-col overflow-hidden border-t border-border/70 bg-popover sm:w-[11.5rem] sm:border-t-0 sm:border-l"
+                style={
+                  calendarHeight
+                    ? { height: `${calendarHeight}px`, maxHeight: `${calendarHeight}px` }
+                    : { height: "18rem" }
+                }
+              >
+                <TimePicker
+                  inline
+                  wheel
+                  className="h-full min-h-0 w-full overflow-hidden"
+                  id={id ? `${id}-time` : undefined}
+                  value={draftTime}
+                  onChange={handleTimeChange}
+                  disabled={disabled}
+                  displayFormat={timeFormat}
+                  minuteStep={minuteStep}
+                />
+              </div>
+            ) : null}
+          </div>
         </PopoverContent>
       </Popover>
 

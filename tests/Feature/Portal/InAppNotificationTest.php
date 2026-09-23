@@ -2,17 +2,25 @@
 
 namespace Tests\Feature\Portal;
 
+use App\Models\Contact;
 use App\Models\Lead;
 use App\Models\LeadStage;
+use App\Models\Order;
+use App\Models\PaymentInstallment;
+use App\Models\PaymentPlan;
+use App\Models\PersonalReminder;
 use App\Models\Setting;
 use App\Models\Task;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Models\User;
 use App\Notifications\WorkspaceNotification;
+use App\Services\CriticalDueNotifier;
 use App\Services\TenantContext;
 use App\Support\Domain;
 use App\Support\Notifications\NotificationSettings;
+use Illuminate\Notifications\Events\BroadcastNotificationCreated;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -124,7 +132,8 @@ class InAppNotificationTest extends TestCase
         $this->actingAs($owner);
 
         Task::factory()->create([
-            'lead_id' => $lead->id,
+            'taskable_type' => $lead->getMorphClass(),
+            'taskable_id' => $lead->id,
             'user_id' => $assignee->id,
             'action' => 'Call the client',
             'type' => Task::TYPE_ACTION,
@@ -166,7 +175,7 @@ class InAppNotificationTest extends TestCase
         $this->actingAs($assignee);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $this->getJson(Domain::portal('/notifications'))
+        $this->getJson(Domain::portal('/notifications/feed'))
             ->assertOk()
             ->assertJsonPath('unread_count', 1)
             ->assertJsonCount(1, 'notifications')
@@ -180,6 +189,182 @@ class InAppNotificationTest extends TestCase
             ->assertJsonPath('unread_count', 0);
 
         $this->assertNotNull($assignee->notifications()->find($id)->read_at);
+
+        $this->getJson(Domain::portal('/notifications/feed'))
+            ->assertOk()
+            ->assertJsonPath('unread_count', 0)
+            ->assertJsonCount(0, 'notifications');
+    }
+
+    public function test_notifications_index_lists_all_and_supports_unread_and_delete(): void
+    {
+        [$owner, $tenant, $assignee] = $this->createWorkspace('tenant_notify_modal');
+
+        $tenant->makeCurrent();
+        Lead::factory()->create([
+            'user_id' => $owner->id,
+            'assigned_to' => $assignee->id,
+        ]);
+        Tenant::forgetCurrent();
+
+        $id = $assignee->notifications()->where('data->tenant_id', $tenant->id)->value('id');
+        $this->assertNotNull($id);
+
+        $this->actingAs($assignee);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->postJson(Domain::portal('/notifications/'.$id.'/read'))
+            ->assertOk()
+            ->assertJsonPath('unread_count', 0);
+
+        $this->getJson(Domain::portal('/notifications'))
+            ->assertOk()
+            ->assertJsonCount(1, 'notifications')
+            ->assertJsonPath('unread_count', 0)
+            ->assertJsonPath('notifications.0.id', $id)
+            ->assertJsonPath('notifications.0.icon', 'customer-service-line');
+
+        $this->postJson(Domain::portal('/notifications/'.$id.'/unread'))
+            ->assertOk()
+            ->assertJsonPath('unread_count', 1);
+
+        $this->assertNull($assignee->notifications()->find($id)?->read_at);
+
+        $this->deleteJson(Domain::portal('/notifications/'.$id))
+            ->assertOk()
+            ->assertJsonPath('unread_count', 0);
+
+        $this->assertNull($assignee->notifications()->find($id));
+    }
+
+    public function test_critical_due_notifier_sends_personal_reminder_and_follow_up_alerts(): void
+    {
+        [$owner, $tenant, $assignee] = $this->createWorkspace('tenant_notify_critical');
+
+        $tenant->makeCurrent();
+        $stage = LeadStage::factory()->newLead()->create();
+        Lead::factory()->create([
+            'user_id' => $owner->id,
+            'assigned_to' => $assignee->id,
+            'lead_stage_id' => $stage->id,
+            'next_action' => Lead::NEXT_ACTION_FOLLOW_UP,
+            'due_date' => now()->subDay(),
+            'contact_id' => Contact::factory()->create([
+                'first_name' => 'Sara',
+                'last_name' => 'Ali',
+            ]),
+        ]);
+        $assignee->notifications()->delete();
+
+        PersonalReminder::factory()->forUser($assignee->id)->create([
+            'title' => 'Call the bank',
+            'due_at' => now()->subDay(),
+        ]);
+
+        $sent = app(CriticalDueNotifier::class)->notify();
+        $this->assertSame(2, $sent);
+
+        $events = $assignee->notifications()->get()->pluck('data.event')->all();
+        $this->assertContains('follow_up_overdue', $events);
+        $this->assertContains('personal_reminder_overdue', $events);
+
+        $sentAgain = app(CriticalDueNotifier::class)->notify();
+        $this->assertSame(0, $sentAgain);
+        $this->assertSame(2, $assignee->notifications()->count());
+
+        Tenant::forgetCurrent();
+    }
+
+    public function test_creating_a_due_personal_reminder_sends_in_app_notification(): void
+    {
+        [$owner, $tenant, $assignee] = $this->createWorkspace('tenant_notify_reminder_create');
+
+        $this->actingAs($assignee);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+        $assignee->notifications()->delete();
+
+        Event::fake([BroadcastNotificationCreated::class]);
+
+        $this->post(Domain::portal('/todos/reminders'), [
+            'title' => 'Site visit today',
+            'due_at' => now()->format('Y-m-d\TH:i'),
+        ])->assertRedirect(Domain::portal('/todos'));
+
+        $notification = $assignee->notifications()
+            ->where('data->event', 'personal_reminder_due')
+            ->first();
+
+        $this->assertNotNull($notification);
+        $this->assertSame('Reminder due', $notification->data['title']);
+        $this->assertSame('Site visit today', $notification->data['body']);
+        $this->assertSame('/todos', $notification->data['href']);
+
+        Event::assertDispatched(BroadcastNotificationCreated::class, function (BroadcastNotificationCreated $event) use ($assignee, $tenant): bool {
+            return (int) $event->notifiable->id === (int) $assignee->id
+                && ($event->data['event'] ?? null) === 'personal_reminder_due'
+                && (int) ($event->data['tenant_id'] ?? 0) === (int) $tenant->id
+                && ($event->data['body'] ?? null) === 'Site visit today';
+        });
+    }
+
+    public function test_future_personal_reminder_does_not_notify_until_due(): void
+    {
+        [$owner, $tenant, $assignee] = $this->createWorkspace('tenant_notify_reminder_future');
+
+        $this->actingAs($assignee);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+        $assignee->notifications()->delete();
+
+        $this->post(Domain::portal('/todos/reminders'), [
+            'title' => 'Tomorrow call',
+            'due_at' => now()->addDay()->format('Y-m-d\TH:i'),
+        ])->assertRedirect(Domain::portal('/todos'));
+
+        $this->assertSame(0, $assignee->notifications()->count());
+
+        $tenant->makeCurrent();
+        $sent = app(CriticalDueNotifier::class)->notify();
+        Tenant::forgetCurrent();
+
+        $this->assertSame(0, $sent);
+        $this->assertSame(0, $assignee->notifications()->count());
+    }
+
+    public function test_critical_due_notifier_sends_overdue_installment_alerts(): void
+    {
+        [$owner, $tenant, $assignee] = $this->createWorkspace('tenant_notify_installment_overdue');
+
+        $tenant->makeCurrent();
+        $order = Order::factory()->create([
+            'assigned_to' => $assignee->id,
+            'stage' => Order::STAGE_ACTIVE,
+            'status' => Order::STATUS_IN_PROGRESS,
+            'contact_id' => Contact::factory()->create([
+                'first_name' => 'Omar',
+                'last_name' => 'Raza',
+            ]),
+        ]);
+        $plan = PaymentPlan::factory()->create(['order_id' => $order->id]);
+        $installment = PaymentInstallment::factory()->create([
+            'payment_plan_id' => $plan->id,
+            'label' => '2nd installment',
+            'due_on' => now()->subDays(3)->toDateString(),
+            'status' => PaymentInstallment::STATUS_PENDING,
+        ]);
+        $assignee->notifications()->delete();
+
+        $sent = app(CriticalDueNotifier::class)->notify();
+        $this->assertGreaterThanOrEqual(1, $sent);
+
+        $notification = $assignee->notifications()->where('data->event', 'installment_overdue')->first();
+        $this->assertNotNull($notification);
+        $this->assertSame('/bookings?booking='.$order->code, $notification->data['href']);
+        $this->assertStringContainsString('2nd installment', $notification->data['body']);
+
+        $sentAgain = app(CriticalDueNotifier::class)->notify();
+        $this->assertSame(0, $sentAgain);
+
+        Tenant::forgetCurrent();
     }
 
     /**

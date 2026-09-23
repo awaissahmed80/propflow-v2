@@ -60,14 +60,44 @@ class RoleIndexTest extends TestCase
             ->component('settings/index', false)
             ->where('section', 'roles')
             ->has('roles', Role::query()->count())
-            ->where('roles.0.name', 'Admin')
-            ->has('roles.0.permissions')
-            ->where('roles.0.description', 'admin with all permissions')
-            ->where('roles.0.is_system', true)
-            ->where('roles.0.is_enabled', true)
             ->has('permissionGroups', count(TenantPermissions::groupedForForm()))
             ->where('permissionGroups.0.group', 'Administration')
+            ->where('permissionGroups.1.group', 'Users & Teams')
+            ->where('permissionGroups.0.permissions.0.name', 'manage admin')
+            ->where('permissionGroups.0.permissions.0.master', true)
+            ->has('permissionGroups.0.permissions.0.disables', 6)
+            ->where('roles.0.name', 'Admin')
+            ->where('roles.1.name', 'Business Manager')
+            ->where('roles.2.name', 'Accounts Manager')
         );
+
+        $tenant->makeCurrent();
+        Role::query()->create([
+            'name' => 'Zebra Custom',
+            'guard_name' => 'web',
+            'description' => 'Custom role',
+            'is_system' => false,
+            'is_enabled' => true,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->get(Domain::portal('/settings/roles'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('roles', 8)
+                ->where('roles.0.name', 'Admin')
+                ->where('roles.7.name', 'Zebra Custom')
+            );
+
+        $adminRole = Role::query()->where('name', 'Admin')->first();
+        $this->assertNotNull($adminRole);
+        $this->assertSame(
+            'Full control of the workspace — settings, users, and every module',
+            $adminRole->description
+        );
+        $this->assertTrue($adminRole->is_system);
+        $this->assertTrue($adminRole->is_enabled);
+        $this->assertGreaterThan(0, $adminRole->permissions()->count());
 
         Tenant::forgetCurrent();
     }

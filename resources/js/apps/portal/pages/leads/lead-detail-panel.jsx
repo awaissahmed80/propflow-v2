@@ -1,32 +1,32 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import {
     archive as archiveLead,
     destroy as destroyLead,
     restore as restoreLead,
-    update,
 } from "@/actions/App/Http/Controllers/Portal/LeadController";
-import { store as storeLeadTask } from "@/actions/App/Http/Controllers/Portal/LeadTaskController";
-import { FileManagerPicker } from "@/components/file-manager-picker";
-import { FilePreview, FilePreviewTile } from "@/components/file-preview";
 import { Button } from "@/components/ui/button";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { HeatIcon } from "@/components/ui/heat-icon";
 import { Icon } from "@/components/ui/icon";
-import { SelectBox } from "@/components/ui/select";
 import { IconButton } from "@/components/ui/icon-button";
-import { DateTimePicker } from "@/components/ui/date-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
-import { formatDateTime, formatRelativeTime, toDayjs } from "@/lib/datetime";
-import { formatMoney } from "@/lib/currency";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { ContactCardPopover } from "../../components/contact-card";
+import { ActivityTimeline } from "./lead-activity-timeline";
+import {
+    AssigneeMenu,
+    HeatMenu,
+    patchLead,
+    ProjectMenu,
+    StageMenu,
+} from "./lead-assignment-menus";
+import { LeadDetailsTab } from "./lead-detail-sections";
+import { UpdateComposer } from "./lead-update-composer";
 import CloseDealForm from "./close-deal-form";
 
 const TABS = [
@@ -34,213 +34,6 @@ const TABS = [
     { id: "details", label: "Details" },
     { id: "close", label: "Close Deal" },
 ];
-
-const UPDATE_PLACEHOLDER =
-    "Have you taken any steps on this lead? Record them here...";
-
-// Fallback icons for system log actions and known defaults.
-const ACTIVITY_ICONS = {
-    Call: "phone-line",
-    Meeting: "team-line",
-    "Site Visit": "map-pin-line",
-    Email: "mail-line",
-    Message: "chat-1-line",
-    "WhatsApp Call": "whatsapp-line",
-    "WhatsApp Message": "whatsapp-line",
-    Note: "sticky-note-line",
-    "Follow-up": "calendar-check-line",
-    "Arrange Site Visit": "map-pin-line",
-    "Arrange Meeting": "team-line",
-    "Do Nothing": "close-circle-line",
-    "Lead created": "user-add-line",
-    "Stage changed": "git-commit-line",
-    "Assignee changed": "user-shared-line",
-    "Lead archived": "archive-line",
-    "Lead restored": "arrow-go-back-line",
-};
-
-function actionTitles(items = []) {
-    return items
-        .map((item) => (typeof item === "string" ? item : item?.title))
-        .filter(Boolean);
-}
-
-function actionIcon(title, items = []) {
-    const match = items.find((item) => item?.title === title);
-
-    return match?.icon || ACTIVITY_ICONS[title] || null;
-}
-
-function doNothingTitle(items = []) {
-    const match = items.find((item) => item?.label === "do_nothing");
-
-    return match?.title || "Do Nothing";
-}
-
-function timelineEntries(lead) {
-    const tasks = Array.isArray(lead?.tasks) ? lead.tasks : [];
-    const hasCreated = tasks.some((task) => task.action === "Lead created");
-
-    if (hasCreated || !lead?.created_at) {
-        return tasks;
-    }
-
-    const creator = lead.creator?.display_name;
-
-    return [
-        ...tasks,
-        {
-            id: `created-${lead.id}`,
-            action: "Lead created",
-            comments: creator ? `${creator} created this lead.` : "Created automatically.",
-            status: "COMPLETED",
-            type: "LOG",
-            created_at: lead.created_at,
-            user: lead.creator || null,
-        },
-    ].sort((left, right) => new Date(right.created_at) - new Date(left.created_at));
-}
-
-function ActivityTimeline({ lead, actionTypes = [] }) {
-    const entries = timelineEntries(lead);
-    const scheduled = entries.filter((entry) => entry.status === "PENDING");
-    const history = entries.filter((entry) => entry.status !== "PENDING");
-
-    if (entries.length === 0) {
-        return (
-            <div className="flex min-h-48 items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-4 text-center text-sm text-muted-foreground">
-                Nothing has been scheduled
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-5">
-            {scheduled.length > 0 ? (
-                <div className="space-y-2">
-                    <p className="text-sm font-bold tracking-tight text-muted-foreground">
-                        Scheduled
-                    </p>
-                    {scheduled.map((entry) => (
-                        <ActivityRow
-                            key={entry.id}
-                            entry={entry}
-                            lead={lead}
-                            scheduled
-                            actionTypes={actionTypes}
-                        />
-                    ))}
-                </div>
-            ) : (
-                <div className="rounded-md border border-dashed border-border bg-muted/20 px-4 py-3 text-center text-sm text-muted-foreground">
-                    Nothing has been scheduled
-                </div>
-            )}
-
-            {history.length > 0 ? (
-                <div className="space-y-2">
-                    <p className="text-sm font-bold tracking-tight text-muted-foreground">
-                        Activity
-                    </p>
-                    <ol className="space-y-3">
-                        {history.map((entry) => (
-                            <li key={entry.id}>
-                                <ActivityRow
-                                    entry={entry}
-                                    lead={lead}
-                                    actionTypes={actionTypes}
-                                />
-                            </li>
-                        ))}
-                    </ol>
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-function ActivityAttachments({ files }) {
-    const [open, setOpen] = useState(false);
-    const [index, setIndex] = useState(0);
-
-    return (
-        <>
-            <div className="mt-2 flex flex-wrap gap-2">
-                {files.map((file, fileIndex) => (
-                    <FilePreviewTile
-                        key={`${file.kind}-${file.id}`}
-                        file={file}
-                        onPreview={() => {
-                            setIndex(fileIndex);
-                            setOpen(true);
-                        }}
-                    />
-                ))}
-            </div>
-            <FilePreview
-                open={open}
-                onOpenChange={setOpen}
-                files={files}
-                index={index}
-                onIndexChange={setIndex}
-            />
-        </>
-    );
-}
-
-function ActivityRow({ entry, lead, scheduled = false, actionTypes = [] }) {
-    const system = entry.type === "LOG";
-    const icon =
-        actionIcon(entry.action, actionTypes) ||
-        ACTIVITY_ICONS[entry.action] ||
-        (system ? "history-line" : "checkbox-circle-line");
-    const actor = entry.user?.display_name;
-
-    return (
-        <div
-            className={cn(
-                "flex gap-3 rounded-xl border px-3 py-3",
-                scheduled
-                    ? "border-primary/30 bg-primary/[0.06]"
-                    : "border-border/80 bg-background"
-            )}
-        >
-            <span
-                className={cn(
-                    "flex size-8 shrink-0 items-center justify-center rounded-lg",
-                    scheduled
-                        ? "bg-primary text-primary-foreground"
-                        : system
-                          ? "bg-muted text-muted-foreground"
-                          : "bg-primary/10 text-primary"
-                )}
-            >
-                <Icon name={icon} className="text-base" />
-            </span>
-            <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <p className="text-sm font-semibold text-foreground">{entry.action}</p>
-                    {scheduled ? (
-                        <span className="text-xs text-muted-foreground">
-                            {formatDateTime(lead.due_date)}
-                        </span>
-                    ) : null}
-                </div>
-                {entry.comments ? (
-                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                        {entry.comments}
-                    </p>
-                ) : null}
-                {entry.attachments?.length ? (
-                    <ActivityAttachments files={entry.attachments} />
-                ) : null}
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                    {[actor, formatRelativeTime(entry.created_at)].filter(Boolean).join(" · ")}
-                </p>
-            </div>
-        </div>
-    );
-}
 
 function phoneDigits(phone) {
     return String(phone || "").replace(/\D+/g, "");
@@ -258,508 +51,23 @@ function telUrl(phone) {
     return digits ? `tel:+${digits}` : null;
 }
 
-function patchLead(lead, payload, successMessage = "Lead updated") {
-    if (lead?.deal_locked) {
-        toast.error("This lead is locked while its booking is active");
-        return;
-    }
-
-    router.patch(update.url(lead.code), payload, {
-        preserveScroll: true,
-        onSuccess: () => toast.success(successMessage),
-        onError: () => toast.error("Could not update lead"),
-    });
-}
-
-function StageMenu({ lead, stages, locked = false }) {
-    const color = lead.stage?.color || "var(--muted-foreground)";
-
-    return (
-        <DropdownMenu>
-            <DropdownMenuTrigger
-                render={
-                    <button
-                        type="button"
-                        disabled={locked}
-                        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                        style={{
-                            backgroundColor: `${color}22`,
-                            borderColor: `${color}55`,
-                            color,
-                        }}
-                    >
-                        {lead.stage?.title || "Stage"}
-                        <Icon name="arrow-down-s-line" className="text-sm" />
-                    </button>
-                }
-            />
-            <DropdownMenuContent align="end" className="min-w-40">
-                {stages.map((stage) => {
-                    const selected = Number(lead.lead_stage_id) === Number(stage.id);
-                    const stageColor = stage.color || "var(--muted-foreground)";
-
-                    return (
-                        <DropdownMenuItem
-                            key={stage.id}
-                            disabled={selected || locked}
-                            onClick={() =>
-                                patchLead(lead, { lead_stage_id: Number(stage.id) })
-                            }
-                        >
-                            <span
-                                className="size-1.5 shrink-0 rounded-sm"
-                                style={{ backgroundColor: stageColor }}
-                                aria-hidden
-                            />
-                            {stage.title}
-                            {selected ? (
-                                <Icon name="check-line" className="ml-auto text-sm" />
-                            ) : null}
-                        </DropdownMenuItem>
-                    );
-                })}
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
-}
-
-function AssigneeMenu({ lead, assignees, locked = false }) {
-    const options = assignees.map((user) => ({
-        value: String(user.id),
-        label: user.display_name,
-        avatar: {
-            name: user.display_name,
-            src: user.avatar || undefined,
-        },
-    }));
-
-    return (
-        <SelectBox
-            className="min-w-0 flex-1"
-            value={lead?.assigned_to ? String(lead.assigned_to) : ""}
-            options={options}
-            placeholder="Assign to…"
-            clearable
-            disabled={locked}
-            onValueChange={(value) => {
-                const next = value ? Number(value) : null;
-
-                if ((lead?.assigned_to ?? null) === next) {
-                    return;
-                }
-
-                patchLead(
-                    lead,
-                    { assigned_to: next },
-                    next ? "Assignee updated" : "Assignee cleared",
-                );
-            }}
-        />
-    );
-}
-
-function ProjectMenu({ lead, projects, locked = false }) {
-    const options = projects.map((project) => ({
-        value: String(project.id),
-        label: project.title,
-        image: project.thumbnail || undefined,
-        icon: project.thumbnail ? undefined : "community-line",
-    }));
-
-    return (
-        <SelectBox
-            className="min-w-0 flex-1"
-            value={lead?.project_id ? String(lead.project_id) : ""}
-            options={options}
-            placeholder="Select project…"
-            clearable
-            disabled={locked}
-            onValueChange={(value) => {
-                const next = value ? Number(value) : null;
-
-                if ((lead?.project_id ?? null) === next) {
-                    return;
-                }
-
-                patchLead(
-                    lead,
-                    { project_id: next },
-                    next ? "Project updated" : "Project cleared",
-                );
-            }}
-        />
-    );
-}
-
-function DetailField({ label, children }) {
-    return (
-        <div className="space-y-1">
-            <div className="text-sm font-bold tracking-tight text-muted-foreground">
-                {label}
-            </div>
-            <div className="text-base text-foreground">{children}</div>
-        </div>
-    );
-}
-
-function UpdateComposer({
-    leadCode,
-    activityTypes = [],
-    nextActionTypes = [],
-    locked = false,
-}) {
-    const activityTitles = useMemo(() => actionTitles(activityTypes), [activityTypes]);
-    const nextTitles = useMemo(() => actionTitles(nextActionTypes), [nextActionTypes]);
-    const noopTitle = useMemo(() => doNothingTitle(nextActionTypes), [nextActionTypes]);
-    const defaultActivity = activityTitles[0] || "Note";
-    const defaultNext = nextTitles[0] || noopTitle;
-
-    const [expanded, setExpanded] = useState(false);
-    const [activityType, setActivityType] = useState(defaultActivity);
-    const [notes, setNotes] = useState("");
-    const [nextActionType, setNextActionType] = useState(defaultNext);
-    const [nextAt, setNextAt] = useState(() => new Date());
-    const [attachments, setAttachments] = useState([]);
-    const [pickerOpen, setPickerOpen] = useState(false);
-    const [previewOpen, setPreviewOpen] = useState(false);
-    const [previewIndex, setPreviewIndex] = useState(0);
-    const [submitting, setSubmitting] = useState(false);
-
-    const reset = () => {
-        setExpanded(false);
-        setActivityType(defaultActivity);
-        setNotes("");
-        setNextActionType(defaultNext);
-        setNextAt(new Date());
-        setAttachments([]);
-        setPickerOpen(false);
-        setPreviewOpen(false);
-        setSubmitting(false);
-    };
-
-    const submitUpdate = () => {
-        if (locked) {
-            toast.error("This lead is locked while its booking is active");
-            return;
-        }
-
-        if (!notes.trim() || submitting) {
-            return;
-        }
-
-        setSubmitting(true);
-
-        router.post(
-            storeLeadTask.url(leadCode),
-            {
-                action: activityType,
-                comments: notes.trim(),
-                next_action: nextActionType,
-                due_date:
-                    nextActionType === noopTitle ? null : nextAt.toISOString(),
-                media_ids: attachments
-                    .filter((file) => file.kind === "media")
-                    .map((file) => file.id),
-                document_ids: attachments
-                    .filter((file) => file.kind === "document")
-                    .map((file) => file.id),
-            },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    toast.success("Update recorded");
-                    reset();
-                },
-                onError: (errors) => {
-                    toast.error(
-                        errors.comments ||
-                            errors.action ||
-                            errors.due_date ||
-                            errors.next_action ||
-                            "Could not save update"
-                    );
-                    setSubmitting(false);
-                },
-                onFinish: () => setSubmitting(false),
-            }
-        );
-    };
-
-    useEffect(() => {
-        reset();
-    }, [leadCode, defaultActivity, defaultNext]);
-
-    if (!expanded) {
-        if (locked) {
-            return (
-                <div className="shrink-0 border-t border-border px-4 py-3 text-center text-sm text-muted-foreground">
-                    Updates are paused while the booking is active.
-                </div>
-            );
-        }
-
-        return (
-            <div className="shrink-0 border-t border-border bg-gradient-to-t from-primary/[0.08] to-transparent px-4 py-4">
-                <button
-                    type="button"
-                    onClick={() => setExpanded(true)}
-                    className={cn(
-                        "group flex w-full items-center gap-3 rounded-xl border border-primary/35 bg-primary/10 px-4 py-3.5 text-left shadow-[0_10px_30px_-18px_rgba(56,71,208,0.55)]",
-                        "transition-all duration-200 hover:border-primary/55 hover:bg-primary/15 hover:shadow-[0_14px_36px_-16px_rgba(56,71,208,0.65)]",
-                        "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                    )}
-                >
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform duration-200 group-hover:scale-105">
-                        <Icon name="add-line" className="text-xl" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                        <span className="block text-base font-bold tracking-tight text-foreground">
-                            Log an update
-                        </span>
-                        <span className="mt-0.5 block truncate text-sm text-muted-foreground group-hover:text-foreground/80">
-                            {UPDATE_PLACEHOLDER}
-                        </span>
-                    </span>
-                    <span className="hidden shrink-0 items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground sm:inline-flex">
-                        Record
-                        <Icon
-                            name="arrow-right-s-line"
-                            className="text-sm transition-transform duration-200 group-hover:translate-x-0.5"
-                        />
-                    </span>
-                </button>
-            </div>
-        );
-    }
-
-    return (
-        <div className="shrink-0 space-y-3 border-t border-primary/25 bg-primary/[0.04] px-4 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">What&apos;s Done</span>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger
-                            render={
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2.5 py-1 font-medium transition-colors hover:bg-muted/70"
-                                >
-                                    {activityType}
-                                    <Icon
-                                        name="arrow-down-s-line"
-                                        className="text-sm text-muted-foreground"
-                                    />
-                                </button>
-                            }
-                        />
-                        <DropdownMenuContent align="start" className="w-auto min-w-40">
-                            {activityTitles.map((type) => (
-                                <DropdownMenuItem
-                                    key={type}
-                                    disabled={activityType === type}
-                                    className="whitespace-nowrap"
-                                    onClick={() => setActivityType(type)}
-                                >
-                                    {type}
-                                    {activityType === type ? (
-                                        <Icon
-                                            name="check-line"
-                                            className="ml-auto text-sm"
-                                        />
-                                    ) : null}
-                                </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                    <IconButton
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        icon="attachment-2"
-                        aria-label="Attach file"
-                        onClick={() => setPickerOpen(true)}
-                    />
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={reset}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="button"
-                        size="sm"
-                        loading={submitting}
-                        disabled={!notes.trim()}
-                        onClick={submitUpdate}
-                    >
-                        Submit
-                    </Button>
-                </div>
-            </div>
-
-            <Textarea
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder={UPDATE_PLACEHOLDER}
-                rows={3}
-                autoFocus
-                className="min-h-20 resize-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
-            />
-
-            {attachments.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                    {attachments.map((file, fileIndex) => {
-                        const image =
-                            file.kind === "media" ||
-                            String(file.type || "").startsWith("image/");
-
-                        return (
-                            <span
-                                key={`${file.kind}-${file.id}`}
-                                className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background py-1 pr-1 pl-1.5 text-xs text-foreground"
-                            >
-                                <button
-                                    type="button"
-                                    className="inline-flex min-w-0 items-center gap-1.5"
-                                    aria-label={`Preview ${file.name || "file"}`}
-                                    onClick={() => {
-                                        setPreviewIndex(fileIndex);
-                                        setPreviewOpen(true);
-                                    }}
-                                >
-                                    {image && (file.thumbnail_url || file.url) ? (
-                                        <img
-                                            src={file.thumbnail_url || file.url}
-                                            alt=""
-                                            className="size-8 rounded-sm object-cover"
-                                        />
-                                    ) : (
-                                        <Icon
-                                            name="file-text-line"
-                                            className="shrink-0 text-sm text-muted-foreground"
-                                        />
-                                    )}
-                                    <span className="max-w-40 truncate">{file.name}</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    className="rounded-sm text-muted-foreground hover:text-foreground"
-                                    aria-label={`Remove ${file.name}`}
-                                    onClick={() =>
-                                        setAttachments((current) =>
-                                            current.filter(
-                                                (item) =>
-                                                    !(
-                                                        item.kind === file.kind &&
-                                                        item.id === file.id
-                                                    )
-                                            )
-                                        )
-                                    }
-                                >
-                                    <Icon name="close-line" className="text-sm" />
-                                </button>
-                            </span>
-                        );
-                    })}
-                </div>
-            ) : null}
-
-            <FilePreview
-                open={previewOpen}
-                onOpenChange={setPreviewOpen}
-                files={attachments}
-                index={previewIndex}
-                onIndexChange={setPreviewIndex}
-            />
-
-            <FileManagerPicker
-                open={pickerOpen}
-                onOpenChange={setPickerOpen}
-                value={attachments}
-                onApply={setAttachments}
-            />
-
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-muted-foreground">What&apos;s Next?</span>
-                <DropdownMenu>
-                    <DropdownMenuTrigger
-                        render={
-                            <button
-                                type="button"
-                                className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2.5 py-1 font-medium transition-colors hover:bg-muted/70"
-                            >
-                                {nextActionType}
-                                <Icon
-                                    name="arrow-down-s-line"
-                                    className="text-sm text-muted-foreground"
-                                />
-                            </button>
-                        }
-                    />
-                    <DropdownMenuContent align="start" className="w-auto min-w-40">
-                        {nextTitles.map((type) => (
-                            <DropdownMenuItem
-                                key={type}
-                                disabled={nextActionType === type}
-                                className="whitespace-nowrap"
-                                onClick={() => setNextActionType(type)}
-                            >
-                                {type}
-                                {nextActionType === type ? (
-                                    <Icon
-                                        name="check-line"
-                                        className="ml-auto text-sm"
-                                    />
-                                ) : null}
-                            </DropdownMenuItem>
-                        ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                {nextActionType !== noopTitle ? (
-                    <DateTimePicker
-                        value={nextAt}
-                        onChange={(value) => {
-                            const next = toDayjs(value);
-                            if (next) {
-                                setNextAt(next.toDate());
-                            }
-                        }}
-                        clearable={false}
-                        side="top"
-                        displayFormat="d MMM yyyy h:mm a"
-                        className="w-auto"
-                        triggerClassName="h-8 w-auto min-w-0 gap-2 border-border bg-muted/40 px-2.5 py-1 text-sm shadow-none dark:bg-muted/40 dark:hover:bg-muted/70"
-                    />
-                ) : null}
-            </div>
-        </div>
-    );
-}
-
 export default function LeadDetailPanel({
     lead,
     stages = [],
     projects = [],
     units = [],
     assignees = [],
+    sources = [],
+    campaigns = [],
     activityTypes = [],
     nextActionTypes = [],
     onClose,
-    onEdit,
+    onEditContact,
 }) {
     const [tab, setTab] = useState("tasks");
 
     const contactName = lead?.contact?.display_name || "—";
     const phone = lead?.contact?.phone_number;
-    const email = lead?.contact?.email_address;
     const wa = useMemo(() => whatsappUrl(phone), [phone]);
     const call = useMemo(() => telUrl(phone), [phone]);
     const stageColor = lead?.stage?.color || "var(--primary)";
@@ -839,6 +147,11 @@ export default function LeadDetailPanel({
                         style={{ backgroundColor: stageColor }}
                         aria-hidden
                     />
+                    {lead.code ? (
+                        <span className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                            {lead.code}
+                        </span>
+                    ) : null}
                     {isArchived ? (
                         <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             Archived
@@ -853,15 +166,35 @@ export default function LeadDetailPanel({
                         className="rounded-full"
                         icon="close-line"
                         aria-label="Close lead details"
+                        tooltip="Close"
                         onClick={onClose}
                     />
                 </div>
             </div>
 
             {dealLocked && !isArchived ? (
-                <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-5 py-2.5 text-sm text-amber-950 dark:text-amber-100">
-                    Deal closed — booking in progress. Sales edits are locked until
-                    the booking is cancelled.
+                <div className="shrink-0 space-y-2 border-b border-amber-500/30 bg-amber-500/10 px-5 py-2.5 text-sm text-amber-950 dark:text-amber-100">
+                    <p>
+                        Deal closed — continue as the buyer’s liaison on the booking until
+                        handover. Operations / Accounts handle verification and ledgers.
+                    </p>
+                    {lead.active_order?.code ? (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-amber-600/40 bg-background/70"
+                            onClick={() =>
+                                router.get(`/bookings?booking=${lead.active_order.code}`)
+                            }
+                        >
+                            <Icon name="book-2-line" className="text-base" />
+                            Open booking
+                            {lead.active_order.liaison_active === false
+                                ? " (history)"
+                                : ""}
+                        </Button>
+                    ) : null}
                 </div>
             ) : null}
 
@@ -871,30 +204,53 @@ export default function LeadDetailPanel({
                         <h2 className="truncate text-2xl font-bold tracking-tight text-foreground">
                             {contactName}
                         </h2>
-                        <HeatIcon tag={lead.tag} />
+                        {lead.contact?.uuid ? (
+                            <ContactCardPopover
+                                contact={lead.contact}
+                                onEdit={onEditContact}
+                                editDisabled={isArchived || dealLocked}
+                            >
+                                <Icon name="information-line" className="text-base" />
+                            </ContactCardPopover>
+                        ) : null}
+                        <HeatMenu lead={lead} locked={dealLocked} />
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
                         {wa ? (
-                            <a
-                                href={wa}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex size-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
-                                aria-label="WhatsApp"
-                                onClick={(event) => event.stopPropagation()}
-                            >
-                                <Icon name="whatsapp-line" className="text-lg" />
-                            </a>
+                            <Tooltip>
+                                <TooltipTrigger
+                                    render={
+                                        <a
+                                            href={wa}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex size-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
+                                            aria-label="WhatsApp"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <Icon name="whatsapp-line" className="text-lg" />
+                                        </a>
+                                    }
+                                />
+                                <TooltipContent>WhatsApp</TooltipContent>
+                            </Tooltip>
                         ) : null}
                         {call ? (
-                            <a
-                                href={call}
-                                className="inline-flex size-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
-                                aria-label="Call"
-                                onClick={(event) => event.stopPropagation()}
-                            >
-                                <Icon name="phone-line" className="text-lg" />
-                            </a>
+                            <Tooltip>
+                                <TooltipTrigger
+                                    render={
+                                        <a
+                                            href={call}
+                                            className="inline-flex size-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
+                                            aria-label="Call"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <Icon name="phone-line" className="text-lg" />
+                                        </a>
+                                    }
+                                />
+                                <TooltipContent>Call</TooltipContent>
+                            </Tooltip>
                         ) : null}
                     </div>
                 </div>
@@ -906,113 +262,79 @@ export default function LeadDetailPanel({
             </div>
 
             <div className="shrink-0 border-b border-border px-5 py-2">
-                <div className="flex flex-wrap gap-1.5">
-                    {TABS.filter((item) => !(isArchived && item.id === "close")).map((item) => {
-                        const active = tab === item.id;
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 flex-wrap gap-2.5">
+                        {TABS.filter((item) => !(isArchived && item.id === "close")).map((item) => {
+                            const active = tab === item.id;
 
-                        return (
-                            <button
-                                key={item.id}
+                            return (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => setTab(item.id)}
+                                    className={cn(
+                                        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                                        active
+                                            ? "bg-primary text-primary-foreground"
+                                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    )}
+                                >
+                                    {item.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        {!isArchived ? (
+                            <Button
                                 type="button"
-                                onClick={() => setTab(item.id)}
-                                className={cn(
-                                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                                    active
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                )}
+                                variant="outline"
+                                size="sm"
+                                disabled={dealLocked}
+                                onClick={handleArchive}
                             >
-                                {item.label}
-                            </button>
-                        );
-                    })}
+                                <Icon name="archive-line" className="text-base" />
+                                Archive
+                            </Button>
+                        ) : (
+                            <>
+                                <Button type="button" size="sm" onClick={handleRestore}>
+                                    <Icon name="arrow-go-back-line" className="text-base" />
+                                    Restore
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={handleDelete}
+                                >
+                                    <Icon name="delete-bin-line" className="text-base" />
+                                    Delete
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <ScrollArea className="min-h-0 flex-1">
+            <ScrollArea className="min-h-0 flex-1 bg-background">
                 <div className="px-5 py-5">
                     {tab === "tasks" ? (
                         <ActivityTimeline
                             lead={lead}
+                            active={tab === "tasks"}
                             actionTypes={[...activityTypes, ...nextActionTypes]}
                         />
                     ) : null}
 
                     {tab === "details" ? (
-                        <div className="space-y-5">
-                            <div className="flex flex-wrap justify-end gap-2">
-                                {!isArchived ? (
-                                    <>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            disabled={dealLocked}
-                                            onClick={() => onEdit?.(lead)}
-                                        >
-                                            <Icon name="pencil-line" className="text-base" />
-                                            Edit lead
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            disabled={dealLocked}
-                                            onClick={handleArchive}
-                                        >
-                                            <Icon name="archive-line" className="text-base" />
-                                            Archive
-                                        </Button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            onClick={handleRestore}
-                                        >
-                                            <Icon name="arrow-go-back-line" className="text-base" />
-                                            Restore to pipeline
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="destructive"
-                                            size="sm"
-                                            onClick={handleDelete}
-                                        >
-                                            <Icon name="delete-bin-line" className="text-base" />
-                                            Delete permanently
-                                        </Button>
-                                    </>
-                                )}
-                            </div>
-                            <DetailField label="Phone">{phone || "—"}</DetailField>
-                            <DetailField label="Email">{email || "—"}</DetailField>
-                            <DetailField label="Source">{lead.source || "—"}</DetailField>
-                            <DetailField label="Campaign">
-                                {lead.campaign?.title || "—"}
-                            </DetailField>
-                            <DetailField label="Deal value">
-                                {formatMoney(lead.budget)}
-                            </DetailField>
-                            <DetailField label="Next action">
-                                {lead.next_action || "—"}
-                            </DetailField>
-                            <DetailField label="Last activity">
-                                <span title={formatDateTime(lead.last_activity_at)}>
-                                    {formatRelativeTime(lead.last_activity_at)}
-                                </span>
-                            </DetailField>
-                            {isArchived ? (
-                                <DetailField label="Archived">
-                                    {formatDateTime(lead.archived_at)}
-                                </DetailField>
-                            ) : null}
-                            <DetailField label="Created">
-                                {formatDateTime(lead.created_at)}
-                            </DetailField>
-                            <DetailField label="Notes">{lead.notes || "—"}</DetailField>
-                        </div>
+                        <LeadDetailsTab
+                            lead={lead}
+                            isArchived={isArchived}
+                            dealLocked={dealLocked}
+                            sources={sources}
+                            campaigns={campaigns}
+                        />
                     ) : null}
 
                     {tab === "close" && !isArchived ? (

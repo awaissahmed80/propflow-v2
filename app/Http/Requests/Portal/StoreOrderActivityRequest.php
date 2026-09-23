@@ -2,16 +2,24 @@
 
 namespace App\Http\Requests\Portal;
 
-use App\Models\Task;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class StoreOrderActivityRequest extends FormRequest
 {
+    public const ACTION_NOTE = 'Note';
+
     public function authorize(): bool
     {
         return true;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'action' => self::ACTION_NOTE,
+        ]);
     }
 
     /**
@@ -20,7 +28,7 @@ class StoreOrderActivityRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'action' => ['required', 'string', Rule::in(Task::activityTypes())],
+            'action' => ['required', 'string', Rule::in([self::ACTION_NOTE])],
             'comments' => ['required', 'string', 'max:2000'],
             'media_ids' => ['nullable', 'array'],
             'media_ids.*' => ['integer'],

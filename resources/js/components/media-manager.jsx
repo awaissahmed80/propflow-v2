@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Icon } from "@/components/ui/icon"
-import { ImageLightbox } from "@/components/ui/image-lightbox"
 import {
   AssetLibraryBody,
   AssetLibraryShell,
@@ -14,8 +12,30 @@ import {
   useLibrarySelection,
   useReportLibrarySelection,
 } from "@/components/asset-library-shell"
+import { FilePreview, filePreviewMode } from "@/components/file-preview"
+import { Icon } from "@/components/ui/icon"
 import { cn } from "@/lib/utils"
 import { destroyLibraryFile, fetchLibrary } from "@/lib/assets"
+
+const DEFAULT_MEDIA_ACCEPT = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "audio/webm",
+  "audio/ogg",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/mp4",
+  "audio/x-m4a",
+  "video/webm",
+  ".webm",
+  ".mp3",
+  ".ogg",
+  ".wav",
+  ".m4a",
+].join(",")
 
 /**
  * Media library picker / manager.
@@ -30,8 +50,8 @@ function MediaManager({
   open = false,
   onOpenChange,
   title = "Media manager",
-  description = "Browse uploaded media or upload new images, then apply your selection.",
-  accept = "image/png,image/jpeg,image/webp,image/gif",
+  description = "Browse uploaded media or upload new images and audio, then apply your selection.",
+  accept = DEFAULT_MEDIA_ACCEPT,
   multiple = true,
   assetableType,
   assetableId,
@@ -48,8 +68,8 @@ function MediaManager({
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [lightboxOpen, setLightboxOpen] = useState(false)
-  const [lightboxIndex, setLightboxIndex] = useState(0)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewIndex, setPreviewIndex] = useState(0)
 
   const {
     selection,
@@ -93,16 +113,23 @@ function MediaManager({
     }
   }
 
-  const lightboxImages = useMemo(
+  const previewFiles = useMemo(
     () =>
       items.map((item) => ({
         id: item.id,
-        src: item.url,
         name: item.name,
-        alt: item.name,
+        url: item.url,
+        thumbnail_url: item.thumbnail_url,
+        type: item.type,
+        kind: "media",
       })),
     [items]
   )
+
+  const openPreview = (index) => {
+    setPreviewIndex(index)
+    setPreviewOpen(true)
+  }
 
   const handleActivate = (item, index) => {
     if (selectable) {
@@ -110,8 +137,13 @@ function MediaManager({
       return
     }
 
-    setLightboxIndex(index)
-    setLightboxOpen(true)
+    openPreview(index)
+  }
+
+  const handlePreview = (index, event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    openPreview(index)
   }
 
   const handleUpload = async (files) => {
@@ -207,12 +239,12 @@ function MediaManager({
         />
       }
       extras={
-        <ImageLightbox
-          open={lightboxOpen}
-          onOpenChange={setLightboxOpen}
-          images={lightboxImages}
-          index={lightboxIndex}
-          onIndexChange={setLightboxIndex}
+        <FilePreview
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          files={previewFiles}
+          index={previewIndex}
+          onIndexChange={setPreviewIndex}
         />
       }
     >
@@ -225,7 +257,7 @@ function MediaManager({
           <p className="py-16 text-center text-sm text-muted-foreground">
             {query.trim()
               ? "No matches for that search."
-              : "No media uploaded yet. Upload your first image."}
+              : "No media uploaded yet. Upload your first image or audio file."}
           </p>
         ) : (
           <div
@@ -238,6 +270,11 @@ function MediaManager({
           >
             {items.map((item, index) => {
               const selected = isSelected(item.id)
+              const mode = filePreviewMode({
+                name: item.name,
+                type: item.type,
+                kind: "media",
+              })
 
               return (
                 <div
@@ -258,23 +295,55 @@ function MediaManager({
                     }
                   }}
                 >
-                  <img
-                    src={item.thumbnail_url || item.url}
-                    alt={item.name || ""}
-                    className="size-full object-cover"
-                  />
+                  {mode === "image" ? (
+                    <img
+                      src={item.thumbnail_url || item.url}
+                      alt={item.name || ""}
+                      className="size-full object-cover"
+                    />
+                  ) : mode === "audio" ? (
+                    <div className="flex size-full flex-col items-center justify-center gap-2 bg-muted/70">
+                      <Icon
+                        name="mic-line"
+                        className="text-3xl text-muted-foreground"
+                      />
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Audio
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex size-full flex-col items-center justify-center gap-2 bg-muted/70">
+                      <Icon
+                        name="file-line"
+                        className="text-3xl text-muted-foreground"
+                      />
+                      <span className="max-w-[80%] truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        File
+                      </span>
+                    </div>
+                  )}
                   <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-black/55 px-2 py-1.5">
                     <span className="truncate text-[11px] text-white">
                       {item.name}
                     </span>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-sm p-0.5 text-white/80 hover:bg-white/15 hover:text-white"
-                      aria-label={`Delete ${item.name}`}
-                      onClick={(event) => handleDelete(item, event)}
-                    >
-                      <Icon name="delete-bin-line" className="text-sm" />
-                    </button>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        className="rounded-sm p-0.5 text-white/80 hover:bg-white/15 hover:text-white"
+                        aria-label={`Preview ${item.name}`}
+                        onClick={(event) => handlePreview(index, event)}
+                      >
+                        <Icon name="eye-line" className="text-sm" />
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-sm p-0.5 text-white/80 hover:bg-white/15 hover:text-white"
+                        aria-label={`Delete ${item.name}`}
+                        onClick={(event) => handleDelete(item, event)}
+                      >
+                        <Icon name="delete-bin-line" className="text-sm" />
+                      </button>
+                    </div>
                   </div>
                   {selected ? (
                     <span className="absolute top-2 right-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">

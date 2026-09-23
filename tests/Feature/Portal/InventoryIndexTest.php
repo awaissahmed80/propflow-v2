@@ -61,6 +61,9 @@ class InventoryIndexTest extends TestCase
             ->where('pagination.total', 1)
             ->where('pagination.per_page', 20)
             ->has('formOptions.projects')
+            ->where('formOptions.projects.0.id', $project->id)
+            ->where('formOptions.projects.0.title', 'Marina Residences')
+            ->where('formOptions.projects.0.code', $project->code)
             ->has('formOptions.statuses')
         );
     }

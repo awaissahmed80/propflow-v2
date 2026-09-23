@@ -28,7 +28,7 @@ class VerifyBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'identity_kind' => ['required', 'string', Rule::in(['cnic', 'passport'])],
+            'identity_kind' => ['required', 'string', Rule::in(['cnic', 'nicop', 'passport'])],
             'identity_number' => ['required', 'string', 'max:40'],
             'overseas' => ['boolean'],
             'local_phone' => ['nullable', 'string', 'max:40'],

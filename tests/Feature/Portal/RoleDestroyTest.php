@@ -30,12 +30,12 @@ class RoleDestroyTest extends TestCase
     public function test_guest_cannot_destroy_role(): void
     {
         [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_destroy_guest');
-        $role = Role::query()->where('name', 'Manager')->firstOrFail();
+        $role = Role::query()->where('name', 'Business Manager')->firstOrFail();
 
         $this->delete(Domain::portal('/user-roles/'.$role->name))
             ->assertRedirect(Domain::auth());
 
-        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Manager'], 'tenant');
+        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Business Manager'], 'tenant');
 
         Tenant::forgetCurrent();
         unset($user, $tenant);
@@ -72,7 +72,7 @@ class RoleDestroyTest extends TestCase
     public function test_default_role_cannot_be_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_destroy_default');
-        $role = Role::query()->where('name', 'Manager')->firstOrFail();
+        $role = Role::query()->where('name', 'Business Manager')->firstOrFail();
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
@@ -84,7 +84,7 @@ class RoleDestroyTest extends TestCase
             ->assertSessionHasErrors('role');
 
         $tenant->makeCurrent();
-        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Manager'], 'tenant');
+        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Business Manager'], 'tenant');
         Tenant::forgetCurrent();
     }
 

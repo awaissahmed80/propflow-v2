@@ -24,10 +24,13 @@ function toDisplayValue(value) {
 
 /**
  * @param {string} raw
- * @param {{ allowDecimal?: boolean, allowNegative?: boolean }} options
+ * @param {{ allowDecimal?: boolean, allowNegative?: boolean, maxDecimals?: number | null }} options
  * @returns {string}
  */
-function sanitizeNumericInput(raw, { allowDecimal = false, allowNegative = false } = {}) {
+function sanitizeNumericInput(
+  raw,
+  { allowDecimal = false, allowNegative = false, maxDecimals = null } = {}
+) {
   let next = String(raw ?? "")
 
   if (allowNegative) {
@@ -48,10 +51,35 @@ function sanitizeNumericInput(raw, { allowDecimal = false, allowNegative = false
     return next
   }
 
-  return (
-    next.slice(0, firstDot + 1) +
-    next.slice(firstDot + 1).replace(/\./g, "")
-  )
+  let decimals = next.slice(firstDot + 1).replace(/\./g, "")
+
+  if (
+    typeof maxDecimals === "number" &&
+    Number.isFinite(maxDecimals) &&
+    maxDecimals >= 0
+  ) {
+    decimals = decimals.slice(0, maxDecimals)
+  }
+
+  return next.slice(0, firstDot + 1) + decimals
+}
+
+/**
+ * @param {number | undefined} step
+ * @returns {number | null}
+ */
+function decimalsFromStep(step) {
+  if (!step || step <= 0) {
+    return null
+  }
+
+  const text = String(step)
+
+  if (!text.includes(".")) {
+    return 0
+  }
+
+  return text.split(".")[1].replace(/0+$/, "").length || text.split(".")[1].length
 }
 
 /**
@@ -121,6 +149,7 @@ function roundToStep(value, step) {
  * @param {number} [props.min]
  * @param {number} [props.max]
  * @param {number} [props.step]
+ * @param {number} [props.maxDecimals]
  * @param {boolean} [props.allowDecimal]
  * @param {boolean} [props.allowNegative]
  * @param {boolean} [props.showSteppers]
@@ -144,6 +173,7 @@ function NumberInput({
   min,
   max,
   step = 1,
+  maxDecimals,
   allowDecimal = false,
   allowNegative = false,
   showSteppers = true,
@@ -158,6 +188,15 @@ function NumberInput({
 }) {
   const [draft, setDraft] = React.useState(() => toDisplayValue(value))
   const isGroup = variant === "group"
+  const resolvedMaxDecimals =
+    typeof maxDecimals === "number" && Number.isFinite(maxDecimals)
+      ? maxDecimals
+      : allowDecimal
+        ? (() => {
+            const fromStep = decimalsFromStep(step)
+            return fromStep && fromStep > 0 ? fromStep : null
+          })()
+        : null
 
   React.useEffect(() => {
     setDraft(toDisplayValue(value))
@@ -171,6 +210,7 @@ function NumberInput({
     const nextDraft = sanitizeNumericInput(event.target.value, {
       allowDecimal,
       allowNegative: allowNegative || (typeof min === "number" && min < 0),
+      maxDecimals: resolvedMaxDecimals,
     })
     setDraft(nextDraft)
 
@@ -274,6 +314,7 @@ function NumberInput({
           "placeholder:text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed",
           "selection:bg-primary selection:text-primary-foreground",
           isGroup && "h-full px-2.5",
+          showSteppers && !isGroup && "pr-2",
           inputClassName
         )}
       />
@@ -285,13 +326,18 @@ function NumberInput({
       ) : null}
 
       {showSteppers ? (
-        <div className="flex shrink-0 flex-col overflow-hidden rounded-sm border border-border">
+        <div
+          className={cn(
+            "flex shrink-0 flex-col self-stretch overflow-hidden border-l border-border",
+            isGroup && "rounded-r-md"
+          )}
+        >
           <button
             type="button"
             tabIndex={-1}
             aria-label="Increase value"
             disabled={!canIncrement}
-            className="inline-flex h-3.5 w-6 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+            className="inline-flex h-1/2 min-h-3.5 w-7 flex-1 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
             onClick={() => nudge(1)}
           >
             <ChevronUpIcon className="size-3" />
@@ -301,7 +347,7 @@ function NumberInput({
             tabIndex={-1}
             aria-label="Decrease value"
             disabled={!canDecrement}
-            className="inline-flex h-3.5 w-6 items-center justify-center border-t border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+            className="inline-flex h-1/2 min-h-3.5 w-7 flex-1 items-center justify-center border-t border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
             onClick={() => nudge(-1)}
           >
             <ChevronDownIcon className="size-3" />
@@ -339,9 +385,11 @@ function NumberInput({
 
       <div
         className={cn(
-          "flex h-control items-center gap-1 rounded-md border border-input bg-transparent px-2 shadow-xs transition-[color,box-shadow]",
+          "flex h-control items-center rounded-md border border-input bg-transparent shadow-xs transition-[color,box-shadow]",
           "has-[input:focus-within]:border-ring has-[input:focus-within]:ring-[1px] has-[input:focus-within]:ring-ring/50",
           "dark:bg-input/30",
+          showSteppers ? "pl-2 pr-0" : "px-2",
+          (startElement || suffix) && "gap-1",
           error &&
             "border-destructive ring-destructive/20 dark:ring-destructive/40",
           disabled && "cursor-not-allowed opacity-50"

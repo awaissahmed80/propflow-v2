@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { router } from "@inertiajs/react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { store } from "@/actions/App/Http/Controllers/Portal/ContactController";
+import {
+    store,
+    update,
+} from "@/actions/App/Http/Controllers/Portal/ContactController";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -24,6 +27,7 @@ import { SelectBox } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
+import { invalidateContactCardCache } from "../../components/contact-card";
 
 const emptyValues = {
     contact_name: "",
@@ -73,6 +77,10 @@ function splitName(fullName) {
     };
 }
 
+function joinName(contact) {
+    return [contact?.first_name, contact?.last_name].filter(Boolean).join(" ");
+}
+
 function toOptions(values, fallback) {
     const list = values.length > 0 ? values : fallback;
 
@@ -114,15 +122,44 @@ function ChipGroup({ label, error, options, value, onChange }) {
     );
 }
 
+function valuesFromContact(contact) {
+    if (!contact) {
+        return emptyValues;
+    }
+
+    return {
+        contact_name: joinName(contact),
+        phone_number: contact.phone_number || "",
+        phone_number_alt: contact.phone_number_alt || "",
+        email_address: contact.email_address || "",
+        reference: contact.reference || "",
+        city: contact.city || "",
+        country: contact.country || "",
+        address: contact.address || "",
+        cnic: contact.cnic || "",
+        contact_preference: contact.contact_preference || "",
+        type: contact.type || "LEAD",
+        tag: contact.tag || "GENERAL",
+        income_level: contact.income_level || "MIDDLE",
+        affordability: contact.affordability || "MODERATE",
+        capability: contact.capability || "MODERATE",
+        net_worth: contact.net_worth ?? null,
+        goal: contact.goal || "",
+    };
+}
+
 export default function ContactForm({
     isOpen,
     onClose,
+    data = null,
     tags = [],
     types = [],
     incomeLevels = [],
     affordabilityLevels = [],
     capabilityLevels = [],
+    onSaved,
 }) {
+    const isEditing = Boolean(data?.uuid);
     const [processing, setProcessing] = useState(false);
     const [serverErrors, setServerErrors] = useState({});
     const { symbol: currencySymbol } = useCurrency();
@@ -160,8 +197,8 @@ export default function ContactForm({
         }
 
         setServerErrors({});
-        reset(emptyValues);
-    }, [isOpen, reset]);
+        reset(valuesFromContact(data));
+    }, [isOpen, data, reset]);
 
     const fieldError = (name) => {
         if (serverErrors[name]) {
@@ -199,43 +236,60 @@ export default function ContactForm({
 
         const { first_name, last_name } = splitName(values.contact_name);
 
-        router.post(
-            store.url(),
-            {
-                first_name,
-                last_name,
-                phone_number: phone || null,
-                phone_number_alt:
-                    String(values.phone_number_alt || "").trim() || null,
-                email_address: email || null,
-                reference: String(values.reference || "").trim() || null,
-                city: String(values.city || "").trim() || null,
-                country: String(values.country || "").trim() || null,
-                address: String(values.address || "").trim() || null,
-                cnic: String(values.cnic || "").trim() || null,
-                contact_preference:
-                    String(values.contact_preference || "").trim() || null,
-                type: values.type || "LEAD",
-                tag: values.tag || "GENERAL",
-                income_level: values.income_level || "MIDDLE",
-                affordability: values.affordability || "MODERATE",
-                capability: values.capability || "MODERATE",
-                net_worth: values.net_worth ?? 0,
-                goal: String(values.goal || "").trim() || null,
+        const payload = {
+            first_name,
+            last_name,
+            phone_number: phone || null,
+            phone_number_alt:
+                String(values.phone_number_alt || "").trim() || null,
+            email_address: email || null,
+            reference: String(values.reference || "").trim() || null,
+            city: String(values.city || "").trim() || null,
+            country: String(values.country || "").trim() || null,
+            address: String(values.address || "").trim() || null,
+            cnic: String(values.cnic || "").trim() || null,
+            contact_preference:
+                String(values.contact_preference || "").trim() || null,
+            type: values.type || "LEAD",
+            tag: values.tag || "GENERAL",
+            income_level: values.income_level || "MIDDLE",
+            affordability: values.affordability || "MODERATE",
+            capability: values.capability || "MODERATE",
+            net_worth: values.net_worth ?? 0,
+            goal: String(values.goal || "").trim() || null,
+        };
+
+        const visit = {
+            preserveScroll: true,
+            onSuccess: () => {
+                if (isEditing) {
+                    invalidateContactCardCache(data.uuid);
+                }
+                toast.success(isEditing ? "Contact updated" : "Contact created");
+                onSaved?.(
+                    isEditing
+                        ? {
+                              ...data,
+                              ...payload,
+                              display_name: joinName({ first_name, last_name }),
+                          }
+                        : null
+                );
+                onClose();
             },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    toast.success("Contact created");
-                    onClose();
-                },
-                onError: (formErrors) => {
-                    setServerErrors(formErrors || {});
-                    toast.error("Please fix the highlighted fields");
-                },
-                onFinish: () => setProcessing(false),
-            }
-        );
+            onError: (formErrors) => {
+                setServerErrors(formErrors || {});
+                toast.error("Please fix the highlighted fields");
+            },
+            onFinish: () => setProcessing(false),
+        };
+
+        if (isEditing) {
+            router.patch(update.url(data.uuid), payload, visit);
+            return;
+        }
+
+        router.post(store.url(), payload, visit);
     };
 
     return (
@@ -244,16 +298,17 @@ export default function ContactForm({
                 <DialogHeader className="border-b border-border px-6 py-4">
                     <DialogTitle className="flex items-center gap-2">
                         <Icon name="folder-user-line" className="text-xl" />
-                        New contact
+                        {isEditing ? "Edit contact" : "New contact"}
                     </DialogTitle>
                     <DialogDescription>
-                        Add a contact with phone or email. Leads can reuse matching
-                        contacts later.
+                        {isEditing
+                            ? "Update contact details. Matching leads will use this record."
+                            : "Add a contact with phone or email. Leads can reuse matching contacts later."}
                     </DialogDescription>
                 </DialogHeader>
 
                 <form
-                    id="contact-create-form"
+                    id="contact-form"
                     className="min-h-0 overflow-y-auto px-6 py-5"
                     onSubmit={handleSubmit(onSubmit)}
                 >
@@ -361,7 +416,7 @@ export default function ContactForm({
 
                             <Input
                                 label="Address"
-                                placeholder="Street, area..."
+                                placeholder="Street address"
                                 error={fieldError("address")}
                                 {...register("address")}
                             />
@@ -375,7 +430,7 @@ export default function ContactForm({
                                 />
                                 <Input
                                     label="Contact preference"
-                                    placeholder="WhatsApp, Call..."
+                                    placeholder="WhatsApp"
                                     error={fieldError("contact_preference")}
                                     {...register("contact_preference")}
                                 />
@@ -435,7 +490,9 @@ export default function ContactForm({
                                                         "border-destructive"
                                                 )}
                                             >
-                                                <InputGroupAddon>{currencySymbol}</InputGroupAddon>
+                                                <InputGroupAddon>
+                                                    {currencySymbol}
+                                                </InputGroupAddon>
                                                 <InputGroupNumberInput
                                                     value={field.value}
                                                     onChange={field.onChange}
@@ -462,7 +519,9 @@ export default function ContactForm({
                             <Textarea
                                 rows={3}
                                 placeholder="Looking for a 2-bed investment unit..."
-                                aria-invalid={Boolean(fieldError("goal")) || undefined}
+                                aria-invalid={
+                                    Boolean(fieldError("goal")) || undefined
+                                }
                                 {...register("goal")}
                             />
                             {fieldError("goal") ? (
@@ -478,12 +537,8 @@ export default function ContactForm({
                     <Button type="button" variant="outline" onClick={handleClose}>
                         Cancel
                     </Button>
-                    <Button
-                        type="submit"
-                        form="contact-create-form"
-                        loading={processing}
-                    >
-                        Create contact
+                    <Button type="submit" form="contact-form" loading={processing}>
+                        {isEditing ? "Save changes" : "Create contact"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

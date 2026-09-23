@@ -30,7 +30,7 @@ class RoleUpdateTest extends TestCase
     public function test_guest_cannot_update_role(): void
     {
         [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_update_guest');
-        $role = Role::query()->where('name', 'Manager')->firstOrFail();
+        $role = Role::query()->where('name', 'Business Manager')->firstOrFail();
 
         $this->put(Domain::portal('/user-roles/'.$role->name), [
             'name' => 'Updated Manager',
@@ -45,7 +45,7 @@ class RoleUpdateTest extends TestCase
     public function test_authenticated_tenant_user_can_update_role(): void
     {
         [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_update_test');
-        $role = Role::query()->where('name', 'Manager')->firstOrFail();
+        $role = Role::query()->where('name', 'Business Manager')->firstOrFail();
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
@@ -72,10 +72,42 @@ class RoleUpdateTest extends TestCase
         Tenant::forgetCurrent();
     }
 
+    public function test_admin_role_cannot_be_edited(): void
+    {
+        [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_update_admin_locked');
+        $role = Role::query()->where('name', 'Admin')->firstOrFail();
+        $permissionCount = $role->permissions()->count();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+        Tenant::forgetCurrent();
+
+        $this->from(Domain::portal('/settings/roles'))
+            ->put(Domain::portal('/user-roles/'.$role->name), [
+                'name' => 'Super Admin',
+                'description' => 'Should not change',
+                'permissions' => ['view users'],
+            ])
+            ->assertRedirect(Domain::portal('/settings/roles'))
+            ->assertSessionHasErrors('role');
+
+        $tenant->makeCurrent();
+        $role->refresh();
+
+        $this->assertSame('Admin', $role->name);
+        $this->assertSame(
+            'Full control of the workspace — settings, users, and every module',
+            $role->description
+        );
+        $this->assertSame($permissionCount, $role->permissions()->count());
+
+        Tenant::forgetCurrent();
+    }
+
     public function test_updated_role_name_must_be_unique(): void
     {
         [$user, $tenant] = $this->createTenantUserWithSeededPermissions('tenant_role_update_unique');
-        $role = Role::query()->where('name', 'Manager')->firstOrFail();
+        $role = Role::query()->where('name', 'Business Manager')->firstOrFail();
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);

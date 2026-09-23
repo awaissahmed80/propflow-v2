@@ -6,6 +6,8 @@ import { index } from "@/routes/portal/leads";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
+import { ProjectCardPopover } from "../../components/project-card";
+import { UserCardPopover } from "../../components/user-card";
 import { Button } from "@/components/ui/button";
 import { CheckboxControl } from "@/components/ui/checkbox";
 import {
@@ -34,7 +36,10 @@ import {
 } from "@/components/ui/pagination";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+    Tooltip,
+    TooltipContent,
     TooltipProvider,
+    TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatDateTime, formatRelativeTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
@@ -42,6 +47,7 @@ import { HEAT_LABELS } from "@/lib/heat";
 import { cn } from "@/lib/utils";
 import LeadDetailPanel from "./lead-detail-panel";
 import LeadForm from "./lead-form";
+import ContactForm from "../contacts/contact-form";
 import { LeadsKanbanBoard } from "./kanban/leads-kanban-board";
 
 function toFilterParam(value) {
@@ -131,6 +137,7 @@ function findLoadedLead(code, leads, board) {
 
 function LeadRow({
     lead,
+    projectCard = null,
     compact = false,
     selected = false,
     checked = false,
@@ -143,6 +150,7 @@ function LeadRow({
         lead.contact?.email_address ||
         lead.source ||
         null;
+    const project = projectCard || lead.project;
 
     return (
         <tr
@@ -196,12 +204,16 @@ function LeadRow({
                 </div>
             </td>
             {!compact ? (
-                <td className="px-4 py-3 align-middle">
-                    {lead.project ? (
-                        <div className="flex min-w-0 items-center gap-2.5">
-                            {lead.project.thumbnail ? (
+                <td
+                    className="px-4 py-3 align-middle"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                >
+                    {project ? (
+                        <ProjectCardPopover project={project} className="gap-2.5">
+                            {project.thumbnail ? (
                                 <img
-                                    src={lead.project.thumbnail}
+                                    src={project.thumbnail}
                                     alt=""
                                     className="size-8 shrink-0 rounded-md object-cover"
                                 />
@@ -210,12 +222,10 @@ function LeadRow({
                                     <Icon name="community-line" className="text-base" />
                                 </span>
                             )}
-                            <div className="min-w-0">
-                                <div className="truncate text-sm text-foreground">
-                                    {lead.project.title}
-                                </div>
-                            </div>
-                        </div>
+                            <span className="min-w-0 truncate text-sm">
+                                {project.title}
+                            </span>
+                        </ProjectCardPopover>
                     ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                     )}
@@ -240,7 +250,7 @@ function LeadRow({
             ) : null}
             <td className="px-4 py-3 align-middle">
                 {lead.assignee ? (
-                    <div className="flex min-w-0 items-center gap-2.5">
+                    <UserCardPopover user={lead.assignee} className="gap-2.5">
                         <Avatar
                             name={lead.assignee.display_name}
                             src={lead.assignee.avatar || undefined}
@@ -253,7 +263,7 @@ function LeadRow({
                                 {lead.assignee.display_name}
                             </span>
                         ) : null}
-                    </div>
+                    </UserCardPopover>
                 ) : (
                     <span className="text-sm text-muted-foreground">—</span>
                 )}
@@ -264,13 +274,27 @@ function LeadRow({
                         {formatMoney(lead.budget)}
                     </td>
                     <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
-                        <span title={formatDateTime(lead.last_activity_at)}>
-                            {formatRelativeTime(lead.last_activity_at)}
-                        </span>
-                    </td>
-                    <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
-                        {formatDateTime(lead.created_at)}
-                    </td>
+                        {lead.last_activity_at ? (
+                            <Tooltip>
+                                <TooltipTrigger
+                                    delay={200}
+                                    render={
+                                        <button
+                                            type="button"
+                                            className="cursor-default border-0 bg-transparent p-0 text-left text-sm text-muted-foreground"
+                                        >
+                                            {formatRelativeTime(lead.last_activity_at)}
+                                        </button>
+                                    }
+                                />
+                                <TooltipContent>
+                                    {formatDateTime(lead.last_activity_at)}
+                                </TooltipContent>
+                            </Tooltip>
+                        ) : (
+                            "—"
+                        )}
+                    </td>             
                 </>
             ) : null}
         </tr>
@@ -295,6 +319,8 @@ function Leads({
     const [search, setSearch] = useState(filters.q || "");
     const [leadFormOpen, setLeadFormOpen] = useState(false);
     const [editingLead, setEditingLead] = useState(null);
+    const [contactFormOpen, setContactFormOpen] = useState(false);
+    const [editingContact, setEditingContact] = useState(null);
     const [selectedLead, setSelectedLead] = useState(null);
     const [checkedIds, setCheckedIds] = useState([]);
     const [bulkBusy, setBulkBusy] = useState(false);
@@ -308,10 +334,30 @@ function Leads({
             stage: toSelectedList(filters.stage),
             tag: toSelectedList(filters.tag),
             assigned_to: toSelectedList(filters.assigned_to),
+            due_in: toSelectedList(filters.due_in),
+            action: toSelectedList(filters.action),
             next_action: toSelectedList(filters.next_action),
         }),
-        [filters.project, filters.stage, filters.tag, filters.assigned_to, filters.next_action]
+        [
+            filters.project,
+            filters.stage,
+            filters.tag,
+            filters.assigned_to,
+            filters.due_in,
+            filters.action,
+            filters.next_action,
+        ]
     );
+
+    const projectsById = useMemo(() => {
+        const map = new Map();
+
+        for (const project of formOptions.projects || []) {
+            map.set(project.id, project);
+        }
+
+        return map;
+    }, [formOptions.projects]);
 
     useEffect(() => {
         if (!selectedLead) {
@@ -394,7 +440,18 @@ function Leads({
 
     useEffect(() => {
         setCheckedIds([]);
-    }, [currentView, currentPage, filters.q, filters.project, filters.stage, filters.tag, filters.assigned_to, filters.next_action]);
+    }, [
+        currentView,
+        currentPage,
+        filters.q,
+        filters.project,
+        filters.stage,
+        filters.tag,
+        filters.assigned_to,
+        filters.due_in,
+        filters.action,
+        filters.next_action,
+    ]);
 
     useEffect(() => {
         return () => {
@@ -420,6 +477,14 @@ function Leads({
         checkedOnPage.length > 0 && checkedOnPage.length < pageLeadIds.length;
     const hasChecked = checkedIds.length > 0;
     const filterSections = useMemo(() => {
+        const dueInOptions = [
+            { value: "today", label: "Due Today" },
+            { value: "tomorrow", label: "Due Tomorrow" },
+            { value: "this_week", label: "Due This Week" },
+            { value: "this_month", label: "Due this month" },
+            { value: "overdue", label: "Overdue" },
+        ];
+
         const projectOptions = (formOptions.projects || []).map((project) => ({
             value: project.code,
             label: project.title,
@@ -443,23 +508,54 @@ function Leads({
             avatar: user.avatar || undefined,
         }));
 
-        const nextActionOptions = (formOptions.next_actions || []).map((item) => {
-            const title = typeof item === "string" ? item : item.title;
+        const actionOptions = [
+            { value: "none", label: "None yet", icon: "indeterminate-circle-line", color: "#94A3B8" },
+            ...(formOptions.activity_types || []).map((item) => {
+                const title = typeof item === "string" ? item : item.title;
 
-            return {
-                value: title,
-                label: title,
-            };
-        });
+                return {
+                    value: title,
+                    label: title,
+                    icon: typeof item === "string" ? "history-line" : item.icon || "history-line",
+                    color: typeof item === "string" ? "#64748B" : item.color || "#64748B",
+                };
+            }),
+        ];
+
+        const nextActionOptions = [
+            { value: "none", label: "None yet", icon: "indeterminate-circle-line", color: "#94A3B8" },
+            ...(formOptions.next_actions || []).map((item) => {
+                const title = typeof item === "string" ? item : item.title;
+
+                return {
+                    value: title,
+                    label: title,
+                    icon: typeof item === "string" ? "calendar-check-line" : item.icon || "calendar-check-line",
+                    color: typeof item === "string" ? "#64748B" : item.color || "#64748B",
+                };
+            }),
+        ];
 
         return [
+            {
+                key: "due_in",
+                label: "Task Due In",
+                type: "chips",
+                options: dueInOptions,
+            },
             { key: "stage", label: "Stage", type: "stage", options: stageOptions },
             { key: "project", label: "Project", type: "projects", options: projectOptions },
             { key: "tag", label: "Heat", type: "heat", options: tagOptions },
             {
+                key: "action",
+                label: "Action",
+                type: "icons",
+                options: actionOptions,
+            },
+            {
                 key: "next_action",
                 label: "Next Action",
-                type: "chips",
+                type: "icons",
                 options: nextActionOptions,
             },
             ...(assigneeOptions.length > 0
@@ -471,7 +567,14 @@ function Leads({
                 }]
                 : []),
         ];
-    }, [formOptions.projects, formOptions.stages, formOptions.tags, formOptions.next_actions, formOptions.assignees]);
+    }, [
+        formOptions.projects,
+        formOptions.stages,
+        formOptions.tags,
+        formOptions.activity_types,
+        formOptions.next_actions,
+        formOptions.assignees,
+    ]);
 
     const visitLeads = (next = {}) => {
         const page = Object.prototype.hasOwnProperty.call(next, "page")
@@ -508,6 +611,16 @@ function Leads({
                 Object.prototype.hasOwnProperty.call(next, "assigned_to")
                     ? next.assigned_to
                     : appliedFilters.assigned_to
+            ),
+            due_in: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "due_in")
+                    ? next.due_in
+                    : appliedFilters.due_in
+            ),
+            action: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "action")
+                    ? next.action
+                    : appliedFilters.action
             ),
             next_action: toFilterParam(
                 Object.prototype.hasOwnProperty.call(next, "next_action")
@@ -680,6 +793,8 @@ function Leads({
             stage: next.stage || [],
             tag: next.tag || [],
             assigned_to: next.assigned_to || [],
+            due_in: next.due_in || [],
+            action: next.action || [],
             next_action: next.next_action || [],
             page: 1,
         });
@@ -691,6 +806,8 @@ function Leads({
             stage: [],
             tag: [],
             assigned_to: [],
+            due_in: [],
+            action: [],
             next_action: [],
         });
     };
@@ -731,9 +848,48 @@ function Leads({
         writeLeadHash(null);
     };
 
-    const openEdit = (lead) => {
-        setEditingLead(lead);
-        setLeadFormOpen(true);
+    const openEditContact = (contact) => {
+        if (!contact?.uuid) {
+            return;
+        }
+
+        setEditingContact(contact);
+        setContactFormOpen(true);
+    };
+
+    const handleContactSaved = (contact) => {
+        if (contact?.uuid) {
+            setSelectedLead((current) => {
+                if (!current || current.contact?.uuid !== contact.uuid) {
+                    return current;
+                }
+
+                return {
+                    ...current,
+                    contact: {
+                        ...current.contact,
+                        id: contact.id ?? current.contact.id,
+                        uuid: contact.uuid,
+                        first_name: contact.first_name,
+                        last_name: contact.last_name,
+                        email_address: contact.email_address,
+                        phone_number: contact.phone_number,
+                        reference: contact.reference,
+                        display_name:
+                            contact.display_name ||
+                            [contact.first_name, contact.last_name]
+                                .filter(Boolean)
+                                .join(" ") ||
+                            current.contact.display_name,
+                    },
+                };
+            });
+        }
+
+        router.reload({
+            only: ["leads", "board", "openedLead", "formOptions"],
+            preserveScroll: true,
+        });
     };
 
     const hasFilters =
@@ -742,6 +898,8 @@ function Leads({
         appliedFilters.stage.length > 0 ||
         appliedFilters.tag.length > 0 ||
         appliedFilters.assigned_to.length > 0 ||
+        appliedFilters.due_in.length > 0 ||
+        appliedFilters.action.length > 0 ||
         appliedFilters.next_action.length > 0;
 
     const rangeLabel =
@@ -968,7 +1126,7 @@ function Leads({
                         {layoutView === "kanban" ? (
                             <div className="min-h-0 flex-1 overflow-hidden">
                                 {board.length === 0 && leads.length === 0 ? (
-                                    <div className="flex min-h-[22rem] flex-col items-center justify-center px-6 text-center">
+                                    <div className="flex min-h-88 flex-col items-center justify-center px-6 text-center">
                                         <div className="mb-4 flex size-14 items-center justify-center rounded-md bg-primary/10 text-primary">
                                             <Icon
                                                 name="customer-service-line"
@@ -1015,7 +1173,7 @@ function Leads({
                         <ScrollArea className="min-h-0 flex-1 overflow-hidden">
                             <div className="px-6 py-6">
                                 {leads.length === 0 ? (
-                                    <div className="flex min-h-[22rem] flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-6 text-center">
+                                    <div className="flex min-h-88 flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-6 text-center">
                                         <div className="mb-4 flex size-14 items-center justify-center rounded-md bg-primary/10 text-primary">
                                             <Icon
                                                 name="customer-service-line"
@@ -1052,7 +1210,7 @@ function Leads({
                                         <table
                                             className={cn(
                                                 "w-full text-left text-sm",
-                                                compact ? "min-w-[520px]" : "min-w-[960px]"
+                                                compact ? "min-w-130" : "min-w-240"
                                             )}
                                         >
                                             <thead className="sticky top-0 z-10 border-b border-border bg-muted/40 text-muted-foreground backdrop-blur-sm">
@@ -1093,10 +1251,7 @@ function Leads({
                                                             </th>
                                                             <th className="min-w-36 px-4 py-3 font-medium">
                                                                 Last activity
-                                                            </th>
-                                                            <th className="min-w-36 px-4 py-3 font-medium">
-                                                                Created
-                                                            </th>
+                                                            </th>                                                        
                                                         </>
                                                     ) : null}
                                                 </tr>
@@ -1106,6 +1261,10 @@ function Leads({
                                                     <LeadRow
                                                         key={lead.id}
                                                         lead={lead}
+                                                        projectCard={
+                                                            projectsById.get(lead.project_id) ||
+                                                            lead.project
+                                                        }
                                                         compact={compact}
                                                         selected={
                                                             selectedLead?.id === lead.id
@@ -1207,10 +1366,12 @@ function Leads({
                                     projects={formOptions.projects || []}
                                     units={formOptions.units || []}
                                     assignees={formOptions.assignees || []}
+                                    sources={formOptions.sources || []}
+                                    campaigns={formOptions.campaigns || []}
                                     activityTypes={formOptions.activity_types || []}
                                     nextActionTypes={formOptions.next_actions || []}
                                     onClose={clearSelection}
-                                    onEdit={openEdit}
+                                    onEditContact={openEditContact}
                                 />
                             ) : null}
                         </div>
@@ -1229,6 +1390,25 @@ function Leads({
                 stages={formOptions.stages || []}
                 assignees={formOptions.assignees || []}
                 sources={formOptions.sources || []}
+            />
+
+            <ContactForm
+                isOpen={contactFormOpen}
+                onClose={() => {
+                    setContactFormOpen(false);
+                    setEditingContact(null);
+                }}
+                data={editingContact}
+                tags={formOptions.contact_options?.tags || []}
+                types={formOptions.contact_options?.types || []}
+                incomeLevels={formOptions.contact_options?.income_levels || []}
+                affordabilityLevels={
+                    formOptions.contact_options?.affordability_levels || []
+                }
+                capabilityLevels={
+                    formOptions.contact_options?.capability_levels || []
+                }
+                onSaved={handleContactSaved}
             />
         </Layout>
         </TooltipProvider>

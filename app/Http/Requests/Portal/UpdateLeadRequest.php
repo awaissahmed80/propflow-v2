@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Portal;
 
+use App\Models\Campaign;
 use App\Models\Contact;
 use App\Models\Lead;
 use App\Models\LeadStage;
@@ -39,6 +40,7 @@ class UpdateLeadRequest extends FormRequest
             'unit_id' => ['sometimes', 'nullable', 'integer', Rule::exists(Unit::class, 'id')],
             'assigned_to' => ['sometimes', 'nullable', 'integer', Rule::exists(User::class, 'id')],
             'lead_stage_id' => ['sometimes', 'nullable', 'integer', Rule::exists(LeadStage::class, 'id')],
+            'campaign_id' => ['sometimes', 'nullable', 'integer', Rule::exists(Campaign::class, 'id')],
             'source' => ['sometimes', 'nullable', 'string', 'max:150'],
             'tag' => ['sometimes', 'nullable', 'string', Rule::in(Lead::tags())],
             'budget' => ['sometimes', 'nullable', 'numeric', 'min:0'],

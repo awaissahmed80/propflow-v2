@@ -96,6 +96,8 @@ class BookingsIndexTest extends TestCase
         ]);
         Tenant::forgetCurrent();
 
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))->assertRedirect();
+
         $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
             'identity_kind' => 'cnic',
             'identity_number' => '42101-1234567-1',

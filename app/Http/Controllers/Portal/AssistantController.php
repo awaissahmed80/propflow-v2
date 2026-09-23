@@ -164,10 +164,11 @@ class AssistantController extends Controller
         $tasks = $leadIds === []
             ? collect()
             : Task::query()
-                ->with('lead:id,code')
+                ->with('taskable')
                 ->where('user_id', $user->id)
                 ->whereIn('status', [Task::STATUS_PENDING, Task::STATUS_IN_PROGRESS])
-                ->whereIn('lead_id', $leadIds)
+                ->where('taskable_type', (new Lead)->getMorphClass())
+                ->whereIn('taskable_id', $leadIds)
                 ->orderBy('id')
                 ->limit(20)
                 ->get();
@@ -201,7 +202,8 @@ class AssistantController extends Controller
                 ];
             })->values()->all(),
             'tasks' => $tasks->map(function (Task $task): array {
-                $code = $task->lead?->code;
+                $taskable = $task->taskable;
+                $code = $taskable instanceof Lead ? $taskable->code : null;
 
                 return [
                     'action' => $task->action,
@@ -243,7 +245,10 @@ class AssistantController extends Controller
                 ->count(),
             'closed_deals' => Order::query()
                 ->where('assigned_to', $user->id)
-                ->whereIn('status', [Order::STATUS_ALLOCATED, Order::STATUS_DELIVERED])
+                ->where(function ($query): void {
+                    $query->whereNotNull('allocated_at')
+                        ->orWhere('status', Order::STATUS_COMPLETED);
+                })
                 ->count(),
         ];
     }

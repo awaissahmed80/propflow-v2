@@ -26,6 +26,7 @@ class LeadActionTypeController extends Controller
             'label' => $validated['label'] ?? Str::slug($validated['title'], '_'),
             'title' => $validated['title'],
             'icon' => $validated['icon'] ?? null,
+            'color' => $validated['color'] ?? LeadActionType::DEFAULT_COLOR,
             'priority' => $maxPriority + 1,
             'is_system' => false,
             'is_enabled' => true,
@@ -65,6 +66,9 @@ class LeadActionTypeController extends Controller
             'title' => $validated['title'] ?? $actionType->title,
             'label' => $nextLabel,
             'icon' => array_key_exists('icon', $validated) ? $validated['icon'] : $actionType->icon,
+            'color' => array_key_exists('color', $validated)
+                ? ($validated['color'] ?: LeadActionType::DEFAULT_COLOR)
+                : $actionType->color,
             'is_enabled' => array_key_exists('is_enabled', $validated)
                 ? (bool) $validated['is_enabled']
                 : $actionType->is_enabled,

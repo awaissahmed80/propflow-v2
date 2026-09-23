@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Portal\BulkUnitRequest;
 use App\Http\Requests\Portal\StoreUnitRequest;
 use App\Http\Requests\Portal\UpdateUnitRequest;
 use App\Models\MetaData;
@@ -58,9 +59,37 @@ class UnitController extends Controller
         return to_route('portal.inventory.index');
     }
 
+    public function bulk(BulkUnitRequest $request): RedirectResponse
+    {
+        $validated = $request->validated();
+        /** @var list<int> $ids */
+        $ids = array_map('intval', $validated['ids']);
+        $action = $validated['action'];
+
+        $units = Unit::query()->whereIn('id', $ids)->get();
+
+        if ($action === 'status') {
+            $status = (string) $validated['status'];
+
+            $units->each(function (Unit $unit) use ($status): void {
+                $unit->update(['status' => $status]);
+            });
+
+            return back();
+        }
+
+        if ($action === 'destroy') {
+            $units->each(function (Unit $unit): void {
+                $unit->forceDelete();
+            });
+        }
+
+        return back();
+    }
+
     public function destroy(Unit $unit): RedirectResponse
     {
-        $unit->delete();
+        $unit->forceDelete();
 
         return to_route('portal.inventory.index');
     }

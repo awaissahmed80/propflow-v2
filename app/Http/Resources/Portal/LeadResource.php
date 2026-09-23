@@ -4,6 +4,7 @@ namespace App\Http\Resources\Portal;
 
 use App\Models\AssetLink;
 use App\Models\Lead;
+use App\Models\Order;
 use App\Models\Task;
 use App\Support\AssetManager;
 use Illuminate\Http\Request;
@@ -43,6 +44,7 @@ class LeadResource extends JsonResource
             'last_activity_at' => ($this->contacted_at ?? $this->updated_at)?->toIso8601String(),
             'contact' => $contact ? [
                 'id' => $contact->id,
+                'uuid' => $contact->uuid,
                 'first_name' => $contact->first_name,
                 'last_name' => $contact->last_name,
                 'email_address' => $contact->email_address,
@@ -82,11 +84,13 @@ class LeadResource extends JsonResource
                 'id' => $this->activeOrder->id,
                 'code' => $this->activeOrder->code,
                 'status' => $this->activeOrder->status,
+                'stage' => $this->activeOrder->stage ?: Order::STAGE_TOKEN,
                 'booking_kind' => $this->activeOrder->booking_kind,
                 'agreed_price' => $this->activeOrder->agreed_price !== null
                     ? (float) $this->activeOrder->agreed_price
                     : null,
                 'booked_at' => $this->activeOrder->booked_at?->toIso8601String(),
+                'liaison_active' => $this->activeOrder->isLiaisonActive(),
             ] : null),
             'deal_locked' => $this->relationLoaded('activeOrder')
                 ? $this->activeOrder !== null
@@ -95,6 +99,7 @@ class LeadResource extends JsonResource
                 $this->relationLoaded('assignee'),
                 fn () => $this->assignee ? [
                     'id' => $this->assignee->id,
+                    'code' => $this->assignee->getAttribute('code'),
                     'display_name' => $this->assignee->display_name,
                     'avatar' => $this->assignee->getAttribute('avatar'),
                 ] : null,
@@ -103,7 +108,9 @@ class LeadResource extends JsonResource
                 $this->relationLoaded('creator'),
                 fn () => $this->creator ? [
                     'id' => $this->creator->id,
+                    'code' => $this->creator->getAttribute('code'),
                     'display_name' => $this->creator->display_name,
+                    'avatar' => $this->creator->getAttribute('avatar'),
                 ] : null,
             ),
             'tasks' => $this->whenLoaded('tasks', fn () => $this->tasks->map(fn (Task $task): array => [
@@ -116,6 +123,7 @@ class LeadResource extends JsonResource
                 'user' => $task->relationLoaded('user') && $task->user ? [
                     'id' => $task->user->id,
                     'display_name' => $task->user->display_name,
+                    'avatar' => $task->user->getAttribute('avatar'),
                 ] : null,
                 'attachments' => $this->taskAttachments($task),
             ])->values()->all()),

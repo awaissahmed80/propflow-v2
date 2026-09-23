@@ -1,21 +1,93 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
+import { toast } from "sonner";
+import { bulk as bulkOrders } from "@/actions/App/Http/Controllers/Portal/OrderController";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
-import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { CheckboxControl } from "@/components/ui/checkbox";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FilterInput } from "@/components/ui/filter-input";
+import { ActiveFilters, FilterMenu, toSelectedList } from "@/components/ui/filter-menu";
+import { Avatar } from "@/components/ui/avatar";
 import { Icon } from "@/components/ui/icon";
+import { StageBadge } from "@/components/ui/stage-badge";
+import {
+    Pagination,
+    PaginationContent,
+    PaginationEllipsis,
+    PaginationItem,
+    PaginationLink,
+    PaginationNext,
+    PaginationPrevious,
+} from "@/components/ui/pagination";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import BookingDetailPanel from "./booking-detail-panel";
 import {
-    resolveBookingStages,
     stageTitle,
+    stageColor,
     statusColor,
     statusTitle,
 } from "./booking-stage-dialogs";
+
+function toFilterParam(value) {
+    const list = toSelectedList(value);
+
+    return list.length > 0 ? list.join(",") : "";
+}
+
+/**
+ * @param {number} current
+ * @param {number} last
+ * @returns {Array<number | "ellipsis">}
+ */
+function paginationItems(current, last) {
+    if (last <= 7) {
+        return Array.from({ length: last }, (_, index) => index + 1);
+    }
+
+    const items = [1];
+
+    if (current > 3) {
+        items.push("ellipsis");
+    }
+
+    const start = Math.max(2, current - 1);
+    const end = Math.min(last - 1, current + 1);
+
+    for (let page = start; page <= end; page += 1) {
+        items.push(page);
+    }
+
+    if (current < last - 2) {
+        items.push("ellipsis");
+    }
+
+    items.push(last);
+
+    return items;
+}
+
+const emptyPagination = {
+    current_page: 1,
+    last_page: 1,
+    per_page: 20,
+    total: 0,
+    from: null,
+    to: null,
+};
 
 function bookingCodeFromLocation() {
     if (typeof window === "undefined") {
@@ -55,129 +127,200 @@ function writeBookingHash(code) {
     window.history.replaceState(window.history.state, "", next);
 }
 
-function stageMeta(order, orderStages = []) {
-    const stage = order?.stage || "token";
-    const status = order?.status || "hold";
-    const match = (orderStages || []).find((item) => item.label === stage);
-    const color =
-        statusColor(status, stage, orderStages) || match?.color || "#3B82F6";
-    const statusLabel = statusTitle(status, stage, orderStages);
-
-    return {
-        label: statusLabel
-            ? `${stageTitle(stage, orderStages)} · ${statusLabel}`
-            : stageTitle(stage, orderStages),
-        color,
-        id: stage,
-        status,
-    };
-}
-
-function stageProgressIndex(stageId, stages) {
-    if (stageId === "closed" || stageId === "cancelled" || stageId === "completed") {
-        const closed = stages.findIndex((item) => item.id === "closed");
-
-        return closed < 0 ? stages.length : closed;
-    }
-
-    const index = stages.findIndex((item) => item.id === stageId);
-
-    return index < 0 ? 0 : index;
-}
-
-function MiniStageRail({ stageId, stages, color }) {
-    const current = stageProgressIndex(stageId, stages);
+function BookingRow({
+    order,
+    compact = false,
+    selected = false,
+    checked = false,
+    orderStages = [],
+    orderStatuses = [],
+    onToggleCheck,
+    onOpen,
+}) {
+    const buyer = order.contact?.display_name || "Buyer";
+    const contactDetail =
+        order.contact?.phone_number || order.contact?.email_address || null;
+    const stageLabel = stageTitle(order.stage, orderStages);
+    const statusLabel = statusTitle(order.status, orderStatuses) || "—";
+    const stageTone = stageColor(order.stage, orderStages);
+    const statusTone = statusColor(order.status, orderStatuses);
+    const soldBy = order.sold_by;
 
     return (
-        <div className="flex items-center gap-1" aria-hidden>
-            {stages.map((stage, index) => {
-                const done = index < current;
-                const active = index === current;
-
-                return (
-                    <span
-                        key={stage.id}
-                        className={cn(
-                            "h-1 flex-1 rounded-full transition-colors",
-                            done || active ? "opacity-100" : "bg-border opacity-70",
-                        )}
-                        style={
-                            done || active
-                                ? { backgroundColor: color || "var(--primary)" }
-                                : undefined
-                        }
+        <tr
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpen(order)}
+            onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpen(order);
+                }
+            }}
+            className={cn(
+                "cursor-pointer border-b border-border last:border-0 hover:bg-muted/40",
+                selected && "bg-primary/5 hover:bg-primary/10",
+                checked && !selected && "bg-muted/30",
+            )}
+        >
+            <td
+                className="w-10 px-3 py-3 align-middle"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+            >
+                <CheckboxControl
+                    checked={checked}
+                    onCheckedChange={(value) => onToggleCheck?.(order.id, Boolean(value))}
+                    aria-label={`Select ${buyer}`}
+                />
+            </td>
+            <td className="px-4 py-3 align-middle">
+                <div className="flex min-w-0 items-center gap-3">
+                    <Avatar
+                        name={buyer === "Buyer" ? "" : buyer}
+                        size="default"
+                        className="size-10 shrink-0"
+                        textClass="text-xs"
                     />
-                );
-            })}
-        </div>
+                    <div className="min-w-0">
+                        {order.code ? (
+                            <div className="truncate text-xs font-medium text-muted-foreground">
+                                {order.code}
+                            </div>
+                        ) : null}
+                        <div className="truncate font-medium text-foreground">
+                            {buyer}
+                        </div>
+                        {contactDetail ? (
+                            <div className="truncate text-xs text-muted-foreground">
+                                {contactDetail}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            </td>
+            {!compact ? (
+                <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-muted-foreground">
+                    {formatDateTime(order.booked_at) || "—"}
+                </td>
+            ) : null}
+            <td className="px-4 py-3 align-middle">
+                {soldBy ? (
+                    <div className="flex min-w-0 items-center gap-2.5">
+                        <Avatar
+                            name={soldBy.display_name}
+                            src={soldBy.avatar || undefined}
+                            size="sm"
+                            className="size-7 shrink-0"
+                            textClass="text-[9px]"
+                        />
+                        {!compact ? (
+                            <span className="truncate text-sm text-foreground">
+                                {soldBy.display_name}
+                            </span>
+                        ) : null}
+                    </div>
+                ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                )}
+            </td>
+            {!compact ? (
+                <td className="px-4 py-3 align-middle">
+                    {order.project ? (
+                        <div className="flex min-w-0 items-center gap-2.5">
+                            {order.project.thumbnail ? (
+                                <img
+                                    src={order.project.thumbnail}
+                                    alt=""
+                                    className="size-8 shrink-0 rounded-md object-cover"
+                                />
+                            ) : (
+                                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                                    <Icon name="community-line" className="text-base" />
+                                </span>
+                            )}
+                            <div className="min-w-0">
+                                <div className="truncate text-sm text-foreground">
+                                    {order.project.title}
+                                </div>
+                                <div className="truncate text-xs text-muted-foreground">
+                                    {[order.unit?.name || order.unit?.code, order.project.location]
+                                        .filter(Boolean)
+                                        .join(" · ") || "—"}
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                </td>
+            ) : null}
+            <td className="px-4 py-3 align-middle">
+                <div className="min-w-0">
+                    <div className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground">
+                        {formatMoney(order.agreed_price)}
+                    </div>
+                    {!compact ? (
+                        <div className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                            Bal. {formatMoney(order.balance_due)}
+                        </div>
+                    ) : null}
+                </div>
+            </td>
+            <td className="px-4 py-3 align-middle">
+                <StageBadge label={stageLabel} color={stageTone} />
+            </td>
+            <td className="px-4 py-3 align-middle">
+                <StageBadge label={statusLabel} color={statusTone} />
+            </td>
+        </tr>
     );
 }
 
 export default function BookingsIndex({
-    orders,
-    pagination,
+    orders: ordersProp,
+    pagination = emptyPagination,
+    filters = {},
     openedBooking = null,
     orderStages = [],
+    orderStatuses = [],
     projects = [],
     assignees = [],
     activityTypes = [],
 }) {
-    const pending = isPagePending(orders);
-    const rows = orders ?? [];
-    const pager = pagination ?? { current_page: 1, last_page: 1, total: 0 };
-    const stages = useMemo(() => resolveBookingStages(orderStages), [orderStages]);
-    const statusOptions = useMemo(() => {
-        return stages.flatMap((stage) =>
-            (stage.statuses || [])
-                .filter((status) => status.is_enabled !== false)
-                .map((status) => ({
-                    value: `${stage.id}:${status.label}`,
-                    stage: stage.id,
-                    status: status.label,
-                    label: `${stage.label} · ${status.title || status.label}`,
-                    color: status.color || stage.color,
-                })),
-        );
-    }, [stages]);
+    const pending = isPagePending(ordersProp);
+    const orders = ordersProp ?? [];
+    const [search, setSearch] = useState(filters.q || "");
     const [selectedCode, setSelectedCode] = useState(
         () => openedBooking?.order?.code || bookingCodeFromLocation(),
     );
-    const [stageFilter, setStageFilter] = useState("all");
-    const [statusFilter, setStatusFilter] = useState("all");
+    const [checkedIds, setCheckedIds] = useState([]);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const searchTimeout = useRef(null);
     const openBookingCode = useRef(selectedCode || null);
     const requestedBookingCode = useRef(null);
 
-    const filteredRows = useMemo(() => {
-        return rows.filter((order) => {
-            if (stageFilter !== "all" && order.stage !== stageFilter) {
-                return false;
-            }
+    const appliedFilters = useMemo(
+        () => ({
+            stage: toSelectedList(filters.stage),
+            status: toSelectedList(filters.status),
+            project: toSelectedList(filters.project),
+            assigned_to: toSelectedList(filters.assigned_to),
+        }),
+        [filters.stage, filters.status, filters.project, filters.assigned_to],
+    );
 
-            if (statusFilter !== "all" && order.status !== statusFilter) {
-                return false;
-            }
-
-            return true;
-        });
-    }, [rows, stageFilter, statusFilter]);
-
-    const stats = useMemo(() => {
-        const active = rows.filter(
-            (order) => order.stage !== "closed" && order.status !== "cancelled",
-        ).length;
-        const unpaid = rows.reduce((sum, order) => sum + (Number(order.unpaid_count) || 0), 0);
-
-        return {
-            total: pager.total || rows.length,
-            active,
-            unpaid,
-        };
-    }, [rows, pager.total]);
+    const currentPage = Number(pagination.current_page) || 1;
+    const lastPage = Math.max(1, Number(pagination.last_page) || 1);
+    const pageItems = useMemo(
+        () => paginationItems(currentPage, lastPage),
+        [currentPage, lastPage],
+    );
 
     useEffect(() => {
         const code = bookingCodeFromLocation();
 
-        if (!code || orders === undefined) {
+        if (!code || ordersProp === undefined) {
             return;
         }
 
@@ -208,11 +351,294 @@ export default function BookingsIndex({
                 onFinish: () => writeBookingHash(openBookingCode.current),
             },
         );
-    }, [openedBooking, orders]);
+    }, [openedBooking, ordersProp]);
 
-    const panelOpen = Boolean(selectedCode && openedBooking?.order?.code === selectedCode);
+    useEffect(() => {
+        setSearch(filters.q || "");
+    }, [filters.q]);
 
-    const openBooking = (code) => {
+    useEffect(() => {
+        setCheckedIds([]);
+    }, [
+        currentPage,
+        filters.q,
+        filters.stage,
+        filters.status,
+        filters.project,
+        filters.assigned_to,
+    ]);
+
+    useEffect(() => {
+        return () => {
+            if (searchTimeout.current) {
+                clearTimeout(searchTimeout.current);
+            }
+        };
+    }, []);
+
+    const pageOrderIds = useMemo(
+        () => orders.map((order) => order.id).filter(Boolean),
+        [orders],
+    );
+
+    const checkedOnPage = useMemo(
+        () => pageOrderIds.filter((id) => checkedIds.includes(id)),
+        [pageOrderIds, checkedIds],
+    );
+
+    const allPageChecked =
+        pageOrderIds.length > 0 && checkedOnPage.length === pageOrderIds.length;
+    const somePageChecked =
+        checkedOnPage.length > 0 && checkedOnPage.length < pageOrderIds.length;
+    const hasChecked = checkedIds.length > 0;
+
+    const filterSections = useMemo(() => {
+        const stageOptions = (orderStages || [])
+            .filter((stage) => stage.is_enabled !== false)
+            .map((stage) => ({
+                value: stage.label,
+                label: stage.title || stage.label,
+                color: stage.color || undefined,
+            }));
+
+        const statusOptions = (orderStatuses || [])
+            .filter((status) => status.is_enabled !== false)
+            .map((status) => ({
+                value: status.label,
+                label: status.title || status.label,
+                color: status.color || undefined,
+            }));
+
+        const projectOptions = (projects || []).map((project) => ({
+            value: String(project.id),
+            label: project.title,
+            thumbnail: project.thumbnail || undefined,
+        }));
+
+        const assigneeOptions = (assignees || []).map((user) => ({
+            value: String(user.id),
+            label: user.display_name,
+            avatar: user.avatar || undefined,
+        }));
+
+        return [
+            { key: "stage", label: "Stage", type: "stage", options: stageOptions },
+            { key: "status", label: "Status", type: "stage", options: statusOptions },
+            { key: "project", label: "Project", type: "projects", options: projectOptions },
+            ...(assigneeOptions.length > 0
+                ? [{
+                    key: "assigned_to",
+                    label: "Assignee",
+                    type: "people",
+                    options: assigneeOptions,
+                }]
+                : []),
+        ];
+    }, [orderStages, orderStatuses, projects, assignees]);
+
+    const visitBookings = (next = {}) => {
+        const page = Object.prototype.hasOwnProperty.call(next, "page")
+            ? next.page
+            : currentPage;
+
+        const params = {
+            q: Object.prototype.hasOwnProperty.call(next, "q") ? next.q : search,
+            stage: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "stage")
+                    ? next.stage
+                    : appliedFilters.stage,
+            ),
+            status: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "status")
+                    ? next.status
+                    : appliedFilters.status,
+            ),
+            project: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "project")
+                    ? next.project
+                    : appliedFilters.project,
+            ),
+            assigned_to: toFilterParam(
+                Object.prototype.hasOwnProperty.call(next, "assigned_to")
+                    ? next.assigned_to
+                    : appliedFilters.assigned_to,
+            ),
+            page: page > 1 ? String(page) : "",
+        };
+
+        Object.keys(params).forEach((key) => {
+            if (!params[key]) {
+                delete params[key];
+            }
+        });
+
+        router.get("/bookings", params, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            only: [
+                "orders",
+                "pagination",
+                "filters",
+                "openedBooking",
+                "orderStages",
+                "orderStatuses",
+                "projects",
+                "assignees",
+                "activityTypes",
+            ],
+            onFinish: () => writeBookingHash(openBookingCode.current),
+        });
+    };
+
+    const toggleOrderCheck = (orderId, nextChecked) => {
+        setCheckedIds((prev) => {
+            if (nextChecked) {
+                return prev.includes(orderId) ? prev : [...prev, orderId];
+            }
+
+            return prev.filter((id) => id !== orderId);
+        });
+    };
+
+    const toggleCheckAllOnPage = (nextChecked) => {
+        setCheckedIds((prev) => {
+            if (nextChecked) {
+                const merged = new Set([...prev, ...pageOrderIds]);
+
+                return Array.from(merged);
+            }
+
+            return prev.filter((id) => !pageOrderIds.includes(id));
+        });
+    };
+
+    const runBulkAction = async ({
+        action,
+        assigned_to,
+        status,
+        confirmMessage,
+        confirmTitle,
+        successMessage,
+        errorMessage,
+    }) => {
+        if (checkedIds.length === 0 || bulkBusy) {
+            return;
+        }
+
+        if (confirmMessage) {
+            const confirmed = await confirm(confirmMessage, confirmTitle || "Confirm");
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        setBulkBusy(true);
+
+        router.post(
+            bulkOrders.url(),
+            {
+                ids: checkedIds,
+                action,
+                ...(action === "assign" ? { assigned_to } : {}),
+                ...(action === "status" ? { status } : {}),
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success(successMessage);
+                    setCheckedIds([]);
+                },
+                onError: (errors) =>
+                    toast.error(
+                        errors.ids ||
+                            errors.action ||
+                            errors.assigned_to ||
+                            errors.status ||
+                            errors.message ||
+                            errorMessage,
+                    ),
+                onFinish: () => setBulkBusy(false),
+            },
+        );
+    };
+
+    const handleBulkAssign = (userId) =>
+        runBulkAction({
+            action: "assign",
+            assigned_to: userId,
+            successMessage: "Assignee updated",
+            errorMessage: "Could not update assignee",
+        });
+
+    const handleBulkStatus = (statusLabel) =>
+        runBulkAction({
+            action: "status",
+            status: statusLabel,
+            successMessage: "Status updated",
+            errorMessage: "Could not update status",
+        });
+
+    const handleBulkCancel = () =>
+        runBulkAction({
+            action: "cancel",
+            confirmMessage: `Cancel ${checkedIds.length} booking${checkedIds.length === 1 ? "" : "s"}? Open units may be released.`,
+            confirmTitle: "Cancel bookings",
+            successMessage: "Bookings cancelled",
+            errorMessage: "Could not cancel bookings",
+        });
+
+    const handleSearchChange = (event) => {
+        const value = event.target.value;
+        setSearch(value);
+
+        if (searchTimeout.current) {
+            clearTimeout(searchTimeout.current);
+        }
+
+        searchTimeout.current = setTimeout(() => {
+            visitBookings({ q: value.trim(), page: 1 });
+        }, 300);
+    };
+
+    const handleFiltersApply = (next) => {
+        visitBookings({
+            stage: next.stage || [],
+            status: next.status || [],
+            project: next.project || [],
+            assigned_to: next.assigned_to || [],
+            page: 1,
+        });
+    };
+
+    const handleFiltersClear = () => {
+        handleFiltersApply({
+            stage: [],
+            status: [],
+            project: [],
+            assigned_to: [],
+        });
+    };
+
+    const goToPage = (page) => {
+        const nextPage = Number(page);
+
+        if (
+            !Number.isFinite(nextPage) ||
+            nextPage < 1 ||
+            nextPage > lastPage ||
+            nextPage === currentPage
+        ) {
+            return;
+        }
+
+        visitBookings({ page: nextPage });
+    };
+
+    const openBooking = (orderOrCode) => {
+        const code = typeof orderOrCode === "string" ? orderOrCode : orderOrCode?.code;
+
         if (!code) {
             return;
         }
@@ -247,17 +673,20 @@ export default function BookingsIndex({
         writeBookingHash(null);
     };
 
-    const visitPage = (page) => {
-        router.get(
-            "/bookings",
-            { page },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                onFinish: () => writeBookingHash(openBookingCode.current),
-            },
-        );
-    };
+    const panelOpen = Boolean(selectedCode && openedBooking?.order?.code === selectedCode);
+    const compact = panelOpen;
+
+    const hasFilters =
+        Boolean(filters.q) ||
+        appliedFilters.stage.length > 0 ||
+        appliedFilters.status.length > 0 ||
+        appliedFilters.project.length > 0 ||
+        appliedFilters.assigned_to.length > 0;
+
+    const rangeLabel =
+        pagination.total > 0
+            ? `Showing ${pagination.from}–${pagination.to} of ${pagination.total}`
+            : "No results";
 
     if (pending) {
         return <PageSkeleton title="Bookings" variant="table" />;
@@ -266,124 +695,137 @@ export default function BookingsIndex({
     return (
         <Layout>
             <Layout.Header metaTitle="Bookings" breadcrumbs={[{ label: "Bookings" }]} />
-            <Layout.Content className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-                <Layout.Toolbar className="gap-4">
-                    <div className="min-w-0 flex-1">
-                        <h1 className="text-2xl font-bold tracking-tight text-foreground">Bookings</h1>
-                        <p className="mt-0.5 text-sm text-muted-foreground">
-                            Contract files in motion — token through closed.
+
+            <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+                <Layout.Toolbar className="flex-wrap">
+                    <div className="mr-2 shrink-0">
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                            Bookings
+                        </h1>
+                        <p className="text-xs text-muted-foreground">
+                            Contract files in motion
                         </p>
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        <div className="rounded-lg border border-border/80 bg-muted/30 px-3 py-1.5 text-center">
-                            <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                                Files
-                            </p>
-                            <p className="text-sm font-semibold tabular-nums text-foreground">
-                                {stats.total}
-                            </p>
-                        </div>
-                        <div className="rounded-lg border border-border/80 bg-muted/30 px-3 py-1.5 text-center">
-                            <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                                Active
-                            </p>
-                            <p className="text-sm font-semibold tabular-nums text-foreground">
-                                {stats.active}
-                            </p>
-                        </div>
-                        <div className="rounded-lg border border-border/80 bg-muted/30 px-3 py-1.5 text-center">
-                            <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                                Unpaid
-                            </p>
-                            <p className="text-sm font-semibold tabular-nums text-foreground">
-                                {stats.unpaid}
-                            </p>
-                        </div>
+
+                    <FilterInput
+                        value={search}
+                        onChange={handleSearchChange}
+                        placeholder="Search bookings..."
+                        className="w-56"
+                    />
+
+                    <FilterMenu
+                        sections={filterSections}
+                        value={appliedFilters}
+                        onApply={handleFiltersApply}
+                    />
+
+                    {hasChecked ? (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger
+                                render={
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="gap-1.5 font-medium"
+                                        disabled={bulkBusy}
+                                    >
+                                        <Icon name="cursor-line" className="text-base" />
+                                        Bulk Actions
+                                        <Icon name="arrow-down-s-line" className="text-base opacity-70" />
+                                    </Button>
+                                }
+                            />
+                            <DropdownMenuContent align="start" className="min-w-52">
+                                {(assignees || []).length > 0 ? (
+                                    <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger>
+                                            Assign
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent className="min-w-44">
+                                            {(assignees || []).map((user) => (
+                                                <DropdownMenuItem
+                                                    key={user.id}
+                                                    className="gap-2"
+                                                    disabled={bulkBusy}
+                                                    onClick={() => handleBulkAssign(user.id)}
+                                                >
+                                                    <Avatar
+                                                        name={user.display_name}
+                                                        src={user.avatar || undefined}
+                                                        size="sm"
+                                                        className="size-5 shrink-0"
+                                                        textClass="text-[8px]"
+                                                    />
+                                                    {user.display_name}
+                                                </DropdownMenuItem>
+                                            ))}
+                                        </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
+                                ) : null}
+
+                                {(orderStatuses || []).filter((s) => s.is_enabled !== false).length > 0 ? (
+                                    <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger>
+                                            Set status
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent className="min-w-44">
+                                            {(orderStatuses || [])
+                                                .filter((status) => status.is_enabled !== false)
+                                                .map((status) => (
+                                                    <DropdownMenuItem
+                                                        key={status.label}
+                                                        className="gap-2"
+                                                        disabled={bulkBusy}
+                                                        onClick={() => handleBulkStatus(status.label)}
+                                                    >
+                                                        <span
+                                                            className="size-2 shrink-0 rounded-full"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    status.color ||
+                                                                    "var(--muted-foreground)",
+                                                            }}
+                                                            aria-hidden
+                                                        />
+                                                        {status.title || status.label}
+                                                    </DropdownMenuItem>
+                                                ))}
+                                        </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
+                                ) : null}
+
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    disabled={bulkBusy}
+                                    onClick={handleBulkCancel}
+                                >
+                                    Cancel
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    ) : null}
+
+                    <div className="ml-auto flex items-center gap-2">
+                        <Button
+                            type="button"
+                            className="shrink-0"
+                            onClick={() => toast.info("Coming soon")}
+                        >
+                            <Icon name="add-line" className="text-base" />
+                            New Booking
+                        </Button>
                     </div>
                 </Layout.Toolbar>
 
-                <div className="space-y-2 border-b border-border/70 bg-background px-6 py-2.5">
-                    <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setStageFilter("all");
-                                setStatusFilter("all");
-                            }}
-                            className={cn(
-                                "inline-flex shrink-0 items-center rounded-md border px-3 py-1 text-xs font-medium transition-colors",
-                                stageFilter === "all"
-                                    ? "border-primary/40 bg-primary/10 text-primary"
-                                    : "border-border bg-background text-muted-foreground hover:text-foreground",
-                            )}
-                        >
-                            All
-                        </button>
-                        {stages.map((stage) => (
-                            <button
-                                key={stage.id}
-                                type="button"
-                                onClick={() => {
-                                    setStageFilter(stage.id);
-                                    setStatusFilter("all");
-                                }}
-                                className={cn(
-                                    "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-medium transition-colors",
-                                    stageFilter === stage.id
-                                        ? "border-primary/40 bg-primary/10 text-primary"
-                                        : "border-border bg-background text-muted-foreground hover:text-foreground",
-                                )}
-                            >
-                                <span
-                                    className="size-1.5 rounded-full"
-                                    style={{ backgroundColor: stage.color || "var(--muted-foreground)" }}
-                                />
-                                {stage.label}
-                            </button>
-                        ))}
-                    </div>
-                    {statusOptions.length > 0 ? (
-                        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-                            <button
-                                type="button"
-                                onClick={() => setStatusFilter("all")}
-                                className={cn(
-                                    "inline-flex shrink-0 items-center rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                                    statusFilter === "all"
-                                        ? "border-primary/40 bg-primary/10 text-primary"
-                                        : "border-border bg-background text-muted-foreground hover:text-foreground",
-                                )}
-                            >
-                                Any status
-                            </button>
-                            {(stageFilter === "all"
-                                ? statusOptions
-                                : statusOptions.filter((option) => option.stage === stageFilter)
-                            ).map((option) => (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    onClick={() => setStatusFilter(option.status)}
-                                    className={cn(
-                                        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                                        statusFilter === option.status
-                                            ? "border-primary/40 bg-primary/10 text-primary"
-                                            : "border-border bg-background text-muted-foreground hover:text-foreground",
-                                    )}
-                                >
-                                    <span
-                                        className="size-1.5 rounded-full"
-                                        style={{
-                                            backgroundColor:
-                                                option.color || "var(--muted-foreground)",
-                                        }}
-                                    />
-                                    {option.label.split(" · ").pop()}
-                                </button>
-                            ))}
-                        </div>
-                    ) : null}
-                </div>
+                <ActiveFilters
+                    sections={filterSections}
+                    value={appliedFilters}
+                    onChange={handleFiltersApply}
+                    onClear={handleFiltersClear}
+                    className="shrink-0"
+                />
 
                 <div
                     className="grid min-h-0 flex-1 overflow-hidden transition-[grid-template-columns] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
@@ -393,205 +835,150 @@ export default function BookingsIndex({
                             : "minmax(0, 1fr) 0fr",
                     }}
                 >
-                    <div className="min-h-0 min-w-0 overflow-auto px-6 py-4">
-                        {filteredRows.length === 0 ? (
-                            <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center">
-                                <span className="mb-3 flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                                    <Icon name="book-2-line" className="text-2xl" />
-                                </span>
-                                <p className="text-sm font-medium text-foreground">
-                                    {rows.length === 0 ? "No bookings yet" : "No bookings in this stage"}
-                                </p>
-                                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                                    {rows.length === 0
-                                        ? "Close a lead as won to open the first contract file."
-                                        : "Try another stage filter or clear the selection."}
-                                </p>
-                                {stageFilter !== "all" || statusFilter !== "all" ? (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className="mt-4"
-                                        onClick={() => {
-                                            setStageFilter("all");
-                                            setStatusFilter("all");
-                                        }}
-                                    >
-                                        Show all bookings
-                                    </Button>
-                                ) : null}
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {filteredRows.map((order) => {
-                                    const active = selectedCode === order.code;
-                                    const meta = stageMeta(order, orderStages);
-                                    const buyer = order.contact?.display_name || "Buyer";
-
-                                    return (
-                                        <button
-                                            key={order.id}
-                                            type="button"
-                                            onClick={() => openBooking(order.code)}
+                    <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+                        <ScrollArea className="min-h-0 flex-1 overflow-hidden">
+                            <div className="px-6 py-6">
+                                {orders.length === 0 ? (
+                                    <div className="flex min-h-[22rem] flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/20 px-6 text-center">
+                                        <div className="mb-4 flex size-14 items-center justify-center rounded-md bg-primary/10 text-primary">
+                                            <Icon name="book-2-line" className="text-2xl" />
+                                        </div>
+                                        <h2 className="text-lg font-semibold tracking-tight">
+                                            {hasFilters
+                                                ? "No bookings match your filters"
+                                                : "No bookings yet"}
+                                        </h2>
+                                        <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                                            {hasFilters
+                                                ? "Try another stage, status, project, or search term."
+                                                : "Close a lead as won to open the first contract file."}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-lg border border-border bg-card">
+                                        <table
                                             className={cn(
-                                                "group relative w-full cursor-pointer overflow-hidden rounded-2xl border text-left transition-all duration-200",
-                                                active
-                                                    ? "border-primary/35 bg-primary/[0.06] shadow-sm ring-1 ring-primary/15"
-                                                    : "border-border/80 bg-background hover:border-border hover:bg-muted/25 hover:shadow-xs",
+                                                "w-full text-left text-sm",
+                                                compact ? "min-w-[640px]" : "min-w-[1200px]",
                                             )}
                                         >
-                                            <span
-                                                className="absolute inset-y-0 left-0 w-1"
-                                                style={{ backgroundColor: meta.color }}
-                                                aria-hidden
-                                            />
-                                            <div
-                                                className={cn(
-                                                    "grid items-center gap-x-6 gap-y-3 px-4 py-3.5 pl-5",
-                                                    panelOpen
-                                                        ? "sm:grid-cols-2"
-                                                        : "md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(11rem,0.85fr)]",
-                                                )}
-                                            >
-                                                <div className="flex min-w-0 items-center gap-3">
-                                                    <Avatar
-                                                        name={buyer}
-                                                        size="sm"
-                                                        className="size-9 shrink-0"
+                                            <thead className="sticky top-0 z-10 border-b border-border bg-muted/40 text-muted-foreground backdrop-blur-sm">
+                                                <tr>
+                                                    <th className="w-10 px-3 py-3">
+                                                        <CheckboxControl
+                                                            checked={allPageChecked}
+                                                            indeterminate={somePageChecked}
+                                                            onCheckedChange={(value) =>
+                                                                toggleCheckAllOnPage(Boolean(value))
+                                                            }
+                                                            aria-label="Select all bookings on this page"
+                                                        />
+                                                    </th>
+                                                    <th className="min-w-44 px-4 py-3 font-medium">
+                                                        Booking
+                                                    </th>
+                                                    {!compact ? (
+                                                        <th className="min-w-36 px-4 py-3 font-medium">
+                                                            Date / Time
+                                                        </th>
+                                                    ) : null}
+                                                    <th className="min-w-28 px-4 py-3 font-medium">
+                                                        {compact ? "Agent" : "Sale Agent"}
+                                                    </th>
+                                                    {!compact ? (
+                                                        <th className="min-w-44 px-4 py-3 font-medium">
+                                                            Project / Unit
+                                                        </th>
+                                                    ) : null}
+                                                    <th className="w-32 whitespace-nowrap px-4 py-3 font-medium">
+                                                        {compact ? "Amount" : "Amount / Bal. Due"}
+                                                    </th>
+                                                    <th className="min-w-28 px-4 py-3 font-medium">
+                                                        Stage
+                                                    </th>
+                                                    <th className="min-w-28 px-4 py-3 font-medium">
+                                                        Status
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {orders.map((order) => (
+                                                    <BookingRow
+                                                        key={order.id}
+                                                        order={order}
+                                                        compact={compact}
+                                                        selected={selectedCode === order.code}
+                                                        checked={checkedIds.includes(order.id)}
+                                                        orderStages={orderStages}
+                                                        orderStatuses={orderStatuses}
+                                                        onToggleCheck={toggleOrderCheck}
+                                                        onOpen={openBooking}
                                                     />
-                                                    <div className="min-w-0">
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <span className="truncate text-sm font-semibold text-foreground">
-                                                                {buyer}
-                                                            </span>
-                                                            <span className="rounded-md border border-border/80 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                                                                {order.booking_kind || "booking"}
-                                                            </span>
-                                                            {order.unpaid_count ? (
-                                                                <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-                                                                    {order.unpaid_count} unpaid
-                                                                </span>
-                                                            ) : null}
-                                                        </div>
-                                                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                                                            {order.contact?.phone_number ||
-                                                                order.contact?.email_address ||
-                                                                "No contact details"}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="min-w-0 space-y-1.5">
-                                                    <div className="flex min-w-0 items-center gap-2">
-                                                        {order.project?.thumbnail ? (
-                                                            <img
-                                                                src={order.project.thumbnail}
-                                                                alt=""
-                                                                className="size-7 shrink-0 rounded-md object-cover"
-                                                            />
-                                                        ) : (
-                                                            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                                                                <Icon name="community-line" className="text-sm" />
-                                                            </span>
-                                                        )}
-                                                        <span className="truncate text-sm font-medium text-foreground">
-                                                            {order.project?.title || "No project"}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex min-w-0 items-center gap-2">
-                                                        {order.assignee ? (
-                                                            <>
-                                                                <Avatar
-                                                                    name={order.assignee.display_name}
-                                                                    src={order.assignee.avatar || undefined}
-                                                                    size="sm"
-                                                                    className="size-7 shrink-0"
-                                                                    textClass="text-[9px]"
-                                                                />
-                                                                <span className="truncate text-sm text-foreground">
-                                                                    {order.assignee.display_name}
-                                                                </span>
-                                                            </>
-                                                        ) : (
-                                                            <span className="text-sm text-muted-foreground">
-                                                                Unassigned
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <p className="truncate text-xs text-muted-foreground">
-                                                        {order.unit?.name || "No unit linked"}
-                                                    </p>
-                                                </div>
-
-                                                <div className={cn("min-w-0", panelOpen && "sm:col-span-2")}>
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div className="min-w-0">
-                                                            <p className="text-sm font-semibold tabular-nums text-foreground">
-                                                                {formatMoney(order.agreed_price)}
-                                                            </p>
-                                                            <p className="text-[11px] text-muted-foreground">
-                                                                {formatDateTime(order.booked_at) || "—"}
-                                                            </p>
-                                                        </div>
-                                                        <Icon
-                                                            name="arrow-right-s-line"
-                                                            className={cn(
-                                                                "mt-0.5 shrink-0 text-muted-foreground transition-transform",
-                                                                active && "translate-x-0.5 text-primary",
-                                                            )}
-                                                        />
-                                                    </div>
-                                                    <div className="mt-2">
-                                                        <span
-                                                            className="mb-1.5 inline-flex max-w-full items-center gap-1.5 truncate text-xs font-medium"
-                                                            style={{ color: meta.color }}
-                                                        >
-                                                            <span
-                                                                className="size-1.5 shrink-0 rounded-full"
-                                                                style={{ backgroundColor: meta.color }}
-                                                            />
-                                                            {meta.label}
-                                                        </span>
-                                                        <MiniStageRail
-                                                            stageId={meta.id}
-                                                            stages={stages}
-                                                            color={meta.color}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </ScrollArea>
 
-                        {pager.last_page > 1 ? (
-                            <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-                                <span>
-                                    {pager.from}–{pager.to} of {pager.total}
-                                </span>
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={pager.current_page <= 1}
-                                        onClick={() => visitPage(pager.current_page - 1)}
-                                    >
-                                        Previous
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={pager.current_page >= pager.last_page}
-                                        onClick={() => visitPage(pager.current_page + 1)}
-                                    >
-                                        Next
-                                    </Button>
-                                </div>
+                        {lastPage > 1 ? (
+                            <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-background px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <p className="text-sm text-muted-foreground">
+                                    {rangeLabel}
+                                </p>
+                                <Pagination className="mx-0 w-auto justify-start sm:justify-end">
+                                    <PaginationContent>
+                                        <PaginationItem>
+                                            <PaginationPrevious
+                                                href="#"
+                                                text="Prev"
+                                                className={cn(
+                                                    currentPage <= 1 &&
+                                                        "pointer-events-none opacity-50",
+                                                )}
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    goToPage(currentPage - 1);
+                                                }}
+                                            />
+                                        </PaginationItem>
+                                        {pageItems.map((item, index) =>
+                                            item === "ellipsis" ? (
+                                                <PaginationItem key={`ellipsis-${index}`}>
+                                                    <PaginationEllipsis />
+                                                </PaginationItem>
+                                            ) : (
+                                                <PaginationItem key={item}>
+                                                    <PaginationLink
+                                                        href="#"
+                                                        isActive={item === currentPage}
+                                                        onClick={(event) => {
+                                                            event.preventDefault();
+                                                            goToPage(item);
+                                                        }}
+                                                    >
+                                                        {item}
+                                                    </PaginationLink>
+                                                </PaginationItem>
+                                            ),
+                                        )}
+                                        <PaginationItem>
+                                            <PaginationNext
+                                                href="#"
+                                                text="Next"
+                                                className={cn(
+                                                    currentPage >= lastPage &&
+                                                        "pointer-events-none opacity-50",
+                                                )}
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    goToPage(currentPage + 1);
+                                                }}
+                                            />
+                                        </PaginationItem>
+                                    </PaginationContent>
+                                </Pagination>
                             </div>
                         ) : null}
                     </div>
@@ -615,6 +1002,7 @@ export default function BookingsIndex({
                                 <BookingDetailPanel
                                     payload={openedBooking}
                                     orderStages={orderStages}
+                                    orderStatuses={orderStatuses}
                                     projects={projects}
                                     assignees={assignees}
                                     activityTypes={activityTypes}

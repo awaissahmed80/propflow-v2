@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { router } from "@inertiajs/react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { store, update } from "@/actions/App/Http/Controllers/Portal/RoleController";
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Drawer } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,10 +16,19 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import {
+    hiddenPermissionNames,
+    initialOpenPermissionGroups,
+    nextPermissionSelection,
+    permissionGroupSummary,
+    pruneHiddenPermissions,
+    visibleGroupPermissions,
+} from "./role-permission-helpers";
 
 export default function RoleForm({ isOpen, onClose, data = null, permissionGroups = [] }) {
     const [processing, setProcessing] = useState(false);
     const [selection, setSelection] = useState([]);
+    const [openGroups, setOpenGroups] = useState([]);
     const [serverErrors, setServerErrors] = useState({});
     const { handleSubmit, register, reset } = useForm({
         defaultValues: {
@@ -23,6 +38,10 @@ export default function RoleForm({ isOpen, onClose, data = null, permissionGroup
     });
 
     const isEditing = Boolean(data?.id);
+    const hiddenNames = useMemo(
+        () => hiddenPermissionNames(selection, permissionGroups),
+        [selection, permissionGroups]
+    );
 
     const handleClose = () => {
         reset({
@@ -30,6 +49,7 @@ export default function RoleForm({ isOpen, onClose, data = null, permissionGroup
             description: "",
         });
         setSelection([]);
+        setOpenGroups([]);
         setServerErrors({});
         onClose(false);
     };
@@ -42,11 +62,18 @@ export default function RoleForm({ isOpen, onClose, data = null, permissionGroup
         setServerErrors({});
 
         if (data) {
+            const nextSelection = pruneHiddenPermissions(
+                (data.permissions ?? []).map((permission) => permission.name),
+                permissionGroups
+            );
+            const nextHidden = hiddenPermissionNames(nextSelection, permissionGroups);
+
             reset({
                 name: data.name ?? "",
                 description: data.description ?? "",
             });
-            setSelection((data.permissions ?? []).map((permission) => permission.name));
+            setSelection(nextSelection);
+            setOpenGroups(initialOpenPermissionGroups(permissionGroups, nextSelection, nextHidden));
             return;
         }
 
@@ -55,29 +82,20 @@ export default function RoleForm({ isOpen, onClose, data = null, permissionGroup
             description: "",
         });
         setSelection([]);
-    }, [isOpen, data, reset]);
+        setOpenGroups(initialOpenPermissionGroups(permissionGroups, [], new Set()));
+    }, [isOpen, data, permissionGroups, reset]);
 
     const handlePermissionChange = (permissionName, checked, groupType, groupIndex) => {
-        let nextSelection = [...selection];
-
-        if (nextSelection.includes(permissionName) && !checked) {
-            nextSelection = nextSelection.filter((name) => name !== permissionName);
-        } else if (checked) {
-            if (groupType === "radio") {
-                const groupPermissionNames = permissionGroups[groupIndex]?.permissions?.map(
-                    (permission) => permission.name
-                ) ?? [];
-
-                nextSelection = [
-                    ...nextSelection.filter((name) => !groupPermissionNames.includes(name)),
-                    permissionName,
-                ];
-            } else if (!nextSelection.includes(permissionName)) {
-                nextSelection.push(permissionName);
-            }
-        }
-
-        setSelection(nextSelection);
+        setSelection(
+            nextPermissionSelection({
+                selection,
+                permissionName,
+                checked,
+                groupType,
+                groupIndex,
+                permissionGroups,
+            })
+        );
     };
 
     const onSubmit = (formData) => {
@@ -86,7 +104,7 @@ export default function RoleForm({ isOpen, onClose, data = null, permissionGroup
 
         const payload = {
             ...formData,
-            permissions: selection,
+            permissions: pruneHiddenPermissions(selection, permissionGroups),
         };
 
         const visit = isEditing
@@ -159,45 +177,75 @@ export default function RoleForm({ isOpen, onClose, data = null, permissionGroup
 
                 <div className="mt-4 font-bold text-muted-foreground">Select Permissions</div>
 
-                {permissionGroups.map((resource, groupIndex) => (
-                    <div key={resource.group} className="mb-5 rounded-md">
-                        <div className="mb-2 text-md font-semibold">{resource.group}</div>
-                        <div>
-                            {resource.permissions.map((permission) => {
-                                const checked = selection.includes(permission.name);
+                <Accordion
+                    multiple
+                    value={openGroups}
+                    onValueChange={(value) => setOpenGroups(value ?? [])}
+                    className="rounded-lg border border-border/70"
+                >
+                    {permissionGroups.map((resource, groupIndex) => {
+                        const visiblePermissions = visibleGroupPermissions(resource, hiddenNames);
 
-                                return (
-                                    <div key={permission.name} className="mt-1 text-sm">
-                                        <label className="my-3 flex cursor-pointer flex-row items-start space-x-3">
-                                            <Switch
-                                                className="mt-0.5"
-                                                checked={checked}
-                                                onCheckedChange={(isChecked) =>
-                                                    handlePermissionChange(
-                                                        permission.name,
-                                                        Boolean(isChecked),
-                                                        resource.type ?? "checkbox",
-                                                        groupIndex
-                                                    )
-                                                }
-                                            />
-                                            <span
-                                                className={cn(
-                                                    "select-none leading-snug",
-                                                    checked
-                                                        ? "text-foreground"
-                                                        : "text-muted-foreground/70"
-                                                )}
-                                            >
-                                                {permission.label}
-                                            </span>
-                                        </label>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
+                        if (visiblePermissions.length === 0) {
+                            return null;
+                        }
+
+                        const summary = permissionGroupSummary(resource, selection, hiddenNames);
+
+                        return (
+                            <AccordionItem
+                                key={resource.group}
+                                value={resource.group}
+                                className="border-border/70 px-3"
+                            >
+                                <AccordionTrigger className="py-3 hover:no-underline">
+                                    <span className="flex min-w-0 flex-1 flex-col gap-0.5 pr-3 text-left">
+                                        <span className="text-sm font-semibold text-foreground">
+                                            {resource.group}
+                                        </span>
+                                        <span className="text-xs font-normal text-muted-foreground">
+                                            {summary}
+                                        </span>
+                                    </span>
+                                </AccordionTrigger>
+                                <AccordionContent className="pb-3 [&_p:not(:last-child)]:mb-0">
+                                    {visiblePermissions.map((permission) => {
+                                        const checked = selection.includes(permission.name);
+
+                                        return (
+                                            <div key={permission.name} className="mt-1 text-sm">
+                                                <label className="my-3 flex cursor-pointer flex-row items-start space-x-3">
+                                                    <Switch
+                                                        className="mt-0.5"
+                                                        checked={checked}
+                                                        onCheckedChange={(isChecked) =>
+                                                            handlePermissionChange(
+                                                                permission.name,
+                                                                Boolean(isChecked),
+                                                                resource.type ?? "checkbox",
+                                                                groupIndex
+                                                            )
+                                                        }
+                                                    />
+                                                    <span
+                                                        className={cn(
+                                                            "select-none leading-snug",
+                                                            checked
+                                                                ? "text-foreground"
+                                                                : "text-muted-foreground/70"
+                                                        )}
+                                                    >
+                                                        {permission.label}
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        );
+                                    })}
+                                </AccordionContent>
+                            </AccordionItem>
+                        );
+                    })}
+                </Accordion>
             </form>
         </Drawer>
     );

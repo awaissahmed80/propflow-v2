@@ -43,7 +43,7 @@ class TeamDestroyTest extends TestCase
             ->assertRedirect(Domain::portal('/teams'));
 
         $tenant->makeCurrent();
-        $this->assertSoftDeleted('teams', ['id' => $team->id], 'tenant');
+        $this->assertDatabaseMissing('teams', ['id' => $team->id], 'tenant');
         Tenant::forgetCurrent();
     }
 

@@ -102,9 +102,12 @@ class MakeTenantCommandTest extends TestCase
         ]);
 
         $this->assertTrue(Role::query()->where('name', 'Admin')->exists());
-        $this->assertTrue(Role::query()->where('name', 'Team Lead')->exists());
-        $this->assertTrue(Role::query()->where('name', 'Manager')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Business Manager')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Sales Team Lead')->exists());
         $this->assertTrue(Role::query()->where('name', 'Sales Executive')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Accounts Manager')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Accounts Team Lead')->exists());
+        $this->assertTrue(Role::query()->where('name', 'Finance')->exists());
 
         $this->assertSame(
             count(TenantPermissions::names()),
@@ -112,21 +115,31 @@ class MakeTenantCommandTest extends TestCase
         );
 
         $adminRole = Role::query()->where('name', 'Admin')->first();
-        $this->assertSame('admin with all permissions', $adminRole?->description);
+        $this->assertSame(
+            'Full control of the workspace — settings, users, and every module',
+            $adminRole?->description
+        );
         $this->assertTrue($admin->fresh()->hasRole('Admin'));
         $this->assertTrue($admin->can('manage admin'));
         $this->assertTrue($admin->can('work lead'));
+        $this->assertTrue($admin->can('manage booking'));
 
         $sales = Role::query()->where('name', 'Sales Executive')->first();
-        $this->assertEqualsCanonicalizing(['work lead'], $sales?->permissions->pluck('name')->all());
+        $this->assertEqualsCanonicalizing(
+            collect(TenantPermissions::defaultRoles())
+                ->firstWhere('name', 'Sales Executive')['permissions'],
+            $sales?->permissions->pluck('name')->all()
+        );
 
         $this->assertSame('Administration', Permission::query()->where('name', 'manage admin')->value('group'));
+        $this->assertSame('Users & Teams', Permission::query()->where('name', 'manage team')->value('group'));
         $this->assertGreaterThan(0, LeadStage::query()->count());
         $this->assertEqualsCanonicalizing(
             ['Acre', 'Hectare', 'Kanal', 'Marla', 'Sq. Feet', 'Sq. Meter', 'Sq. Yards'],
             MetaData::valuesFor(MetaData::TYPE_AREA)->all()
         );
         $this->assertCount(count(TenantPermissions::catalog()), TenantPermissions::groupedForForm());
+        $this->assertCount(9, TenantPermissions::catalog());
 
         Tenant::forgetCurrent();
     }

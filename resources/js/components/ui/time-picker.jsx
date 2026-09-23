@@ -9,8 +9,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
+
+const WHEEL_ITEM_HEIGHT = 36
 
 /**
  * @param {number} value
@@ -98,48 +99,235 @@ function formatDisplayTime(hours24, minutes, displayFormat) {
 
   const { hour12, period } = to12Hour(hours24)
 
-  return `${hour12}:${padNumber(minutes)} ${period}`
+  return `${padNumber(hour12)}:${padNumber(minutes)} ${period}`
 }
 
 /**
+ * Wheel-style scroll column — selected value stays vertically centered.
+ *
  * @param {object} props
  * @param {string} props.label
  * @param {Array<string | number>} props.options
  * @param {string | number} props.value
  * @param {(value: string | number) => void} props.onSelect
  * @param {boolean} [props.disabled]
+ * @param {boolean} [props.wheel]
+ * @param {boolean} [props.showLabel]
+ * @param {boolean} [props.hideHighlight] Shared highlight is drawn by parent
  */
-function TimeColumn({ label, options, value, onSelect, disabled = false }) {
-  const activeRef = React.useRef(null)
+function TimeColumn({
+  label,
+  options,
+  value,
+  onSelect,
+  disabled = false,
+  wheel = false,
+  showLabel = true,
+  hideHighlight = false,
+}) {
+  const scrollerRef = React.useRef(null)
+  const padRef = React.useRef(0)
+  const frameRef = React.useRef(0)
+  const settleRef = React.useRef(0)
+  const draggingRef = React.useRef(false)
+  const [pad, setPad] = React.useState(0)
 
-  React.useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "center" })
-  }, [value])
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => String(option) === String(value))
+  )
+
+  const scrollToIndex = React.useCallback((index, behavior = "auto") => {
+    const scroller = scrollerRef.current
+
+    if (!scroller) {
+      return
+    }
+
+    scroller.scrollTo({
+      top: index * WHEEL_ITEM_HEIGHT,
+      behavior,
+    })
+  }, [])
+
+  React.useLayoutEffect(() => {
+    if (!wheel) {
+      return undefined
+    }
+
+    const scroller = scrollerRef.current
+
+    if (!scroller) {
+      return undefined
+    }
+
+    const syncPad = () => {
+      const nextPad = Math.max(
+        0,
+        Math.round((scroller.clientHeight - WHEEL_ITEM_HEIGHT) / 2)
+      )
+
+      if (nextPad !== padRef.current) {
+        padRef.current = nextPad
+        setPad(nextPad)
+      }
+    }
+
+    syncPad()
+
+    const observer = new ResizeObserver(syncPad)
+    observer.observe(scroller)
+
+    return () => observer.disconnect()
+  }, [wheel])
+
+  React.useLayoutEffect(() => {
+    if (!wheel || pad <= 0 || draggingRef.current) {
+      return
+    }
+
+    scrollToIndex(selectedIndex, "auto")
+  }, [selectedIndex, pad, scrollToIndex, wheel])
+
+  const commitFromScroll = React.useCallback(() => {
+    const scroller = scrollerRef.current
+
+    if (!scroller) {
+      return
+    }
+
+    const index = Math.round(scroller.scrollTop / WHEEL_ITEM_HEIGHT)
+    const clamped = Math.max(0, Math.min(options.length - 1, index))
+    const next = options[clamped]
+
+    scrollToIndex(clamped, "smooth")
+
+    if (next !== undefined && String(next) !== String(value)) {
+      onSelect(next)
+    }
+  }, [onSelect, options, scrollToIndex, value])
+
+  const handleScroll = () => {
+    if (!wheel) {
+      return
+    }
+
+    draggingRef.current = true
+
+    window.cancelAnimationFrame(frameRef.current)
+    frameRef.current = window.requestAnimationFrame(() => {
+      const scroller = scrollerRef.current
+
+      if (!scroller) {
+        return
+      }
+
+      const index = Math.round(scroller.scrollTop / WHEEL_ITEM_HEIGHT)
+      const clamped = Math.max(0, Math.min(options.length - 1, index))
+      const next = options[clamped]
+
+      if (next !== undefined && String(next) !== String(value)) {
+        onSelect(next)
+      }
+    })
+
+    window.clearTimeout(settleRef.current)
+    settleRef.current = window.setTimeout(() => {
+      draggingRef.current = false
+      commitFromScroll()
+    }, 100)
+  }
+
+  if (!wheel) {
+    return (
+      <div className="flex min-w-14 flex-1 flex-col">
+        {showLabel ? (
+          <div className="shrink-0 px-1 pb-1 text-center text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            {label}
+          </div>
+        ) : null}
+        <div className="h-40 overflow-y-auto rounded-md border border-border bg-muted/20">
+          <div className="flex flex-col gap-0.5 p-1" role="listbox" aria-label={label}>
+            {options.map((option) => {
+              const selected = String(option) === String(value)
+
+              return (
+                <button
+                  key={String(option)}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  disabled={disabled}
+                  onClick={() => onSelect(option)}
+                  className={cn(
+                    "rounded-md px-2 py-1.5 text-center text-sm transition-colors",
+                    selected
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground hover:bg-accent hover:text-accent-foreground",
+                    disabled && "pointer-events-none opacity-50"
+                  )}
+                >
+                  {typeof option === "number" ? padNumber(option) : option}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex min-w-14 flex-1 flex-col">
-      <div className="px-1 pb-1 text-center text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-        {label}
-      </div>
-      <ScrollArea className="h-40 rounded-md border border-border bg-muted/20">
-        <div className="flex flex-col gap-0.5 p-1" role="listbox" aria-label={label}>
-          {options.map((option) => {
+    <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col self-stretch overflow-hidden">
+      {showLabel ? (
+        <div className="shrink-0 px-1 pb-2 text-center text-[11px] font-medium tracking-wide text-muted-foreground">
+          {label}
+        </div>
+      ) : null}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {!hideHighlight ? (
+          <div
+            className="pointer-events-none absolute inset-x-1 top-1/2 z-10 h-9 -translate-y-1/2 rounded-md bg-primary/20"
+            aria-hidden
+          />
+        ) : null}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-12 bg-gradient-to-b from-popover from-35% to-transparent"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-12 bg-gradient-to-t from-popover from-35% to-transparent"
+          aria-hidden
+        />
+        <div
+          ref={scrollerRef}
+          role="listbox"
+          aria-label={label}
+          onScroll={handleScroll}
+          className="absolute inset-0 z-0 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <div style={{ height: pad }} aria-hidden />
+          {options.map((option, index) => {
             const selected = String(option) === String(value)
 
             return (
               <button
                 key={String(option)}
-                ref={selected ? activeRef : undefined}
                 type="button"
                 role="option"
                 aria-selected={selected}
                 disabled={disabled}
-                onClick={() => onSelect(option)}
+                onClick={() => {
+                  onSelect(option)
+                  draggingRef.current = false
+                  scrollToIndex(index, "smooth")
+                }}
+                style={{ height: WHEEL_ITEM_HEIGHT }}
                 className={cn(
-                  "rounded-md px-2 py-1.5 text-center text-sm transition-colors",
+                  "box-border flex w-full shrink-0 items-center justify-center border-0 bg-transparent p-0 leading-none text-sm transition-colors",
                   selected
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground hover:bg-accent hover:text-accent-foreground",
+                    ? "font-semibold text-foreground"
+                    : "font-normal text-muted-foreground",
                   disabled && "pointer-events-none opacity-50"
                 )}
               >
@@ -147,8 +335,9 @@ function TimeColumn({ label, options, value, onSelect, disabled = false }) {
               </button>
             )
           })}
+          <div style={{ height: pad }} aria-hidden />
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }
@@ -166,6 +355,7 @@ function TimeColumn({ label, options, value, onSelect, disabled = false }) {
  * @param {boolean} [props.required]
  * @param {boolean} [props.disabled]
  * @param {boolean} [props.inline] Render columns only (for embedding in DatePicker)
+ * @param {boolean} [props.wheel] Wheel selector with centered selection
  * @param {"12h" | "24h"} [props.displayFormat]
  * @param {number} [props.minuteStep]
  * @param {string} [props.className]
@@ -181,6 +371,7 @@ function TimePicker({
   required = false,
   disabled = false,
   inline = false,
+  wheel = false,
   displayFormat = "12h",
   minuteStep = 5,
   className,
@@ -217,7 +408,87 @@ function TimePicker({
     onChange?.(toTimeValue(nextHours24, nextMinutes))
   }
 
-  const body = (
+  const wheelBody = (
+    <div
+      className="relative flex h-full min-h-0 w-full flex-col overflow-hidden px-2 pb-2 pt-2"
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="grid shrink-0 grid-cols-[1fr_1fr_auto] gap-1 px-1 pb-1">
+        <div className="text-center text-[11px] font-medium text-muted-foreground">
+          Hours
+        </div>
+        <div className="text-center text-[11px] font-medium text-muted-foreground">
+          Minutes
+        </div>
+        <div className="w-10" aria-hidden />
+      </div>
+
+      <div className="relative min-h-0 flex-1">
+        <div
+          className="pointer-events-none absolute inset-x-1 top-1/2 z-10 h-9 -translate-y-1/2 rounded-md bg-primary/25"
+          aria-hidden
+        />
+        <div className="absolute inset-0 z-0 flex min-h-0 gap-0">
+          {displayFormat === "24h" ? (
+            <TimeColumn
+              label="Hours"
+              options={hourOptions}
+              value={hours24}
+              disabled={disabled}
+              wheel
+              showLabel={false}
+              hideHighlight
+              onSelect={(nextHour) => emit(Number(nextHour), minutes)}
+            />
+          ) : (
+            <TimeColumn
+              label="Hours"
+              options={hourOptions}
+              value={hour12}
+              disabled={disabled}
+              wheel
+              showLabel={false}
+              hideHighlight
+              onSelect={(nextHour) =>
+                emit(to24Hour(Number(nextHour), period), minutes)
+              }
+            />
+          )}
+          <TimeColumn
+            label="Minutes"
+            options={minuteOptions}
+            value={minutes}
+            disabled={disabled}
+            wheel
+            showLabel={false}
+            hideHighlight
+            onSelect={(nextMinute) => emit(hours24, Number(nextMinute))}
+          />
+          {displayFormat === "12h" ? (
+            <div className="w-10 shrink-0">
+              <TimeColumn
+                label="Period"
+                options={["AM", "PM"]}
+                value={period}
+                disabled={disabled}
+                wheel
+                showLabel={false}
+                hideHighlight
+                onSelect={(nextPeriod) =>
+                  emit(
+                    to24Hour(hour12, /** @type {"AM" | "PM"} */ (nextPeriod)),
+                    minutes
+                  )
+                }
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+
+  const listBody = (
     <div
       className={cn("flex gap-2", inline ? "w-full" : "min-w-56 p-3")}
       onPointerDown={(event) => event.stopPropagation()}
@@ -262,13 +533,20 @@ function TimePicker({
     </div>
   )
 
+  const body = wheel ? wheelBody : listBody
+
   if (inline) {
     return (
-      <div className={cn("space-y-1.5", className)}>
+      <div
+        className={cn(
+          wheel ? "flex h-full min-h-0 w-full flex-col overflow-hidden" : "space-y-1.5",
+          className
+        )}
+      >
         {label ? (
           <Label
             htmlFor={id}
-            className="flex items-center text-xs font-medium text-muted-foreground"
+            className="flex shrink-0 items-center text-xs font-medium text-muted-foreground"
           >
             {label}
             {required ? <span className="ml-0.5 text-sm text-destructive">*</span> : null}
@@ -319,7 +597,7 @@ function TimePicker({
         </PopoverTrigger>
 
         <PopoverContent align="start" side="bottom" className="w-auto overflow-hidden p-0">
-          {body}
+          <div className="h-56 w-56">{body}</div>
         </PopoverContent>
       </Popover>
 

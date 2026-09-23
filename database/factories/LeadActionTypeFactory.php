@@ -26,6 +26,7 @@ class LeadActionTypeFactory extends Factory
             'title' => ucwords($title),
             'priority' => fake()->numberBetween(1, 20),
             'icon' => null,
+            'color' => LeadActionType::DEFAULT_COLOR,
             'is_system' => false,
             'is_enabled' => true,
         ];

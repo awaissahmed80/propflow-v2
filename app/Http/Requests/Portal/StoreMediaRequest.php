@@ -21,9 +21,8 @@ class StoreMediaRequest extends FormRequest
             'file' => [
                 'required',
                 'file',
-                'image',
-                'max:5120',
-                'mimes:jpg,jpeg,png,webp,gif',
+                'max:10240',
+                'mimes:jpg,jpeg,png,webp,gif,webm,ogg,mp3,wav,m4a,mpeg,mp4',
             ],
         ];
     }

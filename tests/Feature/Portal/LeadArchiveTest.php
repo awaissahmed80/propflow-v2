@@ -161,7 +161,7 @@ class LeadArchiveTest extends TestCase
         Tenant::forgetCurrent();
     }
 
-    public function test_archived_lead_can_be_soft_deleted(): void
+    public function test_archived_lead_can_be_hard_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_lead_destroy_archived');
 
@@ -180,7 +180,7 @@ class LeadArchiveTest extends TestCase
             ->assertRedirect(Domain::portal('/leads?view=archive'));
 
         $tenant->makeCurrent();
-        $this->assertSoftDeleted('leads', ['id' => $lead->id], 'tenant');
+        $this->assertDatabaseMissing('leads', ['id' => $lead->id], 'tenant');
         Tenant::forgetCurrent();
     }
 

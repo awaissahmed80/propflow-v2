@@ -62,6 +62,35 @@ class UnitUpdateTest extends TestCase
         Tenant::forgetCurrent();
     }
 
+    public function test_unit_size_update_rounds_to_two_decimals(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_unit_update_size');
+
+        $tenant->makeCurrent();
+        $project = Project::factory()->create();
+        $unit = Unit::factory()->create([
+            'project_id' => $project->id,
+            'size' => 100,
+        ]);
+        $code = $unit->code;
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->put(Domain::portal('/units/'.$code), [
+            'project_id' => $project->id,
+            'size' => 87.999,
+        ]);
+
+        $response->assertRedirect(Domain::portal('/inventory'));
+
+        $tenant->makeCurrent();
+        $unit->refresh();
+        $this->assertEquals(88.0, (float) $unit->size);
+        Tenant::forgetCurrent();
+    }
+
     /**
      * @return array{0: User, 1: Tenant}
      */

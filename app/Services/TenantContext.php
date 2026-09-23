@@ -31,7 +31,9 @@ class TenantContext
             ->with('tenant')
             ->where('status', TenantMembershipStatus::Active)
             ->whereHas('tenant', fn ($query) => $query->where('status', 'ACTIVE'))
-            ->get();
+            ->get()
+            ->sortBy(fn (TenantUser $membership) => mb_strtolower($membership->tenant?->name ?? ''))
+            ->values();
     }
 
     public function enter(Tenant $tenant, ?User $user = null): void

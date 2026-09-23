@@ -1,18 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
-import { destroy } from "@/actions/App/Http/Controllers/Portal/UnitController";
+import {
+    bulk as bulkUnits,
+    destroy,
+} from "@/actions/App/Http/Controllers/Portal/UnitController";
 import { index } from "@/routes/portal/inventory";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
+import { ProjectCardPopover } from "../../components/project-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CheckboxControl } from "@/components/ui/checkbox";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuSeparator,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FilterInput } from "@/components/ui/filter-input";
@@ -35,6 +43,7 @@ import {
     PaginationPrevious,
 } from "@/components/ui/pagination";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip } from "@/components/ui/tooltip";
 import { formatMoney } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import UnitForm from "./unit-form";
@@ -128,14 +137,43 @@ function formatSize(size, areaType) {
     return `${Number(size).toLocaleString()}${areaType ? ` ${areaType}` : ""}`;
 }
 
-function UnitRow({ unit, onEdit, onDelete }) {
+function UnitRow({ unit, projectCard, checked = false, onToggleCheck, onEdit, onDelete }) {
     return (
-        <tr className="border-b border-border last:border-0 hover:bg-muted/40">
+        <tr
+            className={cn(
+                "border-b border-border last:border-0 hover:bg-muted/40",
+                checked && "bg-muted/30"
+            )}
+        >
+            <td className="w-10 px-3 py-3 align-middle">
+                <CheckboxControl
+                    checked={checked}
+                    onCheckedChange={(value) => onToggleCheck?.(unit.id, Boolean(value))}
+                    aria-label={`Select ${unit.name || "unit"}`}
+                />
+            </td>
             <td className="px-4 py-3 align-middle">
                 <div className="font-medium text-foreground">{unit.name || "Unit"}</div>
             </td>
             <td className="px-4 py-3 align-middle text-sm text-foreground">
-                {unit.project?.title || "—"}
+                {projectCard ? (
+                    <ProjectCardPopover project={projectCard} className="gap-2.5">
+                        {projectCard.thumbnail ? (
+                            <img
+                                src={projectCard.thumbnail}
+                                alt=""
+                                className="size-8 shrink-0 rounded-md object-cover"
+                            />
+                        ) : (
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                                <Icon name="community-line" className="text-base" />
+                            </span>
+                        )}
+                        <span className="min-w-0 truncate">{projectCard.title}</span>
+                    </ProjectCardPopover>
+                ) : (
+                    "—"
+                )}
             </td>
             <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
                 {unit.block?.title || "—"}
@@ -148,6 +186,9 @@ function UnitRow({ unit, onEdit, onDelete }) {
             </td>
             <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
                 {formatSize(unit.size, unit.area_type)}
+            </td>
+            <td className="px-4 py-3 align-middle text-sm tabular-nums text-foreground">
+                {unit.quantity == null ? 1 : Number(unit.quantity)}
             </td>
             <td className="px-4 py-3 align-middle text-sm text-foreground">
                 {formatMoney(unit.price)}
@@ -167,12 +208,14 @@ function UnitRow({ unit, onEdit, onDelete }) {
             </td>
             <td className="px-4 py-3 align-middle text-right">
                 <DropdownMenu>
-                    <DropdownMenuTrigger
-                        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                        aria-label={`Actions for ${unit.name || "unit"}`}
-                    >
-                        <Icon name="more-2-fill" className="text-lg" />
-                    </DropdownMenuTrigger>
+                    <Tooltip content="More actions">
+                        <DropdownMenuTrigger
+                            className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                            aria-label={`Actions for ${unit.name || "unit"}`}
+                        >
+                            <Icon name="more-2-fill" className="text-lg" />
+                        </DropdownMenuTrigger>
+                    </Tooltip>
                     <DropdownMenuContent align="end" className="min-w-36">
                         <DropdownMenuItem className="gap-2" onClick={() => onEdit(unit)}>
                             <Icon name="pencil-line" className="text-base" />
@@ -206,12 +249,24 @@ function Inventory({
     const [unitFormOpen, setUnitFormOpen] = useState(false);
     const [editingUnit, setEditingUnit] = useState(null);
     const [blocks, setBlocks] = useState(formOptions.blocks || []);
+    const [checkedIds, setCheckedIds] = useState([]);
+    const [bulkBusy, setBulkBusy] = useState(false);
     const searchTimeout = useRef(null);
 
     const priceBounds = useMemo(
         () => formOptions.price || { min: 0, max: 10000000, step: 100000 },
         [formOptions.price]
     );
+
+    const projectsById = useMemo(() => {
+        const map = new Map();
+
+        for (const project of formOptions.projects || []) {
+            map.set(project.id, project);
+        }
+
+        return map;
+    }, [formOptions.projects]);
 
     const appliedFilters = useMemo(
         () => ({
@@ -241,12 +296,39 @@ function Inventory({
     }, [filters.q]);
 
     useEffect(() => {
+        setCheckedIds([]);
+    }, [
+        currentPage,
+        filters.q,
+        filters.project,
+        filters.status,
+        filters.type,
+        filters.price,
+    ]);
+
+    useEffect(() => {
         return () => {
             if (searchTimeout.current) {
                 clearTimeout(searchTimeout.current);
             }
         };
     }, []);
+
+    const pageUnitIds = useMemo(
+        () => units.map((unit) => unit.id).filter(Boolean),
+        [units]
+    );
+
+    const checkedOnPage = useMemo(
+        () => pageUnitIds.filter((id) => checkedIds.includes(id)),
+        [pageUnitIds, checkedIds]
+    );
+
+    const allPageChecked =
+        pageUnitIds.length > 0 && checkedOnPage.length === pageUnitIds.length;
+    const somePageChecked =
+        checkedOnPage.length > 0 && checkedOnPage.length < pageUnitIds.length;
+    const hasChecked = checkedIds.length > 0;
 
     const filterSections = useMemo(() => {
         const statusOptions = (formOptions.statuses || []).map((value) => ({
@@ -401,6 +483,93 @@ function Inventory({
         setUnitFormOpen(true);
     };
 
+    const toggleUnitCheck = (unitId, nextChecked) => {
+        setCheckedIds((prev) => {
+            if (nextChecked) {
+                return prev.includes(unitId) ? prev : [...prev, unitId];
+            }
+
+            return prev.filter((id) => id !== unitId);
+        });
+    };
+
+    const toggleCheckAllOnPage = (nextChecked) => {
+        setCheckedIds((prev) => {
+            if (nextChecked) {
+                const merged = new Set([...prev, ...pageUnitIds]);
+
+                return Array.from(merged);
+            }
+
+            return prev.filter((id) => !pageUnitIds.includes(id));
+        });
+    };
+
+    const runBulkAction = async ({
+        action,
+        status,
+        confirmMessage,
+        confirmTitle,
+        successMessage,
+        errorMessage,
+    }) => {
+        if (checkedIds.length === 0 || bulkBusy) {
+            return;
+        }
+
+        if (confirmMessage) {
+            const confirmed = await confirm(confirmMessage, confirmTitle || "Confirm");
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        setBulkBusy(true);
+
+        router.post(
+            bulkUnits.url(),
+            {
+                ids: checkedIds,
+                action,
+                ...(action === "status" ? { status } : {}),
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success(successMessage);
+                    setCheckedIds([]);
+                },
+                onError: (errors) =>
+                    toast.error(
+                        errors.ids ||
+                            errors.action ||
+                            errors.status ||
+                            errors.message ||
+                            errorMessage
+                    ),
+                onFinish: () => setBulkBusy(false),
+            }
+        );
+    };
+
+    const handleBulkStatus = (status) =>
+        runBulkAction({
+            action: "status",
+            status,
+            successMessage: "Status updated",
+            errorMessage: "Could not update status",
+        });
+
+    const handleBulkDelete = () =>
+        runBulkAction({
+            action: "destroy",
+            confirmMessage: `Delete ${checkedIds.length} unit${checkedIds.length === 1 ? "" : "s"} from inventory? This cannot be undone.`,
+            confirmTitle: "Delete units",
+            successMessage: "Units deleted",
+            errorMessage: "Could not delete units",
+        });
+
     const confirmDelete = async (unit) => {
         const label = unit.name || "this unit";
         const confirmed = await confirm(
@@ -458,6 +627,64 @@ function Inventory({
                         onApply={handleFiltersApply}
                     />
 
+                    {hasChecked ? (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger
+                                render={
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="gap-1.5 font-medium"
+                                        disabled={bulkBusy}
+                                    >
+                                        <Icon name="cursor-line" className="text-base" />
+                                        Bulk Actions
+                                        <Icon name="arrow-down-s-line" className="text-base opacity-70" />
+                                    </Button>
+                                }
+                            />
+                            <DropdownMenuContent align="start" className="min-w-52">
+                                {(formOptions.statuses || []).length > 0 ? (
+                                    <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger>
+                                            Set status
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent className="min-w-44">
+                                            {(formOptions.statuses || []).map((status) => (
+                                                <DropdownMenuItem
+                                                    key={status}
+                                                    className="gap-2"
+                                                    disabled={bulkBusy}
+                                                    onClick={() => handleBulkStatus(status)}
+                                                >
+                                                    <span
+                                                        className="size-2 shrink-0 rounded-sm"
+                                                        style={{
+                                                            backgroundColor:
+                                                                STATUS_COLORS[status] ||
+                                                                "var(--muted-foreground)",
+                                                        }}
+                                                        aria-hidden
+                                                    />
+                                                    {STATUS_LABELS[status] || status}
+                                                </DropdownMenuItem>
+                                            ))}
+                                        </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
+                                ) : null}
+
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    disabled={bulkBusy}
+                                    onClick={handleBulkDelete}
+                                >
+                                    Delete
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    ) : null}
+
                     <Button type="button" className="ml-auto shrink-0" onClick={openCreate}>
                         <Icon name="add-line" className="text-base" />
                         Add Unit
@@ -512,12 +739,23 @@ function Inventory({
                                 <table className="w-full table-fixed text-left text-sm">
                                     <thead className="border-b border-border bg-muted/40 text-muted-foreground">
                                         <tr>
+                                            <th className="w-10 px-3 py-3">
+                                                <CheckboxControl
+                                                    checked={allPageChecked}
+                                                    indeterminate={somePageChecked}
+                                                    onCheckedChange={(value) =>
+                                                        toggleCheckAllOnPage(Boolean(value))
+                                                    }
+                                                    aria-label="Select all units on this page"
+                                                />
+                                            </th>
                                             <th className="w-44 px-4 py-3 font-medium">Unit</th>
                                             <th className="w-40 px-4 py-3 font-medium">Project</th>
                                             <th className="w-32 px-4 py-3 font-medium">Block</th>
                                             <th className="w-28 px-4 py-3 font-medium">Type</th>
                                             <th className="w-36 px-4 py-3 font-medium">Place</th>
                                             <th className="w-28 px-4 py-3 font-medium">Size</th>
+                                            <th className="w-20 px-4 py-3 font-medium">Qty</th>
                                             <th className="w-28 px-4 py-3 font-medium">Price</th>
                                             <th className="w-28 px-4 py-3 font-medium">Status</th>
                                             <th className="w-16 px-4 py-3 text-right font-medium" />
@@ -528,6 +766,12 @@ function Inventory({
                                             <UnitRow
                                                 key={unit.id}
                                                 unit={unit}
+                                                projectCard={
+                                                    projectsById.get(unit.project_id) ||
+                                                    unit.project
+                                                }
+                                                checked={checkedIds.includes(unit.id)}
+                                                onToggleCheck={toggleUnitCheck}
                                                 onEdit={openEdit}
                                                 onDelete={confirmDelete}
                                             />

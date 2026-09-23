@@ -41,6 +41,10 @@ trait LogUserActivity
         });
 
         static::deleted(function (Model $model): void {
+            if (self::isHardDeleting($model)) {
+                return;
+            }
+
             app(ActivityLogger::class)->record($model, 'deleted');
         });
 
@@ -49,5 +53,14 @@ trait LogUserActivity
                 app(ActivityLogger::class)->record($model, 'restored');
             });
         }
+    }
+
+    private static function isHardDeleting(Model $model): bool
+    {
+        if (in_array(SoftDeletes::class, class_uses_recursive($model::class), true)) {
+            return $model->isForceDeleting();
+        }
+
+        return true;
     }
 }

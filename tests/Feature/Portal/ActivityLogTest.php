@@ -119,13 +119,48 @@ class ActivityLogTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('activity/index')
-                ->where('section', 'contacts')
-                ->has('sections')
-                ->has('logs', 2)
-                ->where('logs.0.section', 'contacts')
-                ->where('logs.0.subject.label', 'Ayesha Khan')
-                ->where('logs.1.section', 'contacts')
-                ->where('logs.0.user.display_name', $user->display_name)
+                ->where('filters.section', ['contacts'])
+                ->has('formOptions.sections')
+                ->has('formOptions.actions')
+                ->has('formOptions.users')
+                ->has('logs.data', 2)
+                ->where('logs.data.0.section', 'contacts')
+                ->where('logs.data.0.subject.label', 'Ayesha Khan')
+                ->where('logs.data.1.section', 'contacts')
+                ->where('logs.data.0.user.display_name', $user->display_name)
+            );
+    }
+
+    public function test_activity_page_filters_by_action_and_actor(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_activity_log_filters');
+
+        $this->actingAs($user);
+        $tenant->makeCurrent();
+        $lead = Lead::factory()->create([
+            'user_id' => $user->id,
+            'source' => 'Website',
+            'notes' => 'Original',
+        ]);
+        $lead->update(['notes' => 'Changed']);
+        Contact::factory()->create([
+            'first_name' => 'Sara',
+            'last_name' => 'Ali',
+        ]);
+        Tenant::forgetCurrent();
+
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->get(Domain::portal('/activity?action=updated&user='.$user->id))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('activity/index')
+                ->where('filters.action', ['updated'])
+                ->where('filters.user', [(string) $user->id])
+                ->has('logs.data', 1)
+                ->where('logs.data.0.action', 'updated')
+                ->where('logs.data.0.section', 'leads')
+                ->where('logs.data.0.user.display_name', $user->display_name)
             );
     }
 

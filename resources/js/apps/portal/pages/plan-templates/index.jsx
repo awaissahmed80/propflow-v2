@@ -302,7 +302,7 @@ export default function PlanTemplatesIndex({ templates = [], filters = {}, formO
         <Layout>
             <Layout.Header
                 metaTitle="Plan Templates"
-                breadcrumbs={[{ label: "Operations" }, { label: "Plan Templates" }]}
+                breadcrumbs={[{ label: "Sales" }, { label: "Plan Templates" }]}
             />
             <Layout.Content className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                 <Layout.Toolbar className="justify-between">

@@ -7,6 +7,7 @@ use App\Http\Requests\Portal\StoreContactRequest;
 use App\Http\Requests\Portal\UpdateContactRequest;
 use App\Http\Resources\Portal\ContactResource;
 use App\Models\Contact;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -58,6 +59,18 @@ class ContactController extends Controller
         ]);
     }
 
+    /**
+     * Lean contact card payload for popovers (lazy-loaded).
+     */
+    public function card(Contact $contact): JsonResponse
+    {
+        $contact->loadCount('leads');
+
+        return response()->json([
+            'data' => (new ContactResource($contact))->resolve(),
+        ]);
+    }
+
     public function store(StoreContactRequest $request): RedirectResponse
     {
         $validated = $request->validated();
@@ -82,12 +95,12 @@ class ContactController extends Controller
         $contact->fill($validated);
         $contact->save();
 
-        return to_route('portal.contacts.index');
+        return back(fallback: route('portal.contacts.index'));
     }
 
     public function destroy(Contact $contact): RedirectResponse
     {
-        $contact->delete();
+        $contact->forceDelete();
 
         return to_route('portal.contacts.index');
     }

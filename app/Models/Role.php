@@ -29,6 +29,31 @@ class Role extends SpatieRole
     }
 
     /**
+     * Default (system) roles by power, then custom roles alphabetically.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeOrderedByPower(Builder $query): Builder
+    {
+        $defaults = self::defaultNames();
+        $bindings = [];
+        $parts = ['CASE name'];
+
+        foreach ($defaults as $index => $name) {
+            $parts[] = 'WHEN ? THEN '.$index;
+            $bindings[] = $name;
+        }
+
+        $parts[] = 'ELSE 1000 END';
+
+        return $query
+            ->orderByDesc('is_system')
+            ->orderByRaw(implode(' ', $parts), $bindings)
+            ->orderBy('name');
+    }
+
+    /**
      * @return list<string>
      */
     public static function defaultNames(): array

@@ -44,7 +44,7 @@ class ProjectProgressDestroyTest extends TestCase
             ->assertRedirect(Domain::portal('/projects/'.$project->code));
 
         $tenant->makeCurrent();
-        $this->assertSoftDeleted('project_progress', [
+        $this->assertDatabaseMissing('project_progress', [
             'id' => $milestone->id,
         ], 'tenant');
         Tenant::forgetCurrent();

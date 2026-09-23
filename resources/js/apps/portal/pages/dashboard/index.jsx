@@ -43,8 +43,12 @@ import { HEAT_LABELS } from "@/lib/heat";
 import { cn } from "@/lib/utils";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
-import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+    isPagePending,
+    PageSkeleton,
+    SkeletonList,
+    SkeletonPanel,
+} from "../../components/page-skeleton";
 
 const STATUS_LABELS = {
     AVAILABLE: "Available",
@@ -310,7 +314,7 @@ function Dashboard({
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="pt-4">
-                                    <Deferred data="pipeline" fallback={<Skeleton className="h-56 w-full rounded-lg" />}>
+                                    <Deferred data="pipeline" fallback={<SkeletonPanel className="h-56" />}>
                                     {pipelineTotal === 0 ? (
                                         <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
                                             No leads in the pipeline yet
@@ -374,7 +378,7 @@ function Dashboard({
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="pt-4">
-                                    <Deferred data="inventory" fallback={<Skeleton className="h-56 w-full rounded-lg" />}>
+                                    <Deferred data="inventory" fallback={<SkeletonPanel className="h-56" />}>
                                     {inventoryTotal === 0 ? (
                                         <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
                                             No inventory units yet
@@ -452,7 +456,7 @@ function Dashboard({
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-3 pt-4">
-                                    <Deferred data="heat" fallback={<Skeleton className="h-40 w-full rounded-lg" />}>
+                                    <Deferred data="heat" fallback={<SkeletonPanel />}>
                                     {heat.every((row) => row.count === 0) ? (
                                         <p className="py-8 text-center text-sm text-muted-foreground">
                                             No heat tags to show yet
@@ -493,7 +497,7 @@ function Dashboard({
                                     <CardDescription>Where enquiries come from</CardDescription>
                                 </CardHeader>
                                 <CardContent className="pt-4">
-                                    <Deferred data="leadSources" fallback={<Skeleton className="h-48 w-full rounded-lg" />}>
+                                    <Deferred data="leadSources" fallback={<SkeletonPanel className="h-48" />}>
                                     {sourceChartData.length === 0 ? (
                                         <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
                                             No source data yet
@@ -551,7 +555,7 @@ function Dashboard({
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="space-y-4 pt-4">
-                                    <Deferred data="projects" fallback={<Skeleton className="h-48 w-full rounded-lg" />}>
+                                    <Deferred data="projects" fallback={<SkeletonPanel />}>
                                     {projects.length === 0 ? (
                                         <p className="py-8 text-center text-sm text-muted-foreground">
                                             No projects yet
@@ -602,7 +606,7 @@ function Dashboard({
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="pt-2">
-                                    <Deferred data="dueSoon" fallback={<Skeleton className="h-48 w-full rounded-lg" />}>
+                                    <Deferred data="dueSoon" fallback={<SkeletonList rows={4} />}>
                                     {dueSoon.length === 0 ? (
                                         <p className="py-10 text-center text-sm text-muted-foreground">
                                             Nothing due soon — nice and clear.
@@ -632,7 +636,7 @@ function Dashboard({
                                     </CardAction>
                                 </CardHeader>
                                 <CardContent className="pt-2">
-                                    <Deferred data="recentLeads" fallback={<Skeleton className="h-48 w-full rounded-lg" />}>
+                                    <Deferred data="recentLeads" fallback={<SkeletonList rows={4} />}>
                                     {recentLeads.length === 0 ? (
                                         <p className="py-10 text-center text-sm text-muted-foreground">
                                             New leads will show up here.

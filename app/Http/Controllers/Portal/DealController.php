@@ -13,6 +13,7 @@ use App\Http\Requests\Portal\VerifyBookingRequest;
 use App\Models\Asset;
 use App\Models\Order;
 use App\Models\OrderPayment;
+use App\Models\PaymentAccount;
 use App\Models\PaymentInstallment;
 use App\Models\Setting;
 use App\Models\Tenant;
@@ -32,7 +33,7 @@ class DealController extends Controller
 
     public function storeBooking(VerifyBookingRequest $request, Order $order): RedirectResponse
     {
-        $this->deals->verify($order, $request->validated(), $request->user()?->id);
+        $this->deals->completeBookingKyc($order, $request->validated(), $request->user()?->id);
 
         return back();
     }
@@ -94,7 +95,7 @@ class DealController extends Controller
 
     public function enterBookingKyc(Order $order): RedirectResponse
     {
-        $this->deals->enterBookingKyc($order, request()->user()?->id);
+        $this->deals->verify($order, request()->user()?->id);
 
         return back();
     }
@@ -226,14 +227,27 @@ class DealController extends Controller
      */
     protected function bankSettings(): array
     {
-        return Setting::group(Setting::GROUP_GENERAL, [
-            'bank_name' => null,
-            'account_title' => null,
-            'account_number' => null,
-            'iban' => null,
-            'swift' => null,
-            'branch' => null,
-        ]);
+        $account = PaymentAccount::defaultFor(PaymentAccount::TYPE_BANK);
+
+        if ($account === null) {
+            return [
+                'bank_name' => null,
+                'account_title' => null,
+                'account_number' => null,
+                'iban' => null,
+                'swift' => null,
+                'branch' => null,
+            ];
+        }
+
+        return [
+            'bank_name' => $account->bank_name,
+            'account_title' => $account->account_title,
+            'account_number' => $account->account_number,
+            'iban' => $account->iban,
+            'swift' => $account->swift,
+            'branch' => $account->branch,
+        ];
     }
 
     protected function legalName(): string

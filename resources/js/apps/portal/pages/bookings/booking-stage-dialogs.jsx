@@ -81,7 +81,6 @@ export function resolveBookingStages(orderStages = []) {
             id: stage.label,
             label: stage.title || stage.label,
             color: stage.color || null,
-            statuses: stage.statuses || [],
         }));
 
     return rows.length > 0 ? rows : FALLBACK_BOOKING_STAGES;
@@ -97,16 +96,15 @@ export function stageTitle(stage, orderStages = []) {
     return FALLBACK_BOOKING_STAGES.find((item) => item.id === stage)?.label || stage || "Token";
 }
 
-export function statusTitle(status, stage, orderStages = []) {
+export function statusTitle(status, orderStatuses = []) {
     if (!status) {
         return null;
     }
 
-    const stageRow = (orderStages || []).find((item) => item.label === stage || item.id === stage);
-    const nested = (stageRow?.statuses || []).find((item) => item.label === status);
+    const match = (orderStatuses || []).find((item) => item.label === status);
 
-    if (nested?.title) {
-        return nested.title;
+    if (match?.title) {
+        return match.title;
     }
 
     return String(status)
@@ -115,11 +113,16 @@ export function statusTitle(status, stage, orderStages = []) {
         .join(" ");
 }
 
-export function statusColor(status, stage, orderStages = []) {
-    const stageRow = (orderStages || []).find((item) => item.label === stage || item.id === stage);
-    const nested = (stageRow?.statuses || []).find((item) => item.label === status);
+export function statusColor(status, orderStatuses = []) {
+    const match = (orderStatuses || []).find((item) => item.label === status);
 
-    return nested?.color || stageRow?.color || null;
+    return match?.color || null;
+}
+
+export function stageColor(stage, orderStages = []) {
+    const match = (orderStages || []).find((item) => item.label === stage || item.id === stage);
+
+    return match?.color || null;
 }
 
 export function BookingStageDialog({ open, onOpenChange, action, order, deal }) {
@@ -155,16 +158,16 @@ export function BookingStageDialog({ open, onOpenChange, action, order, deal }) 
                         {deal?.net_price != null ? ` · Net ${formatMoney(deal.net_price)}` : ""}
                     </DialogDescription>
                 </DialogHeader>
-                {action === "verify" || action === "booking" ? (
+                {action === "verify" ? (
+                    <VerifyTokenForm order={order} onDone={() => onOpenChange(false)} />
+                ) : null}
+                {action === "enter_kyc" || action === "booking" ? (
                     <BookingKycForm
                         order={order}
                         deal={deal}
                         errors={errors}
                         onDone={() => onOpenChange(false)}
                     />
-                ) : null}
-                {action === "enter_kyc" ? (
-                    <EnterKycForm order={order} onDone={() => onOpenChange(false)} />
                 ) : null}
                 {action === "plan" ? (
                     <PlanForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
@@ -207,8 +210,8 @@ function BookingKycForm({ order, deal, errors, onDone }) {
         sector: bookingData.sector || "",
         plot_or_file: bookingData.plot_or_file || order.unit?.name || "",
         category: bookingData.category || "standard",
-        premium: bookingData.premium ? String(bookingData.premium) : "0",
-        discount: bookingData.discount ? String(bookingData.discount) : "0",
+        premium: bookingData.premium != null ? Number(bookingData.premium) : 0,
+        discount: bookingData.discount != null ? Number(bookingData.discount) : 0,
     });
 
     return (
@@ -216,7 +219,7 @@ function BookingKycForm({ order, deal, errors, onDone }) {
             className="space-y-3"
             onSubmit={(event) => {
                 event.preventDefault();
-                post(booking.url(order.code), form, "Token verified", onDone);
+                post(booking.url(order.code), form, "Booking & KYC saved", onDone);
             }}
         >
             <div className="grid gap-3 sm:grid-cols-2">
@@ -271,44 +274,46 @@ function BookingKycForm({ order, deal, errors, onDone }) {
                     options={(deal?.categories || []).map((item) => ({ value: item.id, label: item.label }))}
                     onValueChange={(value) => setForm((current) => ({ ...current, category: value || "standard" }))}
                 />
-                <Input
+                <NumberInput
                     label="Premium"
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    min={0}
+                    step={0.01}
+                    allowDecimal
                     value={form.premium}
-                    onChange={(event) => setForm((current) => ({ ...current, premium: event.target.value }))}
+                    error={errors.premium}
+                    onChange={(value) => setForm((current) => ({ ...current, premium: value ?? 0 }))}
                 />
-                <Input
+                <NumberInput
                     label="Discount"
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    min={0}
+                    step={0.01}
+                    allowDecimal
                     value={form.discount}
-                    onChange={(event) => setForm((current) => ({ ...current, discount: event.target.value }))}
+                    error={errors.discount}
+                    onChange={(value) => setForm((current) => ({ ...current, discount: value ?? 0 }))}
                 />
             </div>
             <DialogFooter>
-                <Button type="submit">Verify token</Button>
+                <Button type="submit">Save &amp; activate</Button>
             </DialogFooter>
         </form>
     );
 }
 
-function EnterKycForm({ order, onDone }) {
+function VerifyTokenForm({ order, onDone }) {
     return (
         <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-                Move this file into Booking &amp; KYC so the payment plan can be prepared.
+                Confirm the token payment and move this booking into Booking &amp; KYC.
             </p>
             <DialogFooter>
                 <Button
                     type="button"
                     onClick={() =>
-                        post(enterBookingKyc.url(order.code), {}, "Entered Booking & KYC", onDone)
+                        post(enterBookingKyc.url(order.code), {}, "Token verified", onDone)
                     }
                 >
-                    Enter Booking &amp; KYC
+                    Verify token
                 </Button>
             </DialogFooter>
         </div>
@@ -330,13 +335,13 @@ function PlanForm({ order, deal, errors, onDone }) {
 
     const [form, setForm] = useState({
         template_id: initialTemplate,
-        down_payment: saved.down_payment ? String(saved.down_payment) : "",
-        handover_percent: saved.handover_percent ? String(saved.handover_percent) : "10",
-        installment_count: saved.installment_count ? String(saved.installment_count) : "12",
+        down_payment: saved.down_payment != null ? Number(saved.down_payment) : null,
+        handover_percent: saved.handover_percent != null ? Number(saved.handover_percent) : 10,
+        installment_count: saved.installment_count != null ? Number(saved.installment_count) : 12,
         frequency: saved.frequency || "monthly",
         first_due_on: "",
         late_fee_basis: saved.late_fee_basis || "monthly",
-        late_fee_rate: saved.late_fee_rate ? String(saved.late_fee_rate) : "0",
+        late_fee_rate: saved.late_fee_rate != null ? Number(saved.late_fee_rate) : 0,
     });
 
     useEffect(() => {
@@ -349,14 +354,15 @@ function PlanForm({ order, deal, errors, onDone }) {
         setForm((current) => ({
             ...current,
             frequency: selected.frequency || current.frequency,
-            installment_count: String(selected.count ?? current.installment_count),
+            installment_count:
+                selected.count != null ? Number(selected.count) : current.installment_count,
             handover_percent:
                 selected.handover_percent != null
-                    ? String(selected.handover_percent)
+                    ? Number(selected.handover_percent)
                     : current.handover_percent,
             down_payment:
                 selected.down_payment_percent != null && deal?.net_price
-                    ? String(Math.round((Number(deal.net_price) * Number(selected.down_payment_percent)) / 100))
+                    ? Math.round((Number(deal.net_price) * Number(selected.down_payment_percent)) / 100)
                     : current.down_payment,
         }));
     }, [form.template_id]);
@@ -383,37 +389,38 @@ function PlanForm({ order, deal, errors, onDone }) {
                 onValueChange={(value) => setForm((current) => ({ ...current, template_id: value || "custom" }))}
             />
             <div className="grid gap-3 sm:grid-cols-2">
-                <Input
+                <NumberInput
                     label="Down payment"
                     required
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    min={0}
+                    step={0.01}
+                    allowDecimal
                     value={form.down_payment}
                     error={errors.down_payment}
-                    onChange={(event) => setForm((current) => ({ ...current, down_payment: event.target.value }))}
+                    onChange={(value) => setForm((current) => ({ ...current, down_payment: value }))}
                 />
-                <Input
+                <NumberInput
                     label="Handover %"
                     required
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    allowDecimal
                     value={form.handover_percent}
                     error={errors.handover_percent}
-                    onChange={(event) => setForm((current) => ({ ...current, handover_percent: event.target.value }))}
+                    onChange={(value) => setForm((current) => ({ ...current, handover_percent: value }))}
                 />
                 {isCustom ? (
                     <>
-                        <Input
+                        <NumberInput
                             label="Installments"
-                            type="number"
-                            min="1"
-                            max="120"
+                            min={1}
+                            max={120}
+                            step={1}
                             value={form.installment_count}
-                            onChange={(event) =>
-                                setForm((current) => ({ ...current, installment_count: event.target.value }))
+                            error={errors.installment_count}
+                            onChange={(value) =>
+                                setForm((current) => ({ ...current, installment_count: value }))
                             }
                         />
                         <SelectBox
@@ -592,7 +599,7 @@ function TransferForm({ order, deal, errors, onDone }) {
             }}
         >
             <p className="text-sm text-muted-foreground">
-                Transfer stays on Active with the new buyer. Payment history remains on this file.
+                Transfer this file to a new buyer. Stage stays the same; payment history remains on this booking.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
                 <Input
@@ -631,7 +638,7 @@ function TransferForm({ order, deal, errors, onDone }) {
                 No Demand Certificate cleared
             </label>
             {(deal?.transfers || []).length > 0 ? (
-                <ul className="space-y-1.5 rounded-md border border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                <ul className="space-y-1.5 rounded-md border border-border/70 px-3 py-2 text-sm text-muted-foreground">
                     {deal.transfers.map((row) => (
                         <li key={row.id}>
                             {row.from || "Previous"} → {row.to || "New"} · Outstanding{" "}

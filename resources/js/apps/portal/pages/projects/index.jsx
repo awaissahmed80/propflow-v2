@@ -2,10 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import { destroy } from "@/actions/App/Http/Controllers/Portal/ProjectController";
-import { index, show } from "@/routes/portal/projects";
+import { index } from "@/routes/portal/projects";
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
+import {
+    openProject,
+    PROJECT_STATUS_LABELS,
+    ProjectCard,
+    ProjectProgressBar,
+    ProjectThumb,
+    projectLocationLabel,
+    projectStatusTone,
+} from "../../components/project-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,58 +27,30 @@ import {
 import { FilterInput } from "@/components/ui/filter-input";
 import { Icon } from "@/components/ui/icon";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import ProjectForm from "./project-form";
 
 const VIEW_STORAGE_KEY = "projects.view";
 
-const STATUS_LABELS = {
-    draft: "Draft",
-    active: "Active",
-    on_hold: "On hold",
-    completed: "Completed",
-    archived: "Archived",
-};
-
-function statusTone(status) {
-    switch (status) {
-        case "active":
-            return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400";
-        case "completed":
-            return "bg-primary/10 text-primary";
-        case "on_hold":
-            return "bg-amber-500/15 text-amber-700 dark:text-amber-400";
-        case "archived":
-            return "bg-muted text-muted-foreground";
-        default:
-            return "bg-muted text-muted-foreground";
-    }
-}
-
-function projectLocation(project) {
-    return [project.city, project.location, project.country].filter(Boolean).join(" · ") || "—";
-}
-
-function openProject(project) {
-    router.visit(show.url(project.code));
-}
-
 function ProjectActionsMenu({ project, onDelete, alwaysVisible = false }) {
     return (
         <DropdownMenu>
-            <DropdownMenuTrigger
-                className={cn(
-                    "pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground",
-                    "transition-opacity hover:bg-muted hover:text-foreground",
-                    alwaysVisible
-                        ? "opacity-100"
-                        : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
-                )}
-                aria-label={`Actions for ${project.title}`}
-                onClick={(event) => event.stopPropagation()}
-            >
-                <Icon name="more-2-fill" className="text-lg" />
-            </DropdownMenuTrigger>
+            <Tooltip content="More actions">
+                <DropdownMenuTrigger
+                    className={cn(
+                        "pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+                        "transition-opacity hover:bg-muted hover:text-foreground",
+                        alwaysVisible
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
+                    )}
+                    aria-label={`Actions for ${project.title}`}
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <Icon name="more-2-fill" className="text-lg" />
+                </DropdownMenuTrigger>
+            </Tooltip>
             <DropdownMenuContent align="end" className="min-w-40">
                 <DropdownMenuItem className="gap-2" onClick={() => openProject(project)}>
                     <Icon name="eye-line" className="text-base" />
@@ -86,111 +67,6 @@ function ProjectActionsMenu({ project, onDelete, alwaysVisible = false }) {
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
-    );
-}
-
-function ProjectThumb({ project, className }) {
-    if (project.thumbnail) {
-        return (
-            <img
-                src={project.thumbnail}
-                alt=""
-                className={cn("size-full object-cover", className)}
-            />
-        );
-    }
-
-    return (
-        <div
-            className={cn(
-                "flex size-full items-center justify-center bg-primary/10 text-primary",
-                className
-            )}
-        >
-            <Icon name="community-line" className="text-2xl" />
-        </div>
-    );
-}
-
-function ProgressBar({ value }) {
-    const progress = Math.min(100, Math.max(0, Number(value) || 0));
-
-    return (
-        <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Progress</span>
-                <span>{progress}%</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                    className="h-full rounded-full bg-primary transition-[width]"
-                    style={{ width: `${progress}%` }}
-                />
-            </div>
-        </div>
-    );
-}
-
-function ProjectCard({ project, onDelete }) {
-    return (
-        <article
-            role="link"
-            tabIndex={0}
-            aria-label={`View ${project.title}`}
-            className={cn(
-                "group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-card",
-                "transition-[transform,box-shadow,border-color] duration-200",
-                "hover:-translate-y-0.5 hover:shadow-[0_16px_48px_-16px_rgba(0,0,0,0.14)]",
-                "dark:hover:shadow-[0_16px_48px_-16px_rgba(0,0,0,0.5)]",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            )}
-            onClick={() => openProject(project)}
-            onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    openProject(project);
-                }
-            }}
-        >
-            <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-                <ProjectThumb project={project} />
-                <div className="absolute top-3 right-3 z-10">
-                    <ProjectActionsMenu project={project} onDelete={onDelete} />
-                </div>
-            </div>
-
-            <div className="relative flex flex-1 flex-col gap-3 p-4">
-                <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="truncate text-base font-semibold tracking-tight text-foreground">
-                            {project.title}
-                        </h2>
-                    </div>
-                    <p className="truncate text-sm text-muted-foreground">
-                        {projectLocation(project)}
-                    </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                    <Badge className={cn("rounded-sm border-0 font-medium", statusTone(project.status))}>
-                        {STATUS_LABELS[project.status] || project.status}
-                    </Badge>
-                    {project.type ? (
-                        <span className="text-xs capitalize text-muted-foreground">
-                            {project.type}
-                        </span>
-                    ) : null}
-                </div>
-
-                <ProgressBar value={project.progress} />
-
-                <div className="mt-auto flex items-center gap-3 pt-1 text-xs text-muted-foreground">
-                    <span>{project.blocks_count ?? 0} blocks</span>
-                    <span>·</span>
-                    <span>{project.units_count ?? 0} units</span>
-                </div>
-            </div>
-        </article>
     );
 }
 
@@ -219,27 +95,31 @@ function ProjectListRow({ project, onDelete }) {
             </div>
 
             <div className="relative min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="truncate text-base font-bold tracking-tight text-foreground">
+                {project.type ? (
+                    <p className="truncate text-xs font-medium capitalize text-muted-foreground">
+                        {project.type}
+                    </p>
+                ) : null}
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <div className="truncate text-lg font-bold tracking-tight text-foreground">
                         {project.title}
                     </div>
+                    <Badge
+                        className={cn(
+                            "shrink-0 rounded-sm border-0 font-medium",
+                            projectStatusTone(project.status)
+                        )}
+                    >
+                        {PROJECT_STATUS_LABELS[project.status] || project.status}
+                    </Badge>
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {projectLocation(project)}
+                    {projectLocationLabel(project)}
                 </div>
             </div>
 
-            <Badge
-                className={cn(
-                    "relative hidden shrink-0 rounded-sm border-0 font-medium sm:inline-flex",
-                    statusTone(project.status)
-                )}
-            >
-                {STATUS_LABELS[project.status] || project.status}
-            </Badge>
-
             <div className="relative hidden w-28 shrink-0 md:block">
-                <ProgressBar value={project.progress} />
+                <ProjectProgressBar value={project.progress} />
             </div>
 
             <div className="relative shrink-0">

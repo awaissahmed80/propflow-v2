@@ -7,10 +7,15 @@ use App\Http\Requests\Portal\StoreProjectRequest;
 use App\Http\Requests\Portal\UpdateProjectRequest;
 use App\Http\Resources\Portal\ProjectResource;
 use App\Http\Resources\Portal\UnitResource;
+use App\Models\LogActivity;
 use App\Models\MetaData;
 use App\Models\Project;
+use App\Models\Tenant;
+use App\Models\TenantUser;
+use App\Models\User;
 use App\Support\AssetManager;
 use App\Support\MapEmbed;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -82,9 +87,18 @@ class ProjectController extends Controller
 
         $payload['documents'] = $projectModel->documents->map(fn ($link) => [
             'id' => $link->asset_id,
+            'link_id' => $link->id,
             'src' => $this->assets->url($link->asset),
-            'title' => $link->asset?->name ?? 'Document',
+            'url' => $this->assets->url($link->asset),
+            'label' => $link->label,
+            'is_secure' => (bool) $link->is_secure,
+            'title' => $link->label ?: ($link->asset?->name ?? 'Document'),
+            'name' => $link->asset?->name ?? 'Document',
             'type' => $link->asset?->type,
+            'thumbnail_url' => filled($link->asset?->thumbnail)
+                ? url('assets/'.$link->asset->thumbnail)
+                : null,
+            'kind' => 'document',
             'created_at' => $link->created_at?->toIso8601String(),
         ])->values()->all();
 
@@ -117,6 +131,7 @@ class ProjectController extends Controller
             'units' => UnitResource::collection($recentUnits)->resolve(),
         ];
 
+        $payload['created_by'] = $this->projectCreator($projectModel);
         $payload['pin_location'] = $projectModel->pin_location;
         $payload['map_embed_src'] = MapEmbed::src($projectModel->pin_location);
         $payload['area_unit'] = data_get($projectModel->details, 'area_unit');
@@ -127,19 +142,88 @@ class ProjectController extends Controller
         ]);
     }
 
+    /**
+     * Lean project card payload for popovers (lazy-loaded).
+     */
+    public function card(string $project): JsonResponse
+    {
+        $projectModel = Project::query()
+            ->where('code', $project)
+            ->with(['thumbnail.asset'])
+            ->withCount(['units', 'blocks'])
+            ->firstOrFail([
+                'id',
+                'title',
+                'code',
+                'status',
+                'type',
+                'city',
+                'location',
+                'country',
+                'progress',
+            ]);
+
+        return response()->json([
+            'data' => [
+                'id' => $projectModel->id,
+                'title' => $projectModel->title,
+                'code' => $projectModel->code,
+                'thumbnail' => $this->assets->url($projectModel->thumbnail?->asset),
+                'status' => $projectModel->status ?: 'draft',
+                'type' => $projectModel->type,
+                'city' => $projectModel->city,
+                'location' => $projectModel->location,
+                'country' => $projectModel->country,
+                'progress' => (int) ($projectModel->progress ?? 0),
+                'units_count' => (int) ($projectModel->units_count ?? 0),
+                'blocks_count' => (int) ($projectModel->blocks_count ?? 0),
+            ],
+        ]);
+    }
+
     public function store(StoreProjectRequest $request): RedirectResponse
     {
         $validated = $request->validated();
 
+        $details = [];
+
+        if (array_key_exists('area_unit', $validated) && filled($validated['area_unit'])) {
+            $details['area_unit'] = $validated['area_unit'];
+        }
+
+        if (array_key_exists('total_area', $validated) && $validated['total_area'] !== null) {
+            $details['total_area'] = (float) $validated['total_area'];
+        }
+
         $project = Project::query()->create([
             'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
             'type' => $validated['type'] ?? null,
+            'country' => $validated['country'] ?? null,
+            'city' => $validated['city'] ?? null,
+            'location' => $validated['location'] ?? null,
             'status' => $validated['status'] ?? 'draft',
+            'start_date' => $validated['start_date'] ?? null,
+            'end_date' => $validated['end_date'] ?? null,
+            'balloting_enabled' => (bool) ($validated['balloting_enabled'] ?? false),
             'progress' => 0,
+            'details' => $details === [] ? null : (object) $details,
         ]);
 
         if (filled($validated['type'] ?? null)) {
             MetaData::remember(MetaData::TYPE_PROJECT, $validated['type']);
+        }
+
+        if (filled($validated['country'] ?? null)) {
+            MetaData::remember(MetaData::TYPE_COUNTRY, $validated['country']);
+        }
+
+        if (filled($validated['city'] ?? null)) {
+            MetaData::remember(MetaData::TYPE_CITY, $validated['city']);
+        }
+
+        if (filled($validated['area_unit'] ?? null)) {
+            MetaData::remember(MetaData::TYPE_AREA, $validated['area_unit']);
         }
 
         return to_route('portal.projects.show', $project);
@@ -229,7 +313,7 @@ class ProjectController extends Controller
 
     public function destroy(string $project): RedirectResponse
     {
-        Project::query()->where('code', $project)->firstOrFail()->delete();
+        Project::query()->where('code', $project)->firstOrFail()->forceDelete();
 
         return to_route('portal.projects.index');
     }
@@ -275,5 +359,84 @@ class ProjectController extends Controller
                 return str_contains($haystack, $needle);
             })
             ->values();
+    }
+
+    /**
+     * @return array{
+     *     id: int,
+     *     code: ?string,
+     *     display_name: string,
+     *     first_name: ?string,
+     *     last_name: ?string,
+     *     email_address: ?string,
+     *     phone_number: ?string,
+     *     title: ?string,
+     *     department: ?string,
+     *     is_owner: bool,
+     *     roles: list<string>,
+     *     avatar: ?string
+     * }|null
+     */
+    protected function projectCreator(Project $project): ?array
+    {
+        $userId = LogActivity::query()
+            ->where('logable_type', Project::class)
+            ->where('logable_id', $project->id)
+            ->where('action', 'created')
+            ->orderBy('id')
+            ->value('user_id');
+
+        if (! $userId) {
+            return null;
+        }
+
+        $user = User::query()
+            ->with(['roles:id,name'])
+            ->whereKey($userId)
+            ->first([
+                'id',
+                'display_name',
+                'first_name',
+                'last_name',
+                'email_address',
+                'phone_number',
+            ]);
+
+        if ($user === null) {
+            return null;
+        }
+
+        $tenant = Tenant::current();
+        $membership = $tenant
+            ? TenantUser::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('user_id', $user->id)
+                ->first(['code', 'title', 'department', 'is_owner'])
+            : null;
+
+        $avatar = $this->assets->urlsFor(
+            User::class,
+            [$user->id],
+            AssetManager::LINKAGE_AVATAR,
+        )->get($user->id);
+
+        $displayName = filled($user->display_name)
+            ? (string) $user->display_name
+            : trim((string) $user->first_name.' '.(string) $user->last_name);
+
+        return [
+            'id' => $user->id,
+            'code' => $membership?->code,
+            'display_name' => $displayName !== '' ? $displayName : 'Unknown',
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'email_address' => $user->email_address,
+            'phone_number' => $user->phone_number,
+            'title' => $membership?->title,
+            'department' => $membership?->department,
+            'is_owner' => (bool) ($membership?->is_owner ?? false),
+            'roles' => $user->roles->pluck('name')->values()->all(),
+            'avatar' => $avatar,
+        ];
     }
 }

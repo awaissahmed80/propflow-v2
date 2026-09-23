@@ -9,7 +9,6 @@ import {
 
 const SUBNAV_BY_SECTION = {
     vouchers: RECEIVABLES_SUBNAV,
-    verification: RECEIVABLES_SUBNAV,
     statements: RECEIVABLES_SUBNAV,
     agents: COMMISSIONS_SUBNAV,
     dealers: COMMISSIONS_SUBNAV,
@@ -18,9 +17,9 @@ const SUBNAV_BY_SECTION = {
 export default function OperationsComingSoon({
     section = "vouchers",
     title = "Coming Soon",
-    description = "This Operations workspace is scaffolded and ready for a follow-up build.",
+    description = "This Sales workspace is scaffolded and ready for a follow-up build.",
     icon = "tools-line",
-    breadcrumbs = [{ label: "Operations" }, { label: "Coming Soon" }],
+    breadcrumbs = [{ label: "Sales" }, { label: "Coming Soon" }],
 }) {
     const subnav = SUBNAV_BY_SECTION[section] ?? null;
 

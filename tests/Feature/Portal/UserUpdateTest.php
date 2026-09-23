@@ -73,7 +73,7 @@ class UserUpdateTest extends TestCase
         ]);
 
         $tenant->makeCurrent();
-        $target->assignRole('Manager');
+        $target->assignRole('Business Manager');
 
         $firstAvatar = UploadedFile::fake()->image('first.jpg', 100, 100);
         app(AssetManager::class)->attach($target, $firstAvatar, AssetManager::LINKAGE_AVATAR, 'avatars');
@@ -96,12 +96,12 @@ class UserUpdateTest extends TestCase
         $response = $this->put(Domain::portal('/users/'.$membership->code), [
             'first_name' => 'Imran',
             'last_name' => 'Updated',
-            'title' => 'Team Lead',
+            'title' => 'Sales Team Lead',
             'department' => 'Sales',
             'manager_id' => $actor->id,
             'email_address' => 'imran.updated@example.com',
             'phone_number' => '+923009876543',
-            'roles' => ['Manager'],
+            'roles' => ['Business Manager'],
             'avatar' => $replacement,
         ]);
 
@@ -112,7 +112,7 @@ class UserUpdateTest extends TestCase
 
         $this->assertSame('Imran Updated', $target->display_name);
         $this->assertSame('imran.updated@example.com', $target->email_address);
-        $this->assertSame('Team Lead', $membership->title);
+        $this->assertSame('Sales Team Lead', $membership->title);
         $this->assertSame('Sales', $membership->department);
         $this->assertSame($actor->id, $membership->manager_id);
         $this->assertFileDoesNotExist($firstPath);
@@ -196,7 +196,7 @@ class UserUpdateTest extends TestCase
             '--force' => true,
         ]);
 
-        $this->assertNotNull(Role::query()->where('name', 'Manager')->first());
+        $this->assertNotNull(Role::query()->where('name', 'Business Manager')->first());
 
         return [$user, $tenant, $membership];
     }

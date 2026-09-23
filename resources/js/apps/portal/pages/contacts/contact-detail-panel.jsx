@@ -28,96 +28,23 @@ import {
 import { Label } from "@/components/ui/label";
 import { SelectBox } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
-
-const TABS = [
-    { id: "details", label: "Details" },
-    { id: "activity", label: "Activity" },
-    { id: "tasks", label: "Tasks" },
-    { id: "notes", label: "Notes" },
-];
-
-function titleCaseLabel(value) {
-    return String(value || "")
-        .toLowerCase()
-        .split(" ")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ");
-}
-
-function phoneDigits(phone) {
-    return String(phone || "").replace(/\D+/g, "");
-}
-
-function whatsappUrl(phone) {
-    const digits = phoneDigits(phone);
-
-    return digits ? `https://wa.me/${digits}` : null;
-}
-
-function telUrl(phone) {
-    const digits = phoneDigits(phone);
-
-    return digits ? `tel:+${digits}` : null;
-}
-
-function mailtoUrl(email) {
-    return email ? `mailto:${email}` : null;
-}
-
-function joinName(contact) {
-    return [contact?.first_name, contact?.last_name].filter(Boolean).join(" ");
-}
-
-function splitName(fullName) {
-    const parts = String(fullName || "")
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
-
-    if (parts.length === 0) {
-        return { first_name: null, last_name: null };
-    }
-
-    if (parts.length === 1) {
-        return { first_name: parts[0], last_name: null };
-    }
-
-    return {
-        first_name: parts[0],
-        last_name: parts.slice(1).join(" "),
-    };
-}
-
-function ActionIcon({ href, icon, label, disabled = false }) {
-    const className = cn(
-        "inline-flex size-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors",
-        disabled
-            ? "pointer-events-none opacity-40"
-            : "hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
-    );
-
-    if (href && !disabled) {
-        return (
-            <a
-                href={href}
-                target={href.startsWith("http") ? "_blank" : undefined}
-                rel={href.startsWith("http") ? "noreferrer" : undefined}
-                className={className}
-                aria-label={label}
-            >
-                <Icon name={icon} className="text-lg" />
-            </a>
-        );
-    }
-
-    return (
-        <button type="button" className={className} aria-label={label} disabled>
-            <Icon name={icon} className="text-lg" />
-        </button>
-    );
-}
+import {
+    ActionIcon,
+    joinName,
+    mailtoUrl,
+    splitName,
+    TABS,
+    telUrl,
+    titleCaseLabel,
+    whatsappUrl,
+} from "./contact-detail-helpers";
 
 export default function ContactDetailPanel({
     contact,
@@ -454,20 +381,27 @@ export default function ContactDetailPanel({
                                     disabled={!mail}
                                 />
                                 <DropdownMenu>
-                                    <DropdownMenuTrigger
-                                        render={
-                                            <button
-                                                type="button"
-                                                className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
-                                                aria-label="More actions"
-                                            >
-                                                <Icon
-                                                    name="more-2-fill"
-                                                    className="text-lg"
+                                    <Tooltip>
+                                        <TooltipTrigger
+                                            render={
+                                                <DropdownMenuTrigger
+                                                    render={
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
+                                                            aria-label="More actions"
+                                                        >
+                                                            <Icon
+                                                                name="more-2-fill"
+                                                                className="text-lg"
+                                                            />
+                                                        </button>
+                                                    }
                                                 />
-                                            </button>
-                                        }
-                                    />
+                                            }
+                                        />
+                                        <TooltipContent>More actions</TooltipContent>
+                                    </Tooltip>
                                     <DropdownMenuContent align="start" className="min-w-40">
                                         <DropdownMenuItem
                                             variant="destructive"

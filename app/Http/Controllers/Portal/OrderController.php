@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Portal\BulkOrderRequest;
 use App\Http\Requests\Portal\UpdateOrderRequest;
 use App\Http\Resources\Portal\OrderResource;
 use App\Models\LeadActionType;
@@ -18,6 +19,7 @@ use App\Services\DealPipeline;
 use App\Services\OrderService;
 use App\Support\AssetManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -43,7 +45,23 @@ class OrderController extends Controller
 
     public function update(UpdateOrderRequest $request, Order $order): RedirectResponse
     {
-        $order->update($request->safe()->only(['project_id', 'assigned_to']));
+        $data = $request->safe()->only(['project_id', 'assigned_to', 'status']);
+
+        if (array_key_exists('status', $data) && $data['status'] !== null) {
+            if (! $order->isOpen()) {
+                return back()->withErrors([
+                    'status' => 'Closed bookings cannot change status.',
+                ]);
+            }
+
+            if (in_array($data['status'], Order::automatedStatuses(), true)) {
+                return back()->withErrors([
+                    'status' => 'That status is set automatically by the payment pipeline.',
+                ]);
+            }
+        }
+
+        $order->update($data);
 
         return redirect('/bookings?booking='.$order->code);
     }
@@ -62,22 +80,86 @@ class OrderController extends Controller
         return back();
     }
 
+    public function bulk(BulkOrderRequest $request): RedirectResponse
+    {
+        $validated = $request->validated();
+        /** @var list<int> $ids */
+        $ids = array_map('intval', $validated['ids']);
+        $action = $validated['action'];
+
+        $orders = Order::query()->whereIn('id', $ids)->get();
+
+        if ($action === 'assign') {
+            $assignedTo = $validated['assigned_to'] ?? null;
+
+            $orders->each(function (Order $order) use ($assignedTo): void {
+                if ($order->isOpen()) {
+                    $order->update(['assigned_to' => $assignedTo]);
+                }
+            });
+
+            return back();
+        }
+
+        if ($action === 'status') {
+            $status = (string) $validated['status'];
+
+            if (in_array($status, Order::automatedStatuses(), true)) {
+                return back()->withErrors([
+                    'status' => 'That status is set automatically by the payment pipeline.',
+                ]);
+            }
+
+            if (! in_array($status, Order::manualStatuses(), true)) {
+                return back()->withErrors([
+                    'status' => 'That status cannot be set manually.',
+                ]);
+            }
+
+            $orders->each(function (Order $order) use ($status): void {
+                if ($order->isOpen()) {
+                    $order->update(['status' => $status]);
+                }
+            });
+
+            return back();
+        }
+
+        if ($action === 'cancel') {
+            $orders->each(function (Order $order) use ($request): void {
+                if ($order->isOpen()) {
+                    $this->orders->cancel($order, $request->user()?->id);
+                }
+            });
+        }
+
+        return back();
+    }
+
     protected function list(Request $request): Response
     {
-        $paginator = Order::query()
+        $filters = $this->filtersFromRequest($request);
+
+        $query = Order::query()
             ->with([
                 'contact:id,first_name,last_name,phone_number,email_address',
-                'project:id,title',
+                'project:id,title,code,location',
                 'project.thumbnail.asset',
                 'unit:id,code,name,status',
                 'lead:id,code,tag,lead_stage_id,assigned_to,user_id',
                 'lead.stage:id,label,title,color',
+                'lead.assignee:id,display_name,first_name,last_name,email_address',
+                'lead.creator:id,display_name,first_name,last_name,email_address',
                 'assignee:id,display_name,first_name,last_name',
             ])
             ->withCount([
                 'installments as unpaid_count' => fn ($query) => $query->where('status', PaymentInstallment::STATUS_PENDING),
             ])
-            ->where('status', '!=', Order::STATUS_CANCELLED)
+            ->withSum('payments as payments_sum', 'amount');
+
+        $this->applyFilters($query, $filters);
+
+        $paginator = $query
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
@@ -87,8 +169,10 @@ class OrderController extends Controller
         return Inertia::render('bookings/index', [
             'orders' => OrderResource::collection($paginator->getCollection())->resolve(),
             'pagination' => $this->pagination($paginator),
+            'filters' => $filters,
             'openedBooking' => $this->openedBooking($request),
             'orderStages' => $this->orderStagesPayload(),
+            'orderStatuses' => OrderStatus::catalog(enabledOnly: false),
             'projects' => $this->projectOptions(),
             'assignees' => $this->assigneeOptions(),
             'activityTypes' => LeadActionType::catalog(LeadActionType::KIND_ACTIVITY, enabledOnly: true),
@@ -96,15 +180,82 @@ class OrderController extends Controller
     }
 
     /**
-     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool, statuses: list<array{id: int, stage_label: string, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool}>}>
+     * @return array{q: ?string, stage: list<string>, status: list<string>, project: list<string>, assigned_to: list<string>}
+     */
+    protected function filtersFromRequest(Request $request): array
+    {
+        return [
+            'q' => $request->string('q')->trim()->toString() ?: null,
+            'stage' => $this->csvList($request->string('stage')->toString()),
+            'status' => $this->csvList($request->string('status')->toString()),
+            'project' => $this->csvList($request->string('project')->toString()),
+            'assigned_to' => $this->csvList($request->string('assigned_to')->toString()),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function csvList(string $value): array
+    {
+        if ($value === '') {
+            return [];
+        }
+
+        return collect(explode(',', $value))
+            ->map(fn (string $item): string => trim($item))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Builder<Order>  $query
+     * @param  array{q: ?string, stage: list<string>, status: list<string>, project: list<string>, assigned_to: list<string>}  $filters
+     */
+    protected function applyFilters(Builder $query, array $filters): void
+    {
+        if ($filters['status'] === [] || ! in_array(Order::STATUS_CANCELLED, $filters['status'], true)) {
+            $query->where('status', '!=', Order::STATUS_CANCELLED);
+        }
+
+        if ($filters['q']) {
+            $q = $filters['q'];
+            $query->where(function (Builder $inner) use ($q): void {
+                $inner->where('code', 'like', '%'.$q.'%')
+                    ->orWhere('plot_or_file', 'like', '%'.$q.'%')
+                    ->orWhereHas('contact', fn (Builder $contact) => $contact->matchingSearch($q))
+                    ->orWhereHas('project', fn (Builder $project) => $project->where('title', 'like', '%'.$q.'%'))
+                    ->orWhereHas('unit', function (Builder $unit) use ($q): void {
+                        $unit->where('name', 'like', '%'.$q.'%')
+                            ->orWhere('code', 'like', '%'.$q.'%');
+                    });
+            });
+        }
+
+        if ($filters['stage'] !== []) {
+            $query->whereIn('stage', $filters['stage']);
+        }
+
+        if ($filters['status'] !== []) {
+            $query->whereIn('status', $filters['status']);
+        }
+
+        if ($filters['project'] !== []) {
+            $query->whereIn('project_id', array_map('intval', $filters['project']));
+        }
+
+        if ($filters['assigned_to'] !== []) {
+            $query->whereIn('assigned_to', array_map('intval', $filters['assigned_to']));
+        }
+    }
+
+    /**
+     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool}>
      */
     protected function orderStagesPayload(): array
     {
         OrderStage::ensureDefaults();
-        OrderStatus::ensureDefaults();
-
-        $statuses = collect(OrderStatus::catalog(enabledOnly: false))
-            ->groupBy('stage_label');
 
         return OrderStage::query()
             ->orderBy('priority')
@@ -117,7 +268,6 @@ class OrderController extends Controller
                 'color' => $stage->color,
                 'is_system' => (bool) $stage->is_system,
                 'is_enabled' => (bool) $stage->is_enabled,
-                'statuses' => ($statuses->get($stage->label) ?? collect())->values()->all(),
             ])
             ->values()
             ->all();
@@ -137,7 +287,7 @@ class OrderController extends Controller
         $order = Order::query()
             ->with([
                 'contact:id,first_name,last_name,phone_number,email_address,type',
-                'project:id,title,code',
+                'project:id,title,code,location',
                 'project.thumbnail.asset',
                 'unit:id,code,name,status',
                 'lead:id,code,tag,lead_stage_id,assigned_to,user_id,budget,source',
@@ -221,7 +371,15 @@ class OrderController extends Controller
             }
         }
 
-        $userIds = $orders->pluck('assigned_to')->filter()->unique()->values()->all();
+        $userIds = $orders
+            ->flatMap(fn (Order $order): array => array_filter([
+                $order->assigned_to,
+                $order->lead?->assigned_to,
+                $order->lead?->user_id,
+            ]))
+            ->unique()
+            ->values()
+            ->all();
 
         if ($userIds === []) {
             return;
@@ -232,6 +390,14 @@ class OrderController extends Controller
         foreach ($orders as $order) {
             if ($order->assignee) {
                 $order->assignee->setAttribute('avatar', $avatars->get($order->assignee->id));
+            }
+
+            if ($order->lead?->assignee) {
+                $order->lead->assignee->setAttribute('avatar', $avatars->get($order->lead->assignee->id));
+            }
+
+            if ($order->lead?->creator) {
+                $order->lead->creator->setAttribute('avatar', $avatars->get($order->lead->creator->id));
             }
         }
     }

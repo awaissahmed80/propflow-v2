@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Portal\StoreRoleRequest;
 use App\Http\Requests\Portal\UpdateRoleRequest;
 use App\Models\Role;
+use App\Support\TenantPermissions;
 use Illuminate\Http\RedirectResponse;
 
 class RoleController extends Controller
@@ -34,6 +35,12 @@ class RoleController extends Controller
 
     public function update(UpdateRoleRequest $request, Role $role): RedirectResponse
     {
+        if (TenantPermissions::isLockedRole($role->name)) {
+            return back()->withErrors([
+                'role' => 'The Admin role cannot be edited.',
+            ]);
+        }
+
         $validated = $request->validated();
 
         if (array_key_exists('is_enabled', $validated)) {

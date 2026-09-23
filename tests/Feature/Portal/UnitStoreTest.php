@@ -57,8 +57,66 @@ class UnitStoreTest extends TestCase
         $this->assertSame('A-101', $unit->name);
         $this->assertSame('Apartment', $unit->type);
         $this->assertSame('Floor 1', $unit->sector);
+        $this->assertEquals(1250.0, (float) $unit->size);
+        $this->assertSame(1, (int) $unit->quantity);
         $this->assertNotEmpty($unit->code);
         $this->assertStringStartsWith('u', $unit->code);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_unit_can_be_created_with_custom_quantity(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_unit_store_quantity');
+
+        $tenant->makeCurrent();
+        $project = Project::factory()->create();
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->post(Domain::portal('/units'), [
+            'project_id' => $project->id,
+            'name' => 'Plot Pack',
+            'quantity' => 12,
+            'status' => Unit::STATUS_AVAILABLE,
+        ]);
+
+        $response->assertRedirect(Domain::portal('/inventory'));
+
+        $tenant->makeCurrent();
+        $unit = Unit::query()->first();
+        $this->assertNotNull($unit);
+        $this->assertSame(12, (int) $unit->quantity);
+        $this->assertTrue($unit->isBookable());
+        Tenant::forgetCurrent();
+    }
+
+    public function test_unit_size_accepts_decimals_and_rounds_to_two_places(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_unit_store_size_decimal');
+
+        $tenant->makeCurrent();
+        $project = Project::factory()->create();
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->post(Domain::portal('/units'), [
+            'project_id' => $project->id,
+            'name' => 'B-202',
+            'size' => 1250.456,
+            'area_type' => 'Sq. Feet',
+            'status' => Unit::STATUS_AVAILABLE,
+        ]);
+
+        $response->assertRedirect(Domain::portal('/inventory'));
+
+        $tenant->makeCurrent();
+        $unit = Unit::query()->first();
+        $this->assertNotNull($unit);
+        $this->assertEquals(1250.46, (float) $unit->size);
         Tenant::forgetCurrent();
     }
 

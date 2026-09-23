@@ -11,17 +11,35 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['user_id', 'lead_id', 'order_id', 'stage', 'stage_label', 'action', 'comments', 'status', 'type'])]
+#[Fillable([
+    'user_id',
+    'taskable_type',
+    'taskable_id',
+    'stage',
+    'stage_label',
+    'action',
+    'comments',
+    'status',
+    'type',
+])]
 #[Connection('tenant')]
 class Task extends Model
 {
     /** @use HasFactory<TaskFactory> */
     use HasFactory, LogUserActivity, SoftDeletes;
 
+    /**
+     * User-submitted activity (composer updates, scheduled next actions).
+     * Always written with a human actor when available.
+     */
     public const TYPE_ACTION = 'ACTION';
 
+    /**
+     * System / lifecycle event (stage change, payment recorded, booking created, etc.).
+     */
     public const TYPE_LOG = 'LOG';
 
     public const TYPE_ATTACHMENT = 'ATTACHMENT';
@@ -33,6 +51,16 @@ class Task extends Model
     public const STATUS_COMPLETED = 'COMPLETED';
 
     public const STATUS_CANCELLED = 'CANCELLED';
+
+    public function isUserAction(): bool
+    {
+        return $this->type === self::TYPE_ACTION;
+    }
+
+    public function isSystemLog(): bool
+    {
+        return $this->type === self::TYPE_LOG;
+    }
 
     /**
      * @return list<string>
@@ -51,19 +79,11 @@ class Task extends Model
     }
 
     /**
-     * @return BelongsTo<Lead, $this>
+     * @return MorphTo<Model, $this>
      */
-    public function lead(): BelongsTo
+    public function taskable(): MorphTo
     {
-        return $this->belongsTo(Lead::class);
-    }
-
-    /**
-     * @return BelongsTo<Order, $this>
-     */
-    public function order(): BelongsTo
-    {
-        return $this->belongsTo(Order::class);
+        return $this->morphTo();
     }
 
     /**

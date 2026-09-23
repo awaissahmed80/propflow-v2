@@ -5,10 +5,12 @@ namespace Tests\Feature\Portal;
 use App\Models\Asset;
 use App\Models\AssetLink;
 use App\Models\Campaign;
+use App\Models\Order;
 use App\Models\Project;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Models\User;
+use App\Services\DealPipeline;
 use App\Services\TenantContext;
 use App\Support\AssetManager;
 use App\Support\Domain;
@@ -174,6 +176,43 @@ class AssetLinkSyncTest extends TestCase
             ->where('assetable_id', $campaign->id)
             ->where('linkage', AssetManager::LINKAGE_GALLERY)
             ->count());
+        Tenant::forgetCurrent();
+    }
+
+    public function test_documents_can_be_synced_to_an_order_for_kyc(): void
+    {
+        [$actor, $tenant] = $this->createTenantUser('tenant_order_kyc_docs');
+
+        $tenant->makeCurrent();
+        $order = Order::factory()->create([
+            'stage' => Order::STAGE_TOKEN,
+            'status' => Order::STATUS_HOLD,
+        ]);
+        $doc = Asset::factory()->document()->create(['name' => 'cnic.pdf']);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($actor);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->postJson(Domain::portal('/documents/sync'), [
+            'assetable_type' => 'order',
+            'assetable_id' => $order->id,
+            'linkage' => AssetManager::LINKAGE_DOCUMENT,
+            'asset_ids' => [$doc->id],
+        ])->assertOk();
+
+        $tenant->makeCurrent();
+        $this->assertDatabaseHas('asset_links', [
+            'assetable_type' => Order::class,
+            'assetable_id' => $order->id,
+            'asset_id' => $doc->id,
+            'linkage' => AssetManager::LINKAGE_DOCUMENT,
+        ], 'tenant');
+
+        $snapshot = app(DealPipeline::class)->snapshot($order->fresh());
+        $this->assertTrue($snapshot['kyc_docs_ready']);
+        $this->assertCount(1, $snapshot['kyc_documents']);
+        $this->assertTrue($snapshot['liaison_active']);
         Tenant::forgetCurrent();
     }
 

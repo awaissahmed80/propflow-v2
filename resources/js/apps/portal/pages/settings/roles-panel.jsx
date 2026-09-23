@@ -2,14 +2,11 @@ import { useState } from "react";
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import { destroy, update } from "@/actions/App/Http/Controllers/Portal/RoleController";
-import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import RoleForm from "./role-form";
-
-const VISIBLE_PERMISSION_COUNT = 3;
 
 function pathFrom(url) {
     const raw = String(url || "/");
@@ -27,51 +24,9 @@ function pathFrom(url) {
     return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
-function permissionSummary(permissions = []) {
-    const count = permissions.length;
-
-    if (count === 0) {
-        return "No permissions";
-    }
-
-    return `${count} ${count === 1 ? "permission" : "permissions"}`;
-}
-
-function RolePermissions({ permissions }) {
-    const [expanded, setExpanded] = useState(false);
-
-    if (permissions.length === 0) {
-        return null;
-    }
-
-    const visiblePermissions = expanded
-        ? permissions
-        : permissions.slice(0, VISIBLE_PERMISSION_COUNT);
-    const hiddenCount = permissions.length - VISIBLE_PERMISSION_COUNT;
-
-    return (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {visiblePermissions.map((permission) => (
-                <Badge key={permission.id} variant="secondary" className="font-normal">
-                    {permission.label || permission.name}
-                </Badge>
-            ))}
-            {hiddenCount > 0 && (
-                <button
-                    type="button"
-                    className="cursor-pointer text-xs font-medium text-primary hover:underline"
-                    onClick={() => setExpanded((current) => !current)}
-                >
-                    {expanded ? "Show less" : `+${hiddenCount} more`}
-                </button>
-            )}
-        </div>
-    );
-}
-
 function RoleCard({ role, toggling, onEdit, onToggleEnabled, onRemove }) {
     const enabled = role.is_enabled !== false;
-    const permissions = role.permissions ?? [];
+    const isLocked = role.name === "Admin";
 
     return (
         <div
@@ -88,31 +43,39 @@ function RoleCard({ role, toggling, onEdit, onToggleEnabled, onRemove }) {
                 <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                            <button
-                                type="button"
-                                className="block w-full truncate text-left text-base font-bold tracking-tight text-foreground"
-                                onClick={() => onEdit(role)}
-                            >
-                                {role.name}
-                            </button>
-                            <p className="mt-0.5 text-sm text-muted-foreground">
-                                {role.description?.trim() || permissionSummary(permissions)}
-                            </p>
+                            {isLocked ? (
+                                <div className="block w-full truncate text-left text-base font-bold tracking-tight text-foreground">
+                                    {role.name}
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="block w-full truncate text-left text-base font-bold tracking-tight text-foreground"
+                                    onClick={() => onEdit(role)}
+                                >
+                                    {role.name}
+                                </button>
+                            )}
+                            {role.description?.trim() ? (
+                                <p className="mt-0.5 text-sm text-muted-foreground">{role.description.trim()}</p>
+                            ) : null}
                         </div>
 
                         <div className="flex shrink-0 items-center gap-1">
-                            <IconButton
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                icon="pencil-line"
-                                aria-label={`Edit ${role.name}`}
-                                onClick={() => onEdit(role)}
-                            />
+                            {!isLocked && (
+                                <IconButton
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    icon="pencil-line"
+                                    aria-label={`Edit ${role.name}`}
+                                    onClick={() => onEdit(role)}
+                                />
+                            )}
                             {role.is_system ? (
                                 <Switch
                                     checked={enabled}
-                                    disabled={toggling}
+                                    disabled={toggling || isLocked}
                                     aria-label={`${enabled ? "Disable" : "Enable"} ${role.name}`}
                                     onCheckedChange={(next) => onToggleEnabled(role, Boolean(next))}
                                 />
@@ -129,8 +92,6 @@ function RoleCard({ role, toggling, onEdit, onToggleEnabled, onRemove }) {
                             )}
                         </div>
                     </div>
-
-                    <RolePermissions permissions={permissions} />
                 </div>
             </div>
         </div>
@@ -148,6 +109,10 @@ export default function RolesPanel({ roles = [], permissionGroups = [] }) {
     };
 
     const openEditForm = (role) => {
+        if (role?.name === "Admin") {
+            return;
+        }
+
         setEditingRole(role);
         setRoleFormOpen(true);
     };
@@ -158,7 +123,7 @@ export default function RolesPanel({ roles = [], permissionGroups = [] }) {
     };
 
     const toggleRoleEnabled = (role, nextEnabled) => {
-        if (togglingId !== null || !role.is_system) {
+        if (togglingId !== null || !role.is_system || role.name === "Admin") {
             return;
         }
 

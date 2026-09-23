@@ -30,22 +30,43 @@ class LeadActivity
         );
     }
 
+    /**
+     * System / lifecycle event on a lead (stage change, booking events, etc.).
+     */
     public function log(
         Lead $lead,
         string $action,
         ?string $comments = null,
         ?int $userId = null,
-        string $type = Task::TYPE_LOG,
+    ): Task {
+        return $this->write(
+            $lead,
+            $action,
+            $comments,
+            $userId,
+            Task::TYPE_LOG,
+            Task::STATUS_COMPLETED,
+        );
+    }
+
+    /**
+     * User-submitted activity (composer update or scheduled next action).
+     */
+    public function action(
+        Lead $lead,
+        string $action,
+        ?string $comments = null,
+        ?int $userId = null,
         string $status = Task::STATUS_COMPLETED,
     ): Task {
-        return Task::query()->create([
-            'user_id' => $userId,
-            'lead_id' => $lead->id,
-            'action' => $action,
-            'comments' => filled($comments) ? $comments : null,
-            'status' => $status,
-            'type' => $type,
-        ]);
+        return $this->write(
+            $lead,
+            $action,
+            $comments,
+            $userId,
+            Task::TYPE_ACTION,
+            $status,
+        );
     }
 
     /**
@@ -59,18 +80,16 @@ class LeadActivity
             : ($data['due_date'] ?? null);
 
         DB::transaction(function () use ($lead, $data, $userId, $nextAction, $dueDate): void {
-            Task::query()
-                ->where('lead_id', $lead->id)
+            $lead->tasks()
                 ->where('type', Task::TYPE_ACTION)
                 ->where('status', Task::STATUS_PENDING)
                 ->update(['status' => Task::STATUS_COMPLETED]);
 
-            $update = $this->log(
+            $update = $this->action(
                 $lead,
                 $data['action'],
                 $data['comments'],
                 $userId,
-                Task::TYPE_ACTION,
                 Task::STATUS_COMPLETED,
             );
 
@@ -86,12 +105,11 @@ class LeadActivity
             }
 
             if (! LeadActionType::isDoNothing($nextAction)) {
-                $this->log(
+                $this->action(
                     $lead,
                     $nextAction,
                     null,
                     $userId,
-                    Task::TYPE_ACTION,
                     Task::STATUS_PENDING,
                 );
             }
@@ -102,6 +120,23 @@ class LeadActivity
                 'contacted_at' => now(),
             ])->save();
         });
+    }
+
+    protected function write(
+        Lead $lead,
+        string $action,
+        ?string $comments,
+        ?int $userId,
+        string $type,
+        string $status,
+    ): Task {
+        return $lead->tasks()->create([
+            'user_id' => $userId,
+            'action' => $action,
+            'comments' => filled($comments) ? $comments : null,
+            'status' => $status,
+            'type' => $type,
+        ]);
     }
 
     protected function actorName(?int $userId): ?string

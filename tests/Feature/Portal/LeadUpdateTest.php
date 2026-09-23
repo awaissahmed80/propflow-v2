@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Portal;
 
+use App\Models\Campaign;
 use App\Models\Lead;
 use App\Models\LeadStage;
 use App\Models\Project;
@@ -114,6 +115,41 @@ class LeadUpdateTest extends TestCase
         $lead->refresh();
         $this->assertSame($contacted->id, $lead->lead_stage_id);
         $this->assertSame(Lead::TAG_HOT, $lead->tag);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_lead_source_and_campaign_can_be_patched_inline(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_lead_source_campaign_patch');
+
+        $tenant->makeCurrent();
+        $stage = LeadStage::factory()->newLead()->create();
+        $campaign = Campaign::factory()->create([
+            'title' => 'Spring Launch',
+        ]);
+        $lead = Lead::factory()->create([
+            'lead_stage_id' => $stage->id,
+            'source' => 'Website',
+            'campaign_id' => null,
+            'user_id' => $user->id,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->from(Domain::portal('/leads'))
+            ->patch(Domain::portal('/leads/'.$lead->code), [
+                'source' => 'Referral',
+                'campaign_id' => $campaign->id,
+            ]);
+
+        $response->assertRedirect(Domain::portal('/leads'));
+
+        $tenant->makeCurrent();
+        $lead->refresh();
+        $this->assertSame('Referral', $lead->source);
+        $this->assertSame($campaign->id, $lead->campaign_id);
         Tenant::forgetCurrent();
     }
 

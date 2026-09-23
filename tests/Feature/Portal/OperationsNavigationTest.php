@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Portal;
 
+use App\Models\Order;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Models\User;
@@ -24,19 +25,15 @@ class OperationsNavigationTest extends TestCase
         $this->migrateTenant();
     }
 
-    public function test_operations_overview_page_loads(): void
+    public function test_operations_overview_is_removed(): void
     {
-        [$user, $tenant] = $this->createTenantUser('tenant_ops_overview');
+        [$user, $tenant] = $this->createTenantUser('tenant_ops_overview_gone');
 
         $this->actingAs($user);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $this->get(Domain::portal('/operations'))
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page
-                ->component('operations/overview', false)
-                ->where('title', 'Operations Overview')
-            );
+            ->assertNotFound();
     }
 
     public function test_legacy_orders_path_redirects_to_bookings(): void
@@ -128,6 +125,48 @@ class OperationsNavigationTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('operations/coming-soon', false)
                 ->where('title', 'Dealer / Broker Network')
+            );
+    }
+
+    public function test_verification_queue_lists_token_stage_bookings(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_verification_queue');
+
+        $tenant->makeCurrent();
+        $mine = Order::factory()->create([
+            'assigned_to' => $user->id,
+            'stage' => Order::STAGE_TOKEN,
+            'status' => Order::STATUS_HOLD,
+        ]);
+        Order::factory()->create([
+            'assigned_to' => null,
+            'stage' => Order::STAGE_TOKEN,
+            'status' => Order::STATUS_HOLD,
+        ]);
+        Order::factory()->create([
+            'assigned_to' => $user->id,
+            'stage' => Order::STAGE_ACTIVE,
+            'status' => Order::STATUS_IN_PROGRESS,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->get(Domain::portal('/receivables/verification'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('receivables/verification', false)
+                ->has('bookings', 2)
+            );
+
+        $this->get(Domain::portal('/receivables/verification?mine=1'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('receivables/verification', false)
+                ->has('bookings', 1)
+                ->where('bookings.0.code', $mine->code)
+                ->where('filters.mine', true)
             );
     }
 

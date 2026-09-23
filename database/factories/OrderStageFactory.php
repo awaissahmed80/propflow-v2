@@ -36,7 +36,7 @@ class OrderStageFactory extends Factory
             'label' => Order::STAGE_TOKEN,
             'title' => 'Token',
             'priority' => 1,
-            'color' => '#3B82F6',
+            'color' => '#2563EB',
             'is_system' => true,
             'is_enabled' => true,
         ]);

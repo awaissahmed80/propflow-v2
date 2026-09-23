@@ -6,6 +6,7 @@ use App\Models\Asset;
 use App\Models\AssetFolder;
 use App\Models\AssetLink;
 use App\Models\Campaign;
+use App\Models\Order;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
@@ -40,6 +41,7 @@ class AssetManager
         'campaign' => Campaign::class,
         'user' => User::class,
         'task' => Task::class,
+        'order' => Order::class,
     ];
 
     public function url(?Asset $asset): ?string
@@ -202,7 +204,7 @@ class AssetManager
         $asset->folders()->detach();
         $asset->labels()->detach();
         $this->deleteAssetFiles($asset);
-        $asset->delete();
+        $asset->forceDelete();
     }
 
     /**
@@ -356,7 +358,7 @@ class AssetManager
         }
 
         $this->deleteAssetFiles($asset);
-        $asset->delete();
+        $asset->forceDelete();
     }
 
     protected function storeFile(UploadedFile $file, string $directory, string $tag): Asset

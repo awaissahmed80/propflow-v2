@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -253,11 +254,11 @@ class Lead extends Model
     }
 
     /**
-     * @return HasMany<Task, $this>
+     * @return MorphMany<Task, $this>
      */
-    public function tasks(): HasMany
+    public function tasks(): MorphMany
     {
-        return $this->hasMany(Task::class);
+        return $this->morphMany(Task::class, 'taskable');
     }
 
     /**

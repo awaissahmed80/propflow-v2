@@ -1,4 +1,3 @@
-import { dashboard } from "@/routes/portal";
 import { index as activity } from "@/routes/portal/activity";
 import { index as campaigns } from "@/routes/portal/campaigns";
 import { index as contacts } from "@/routes/portal/contacts";
@@ -26,8 +25,7 @@ function pathFrom(url) {
     return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
-/** Prefer /dashboard so sidebar navigation is never ambiguous with Inertia root "/". */
-const dashboardPath = pathFrom(dashboard.url()) || "/dashboard";
+export const dashboardUrl = "/";
 
 export const menu_items = [
     {
@@ -35,7 +33,7 @@ export const menu_items = [
         items: [
             {
                 label: "Dashboard",
-                to: dashboardPath === "/" ? "/dashboard" : dashboardPath,
+                to: dashboardUrl,
                 component: "dashboard/index",
                 icon: "dashboard-2-line",
                 end: true,
@@ -75,18 +73,6 @@ export const menu_items = [
                 to: pathFrom(campaigns.url()),
                 component: "campaigns/index",
                 icon: "focus-3-line",
-            },
-        ],
-    },
-    {
-        title: "Operations",
-        items: [
-            {
-                label: "Overview",
-                to: "/operations",
-                component: "operations/overview",
-                icon: "line-chart-line",
-                end: true,
             },
             {
                 label: "Bookings",
@@ -190,5 +176,3 @@ export const menu_items = [
         ],
     },
 ];
-
-export const dashboardUrl = dashboardPath === "/" ? "/dashboard" : dashboardPath;

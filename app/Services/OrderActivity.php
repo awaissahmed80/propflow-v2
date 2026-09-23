@@ -23,27 +23,43 @@ class OrderActivity
         $this->log($order, 'Booking created', $comments, $userId);
     }
 
+    /**
+     * System / lifecycle event on a booking (payment, stage advance, transfer, etc.).
+     */
     public function log(
         Order $order,
         string $action,
         ?string $comments = null,
         ?int $userId = null,
-        string $type = Task::TYPE_LOG,
+    ): Task {
+        return $this->write(
+            $order,
+            $action,
+            $comments,
+            $userId,
+            Task::TYPE_LOG,
+            Task::STATUS_COMPLETED,
+        );
+    }
+
+    /**
+     * User-submitted booking activity from the composer.
+     */
+    public function action(
+        Order $order,
+        string $action,
+        ?string $comments = null,
+        ?int $userId = null,
         string $status = Task::STATUS_COMPLETED,
     ): Task {
-        $stage = $order->stage ?: Order::STAGE_TOKEN;
-
-        return Task::query()->create([
-            'user_id' => $userId,
-            'lead_id' => $order->lead_id,
-            'order_id' => $order->id,
-            'stage' => $stage,
-            'stage_label' => OrderStage::titleFor($stage),
-            'action' => $action,
-            'comments' => filled($comments) ? $comments : null,
-            'status' => $status,
-            'type' => $type,
-        ]);
+        return $this->write(
+            $order,
+            $action,
+            $comments,
+            $userId,
+            Task::TYPE_ACTION,
+            $status,
+        );
     }
 
     /**
@@ -52,12 +68,11 @@ class OrderActivity
     public function recordUpdate(Order $order, array $data, ?int $userId): Task
     {
         return DB::connection('tenant')->transaction(function () use ($order, $data, $userId): Task {
-            $update = $this->log(
+            $update = $this->action(
                 $order,
                 $data['action'],
                 $data['comments'],
                 $userId,
-                Task::TYPE_ACTION,
                 Task::STATUS_COMPLETED,
             );
 
@@ -77,14 +92,49 @@ class OrderActivity
     }
 
     /**
-     * @return list<array{id: int, action: string, comments: ?string, type: string, status: string, stage: ?string, stage_label: ?string, user: ?array{id: int, display_name: string}, created_at: ?string, media: list<array<string, mixed>>, documents: list<array<string, mixed>>}>
+     * @return list<array{id: int, action: string, comments: ?string, type: string, status: string, stage: ?string, stage_label: ?string, user: ?array{id: int, display_name: string, avatar: ?string}, created_at: ?string, media: list<array<string, mixed>>, documents: list<array<string, mixed>>, attachments: list<array<string, mixed>>}>
      */
     public function timeline(Order $order): array
     {
         $order->loadMissing(['activities.user', 'activities.gallery.asset', 'activities.documents.asset']);
 
+        $userIds = $order->activities
+            ->pluck('user_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $avatars = $userIds === []
+            ? collect()
+            : $this->assets->urlsFor(User::class, $userIds, AssetManager::LINKAGE_AVATAR);
+
         return $order->activities
-            ->map(function (Task $task): array {
+            ->sortBy('id')
+            ->values()
+            ->map(function (Task $task) use ($avatars): array {
+                $media = $task->gallery->map(fn ($link): array => [
+                    'id' => $link->asset_id,
+                    'url' => $this->assets->url($link->asset),
+                    'name' => $link->asset?->name,
+                    'type' => $link->asset?->type,
+                    'kind' => 'media',
+                    'thumbnail_url' => filled($link->asset?->thumbnail) && ! str_starts_with((string) $link->asset?->type, 'audio/')
+                        ? url('assets/'.$link->asset->thumbnail)
+                        : null,
+                ])->values()->all();
+
+                $documents = $task->documents->map(fn ($link): array => [
+                    'id' => $link->asset_id,
+                    'url' => $this->assets->url($link->asset),
+                    'name' => $link->asset?->name,
+                    'type' => $link->asset?->type,
+                    'kind' => 'document',
+                    'thumbnail_url' => filled($link->asset?->thumbnail) && ! str_starts_with((string) $link->asset?->type, 'audio/')
+                        ? url('assets/'.$link->asset->thumbnail)
+                        : null,
+                ])->values()->all();
+
                 return [
                     'id' => $task->id,
                     'action' => (string) $task->action,
@@ -96,22 +146,36 @@ class OrderActivity
                     'user' => $task->user ? [
                         'id' => $task->user->id,
                         'display_name' => (string) $task->user->display_name,
+                        'avatar' => $avatars->get($task->user->id),
                     ] : null,
                     'created_at' => $task->created_at?->toIso8601String(),
-                    'media' => $task->gallery->map(fn ($link): array => [
-                        'id' => $link->asset_id,
-                        'url' => $this->assets->url($link->asset),
-                        'name' => $link->asset?->original_name,
-                    ])->values()->all(),
-                    'documents' => $task->documents->map(fn ($link): array => [
-                        'id' => $link->asset_id,
-                        'url' => $this->assets->url($link->asset),
-                        'name' => $link->asset?->original_name,
-                    ])->values()->all(),
+                    'media' => $media,
+                    'documents' => $documents,
+                    'attachments' => [...$media, ...$documents],
                 ];
             })
-            ->values()
             ->all();
+    }
+
+    protected function write(
+        Order $order,
+        string $action,
+        ?string $comments,
+        ?int $userId,
+        string $type,
+        string $status,
+    ): Task {
+        $stage = $order->stage ?: Order::STAGE_TOKEN;
+
+        return $order->activities()->create([
+            'user_id' => $userId,
+            'stage' => $stage,
+            'stage_label' => OrderStage::titleFor($stage),
+            'action' => $action,
+            'comments' => filled($comments) ? $comments : null,
+            'status' => $status,
+            'type' => $type,
+        ]);
     }
 
     protected function actorName(?int $userId): ?string

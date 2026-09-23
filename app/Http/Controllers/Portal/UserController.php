@@ -2,9 +2,6 @@
 
 namespace App\Http\Controllers\Portal;
 
-use App\Enums\TenantMembershipStatus;
-use App\Enums\UserStatus;
-use App\Enums\UserType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Portal\StoreUserRequest;
 use App\Http\Requests\Portal\UpdateUserRequest;
@@ -17,7 +14,9 @@ use App\Models\TeamUser;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Models\User;
+use App\Services\InviteWorkspaceMember;
 use App\Support\AssetManager;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -63,53 +62,55 @@ class UserController extends Controller
         ]);
     }
 
-    public function store(StoreUserRequest $request): RedirectResponse
+    /**
+     * Lean workspace user card payload for popovers (lazy-loaded).
+     */
+    public function card(string $user): JsonResponse
+    {
+        /** @var Tenant $tenant */
+        $tenant = Tenant::current();
+
+        $membership = TenantUser::query()
+            ->with([
+                'user:id,display_name,first_name,last_name,email_address,phone_number',
+                'user.roles:id,name',
+            ])
+            ->where('tenant_id', $tenant->id)
+            ->where('code', ltrim($user, '#'))
+            ->firstOrFail();
+
+        if ($membership->user === null) {
+            abort(404);
+        }
+
+        $membership->setAttribute(
+            'avatar_url',
+            $this->assets->urlsFor(
+                User::class,
+                [$membership->user_id],
+                AssetManager::LINKAGE_AVATAR,
+            )->get($membership->user_id),
+        );
+
+        return response()->json([
+            'data' => (new UserListResource($membership))->resolve(),
+        ]);
+    }
+
+    public function store(StoreUserRequest $request, InviteWorkspaceMember $invites): RedirectResponse
     {
         /** @var Tenant $tenant */
         $tenant = Tenant::current();
         $validated = $request->validated();
 
-        $user = DB::connection('landlord')->transaction(function () use ($validated, $tenant): User {
-            $user = User::query()->create([
-                'first_name' => $validated['first_name'],
-                'last_name' => $validated['last_name'],
-                'display_name' => trim($validated['first_name'].' '.$validated['last_name']),
-                'email_address' => $validated['email_address'],
-                'phone_number' => $validated['phone_number'],
-                'password' => $validated['password'],
-                'type' => UserType::Tenant,
-                'status' => UserStatus::Active,
-            ]);
+        $invites->invite(
+            $tenant,
+            $validated,
+            $request->user(),
+        );
 
-            TenantUser::query()->create([
-                'user_id' => $user->id,
-                'tenant_id' => $tenant->id,
-                'title' => $validated['title'],
-                'department' => $validated['department'] ?? null,
-                'manager_id' => $validated['manager_id'] ?? null,
-                'status' => TenantMembershipStatus::Active,
-                'is_owner' => false,
-            ]);
-
-            return $user;
-        });
-
-        $tenant->makeCurrent();
-
-        if ($request->hasFile('avatar')) {
-            $this->assets->attach(
-                $user,
-                $request->file('avatar'),
-                AssetManager::LINKAGE_AVATAR,
-                'avatars',
-            );
-        }
-
-        $user->syncRoles($validated['roles'] ?? []);
-
-        return to_route('portal.users.index', [
-            'user' => $user->tenantUsers()->where('tenant_id', $tenant->id)->value('code'),
-        ]);
+        return to_route('portal.users.index')
+            ->with('success', 'Invitation sent. They won’t be active in this workspace until they accept.');
     }
 
     public function update(UpdateUserRequest $request, string $user): RedirectResponse
@@ -198,7 +199,14 @@ class UserController extends Controller
 
         DB::connection('landlord')->transaction(function () use ($membership, $userModel): void {
             $membership->delete();
-            $userModel->delete();
+
+            $remainingMemberships = TenantUser::query()
+                ->where('user_id', $userModel->id)
+                ->exists();
+
+            if (! $remainingMemberships) {
+                $userModel->delete();
+            }
         });
 
         return to_route('portal.users.index');
@@ -249,7 +257,7 @@ class UserController extends Controller
             ->all();
 
         return [
-            'roles' => Role::query()->enabled()->orderBy('name')->pluck('name')->all(),
+            'roles' => Role::query()->enabled()->orderedByPower()->pluck('name')->all(),
             'managers' => $managers,
             'departments' => $departments,
         ];
@@ -423,7 +431,10 @@ class UserController extends Controller
             'tasks_due' => 0,
             'closed_deals' => Order::query()
                 ->where('assigned_to', $userId)
-                ->whereIn('status', [Order::STATUS_ALLOCATED, Order::STATUS_DELIVERED])
+                ->where(function ($query): void {
+                    $query->whereNotNull('allocated_at')
+                        ->orWhere('status', Order::STATUS_COMPLETED);
+                })
                 ->count(),
         ]);
         $membership->setAttribute(

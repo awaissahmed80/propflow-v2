@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Portal;
 
+use App\Models\LogActivity;
 use App\Models\Project;
 use App\Models\Tenant;
 use App\Models\TenantUser;
@@ -46,6 +47,14 @@ class ProjectShowTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Corner Suite',
         ]);
+        LogActivity::query()->create([
+            'logable_type' => Project::class,
+            'logable_id' => $project->id,
+            'action' => 'created',
+            'changes' => ['title' => 'Marina Residences'],
+            'previous' => null,
+            'user_id' => $user->id,
+        ]);
         Tenant::forgetCurrent();
 
         $this->actingAs($user);
@@ -71,6 +80,11 @@ class ProjectShowTest extends TestCase
             ->has('project.inventory.units', 1)
             ->where('project.inventory.units.0.id', $unit->id)
             ->where('project.inventory.units.0.name', 'Corner Suite')
+            ->where('project.created_by.id', $user->id)
+            ->where('project.created_by.display_name', $user->display_name)
+            ->has('project.created_by.roles')
+            ->has('project.created_at')
+            ->has('project.updated_at')
             ->has('meta.CITY')
             ->has('meta.COUNTRY')
             ->has('meta.PROJECT')

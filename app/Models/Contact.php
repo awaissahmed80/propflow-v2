@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\LogUserActivity;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -151,6 +152,42 @@ class Contact extends Model
         ])));
 
         return $name !== '' ? $name : 'Contact #'.$this->id;
+    }
+
+    /**
+     * Match phone/email, a single name field, or a multi-word full name
+     * (e.g. "Mali Ibrar" against first_name=Mali + last_name=Ibrar).
+     */
+    public function scopeMatchingSearch(Builder $query, string $term): Builder
+    {
+        $term = trim($term);
+
+        if ($term === '') {
+            return $query;
+        }
+
+        $like = '%'.$term.'%';
+        $tokens = preg_split('/\s+/u', $term, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return $query->where(function (Builder $inner) use ($like, $tokens): void {
+            $inner->where('first_name', 'like', $like)
+                ->orWhere('last_name', 'like', $like)
+                ->orWhere('phone_number', 'like', $like)
+                ->orWhere('email_address', 'like', $like);
+
+            if (count($tokens) < 2) {
+                return;
+            }
+
+            $inner->orWhere(function (Builder $fullName) use ($tokens): void {
+                foreach ($tokens as $token) {
+                    $fullName->where(function (Builder $part) use ($token): void {
+                        $part->where('first_name', 'like', '%'.$token.'%')
+                            ->orWhere('last_name', 'like', '%'.$token.'%');
+                    });
+                }
+            });
+        });
     }
 
     protected function casts(): array

@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use InvalidArgumentException;
 
 #[Fillable([
     'name',
@@ -77,6 +78,64 @@ class Unit extends Model
     public function getRouteKeyName(): string
     {
         return 'code';
+    }
+
+    /**
+     * Remaining sellable stock for this inventory row.
+     */
+    public function stock(): int
+    {
+        return max(0, (int) ($this->quantity ?? 1));
+    }
+
+    public function isBookable(): bool
+    {
+        return in_array($this->status, [self::STATUS_AVAILABLE, self::STATUS_HOLD], true)
+            && $this->stock() > 0;
+    }
+
+    /**
+     * Reserve a unique (qty 1) unit. Multi-quantity rows stay available for other bookings.
+     */
+    public function reserveForBooking(string $status): void
+    {
+        if (! in_array($status, [self::STATUS_RESERVED, self::STATUS_TOKEN], true)) {
+            throw new InvalidArgumentException('Booking reservation status must be RESERVED or TOKEN.');
+        }
+
+        if ($this->stock() <= 1) {
+            $this->forceFill(['status' => $status])->save();
+        }
+    }
+
+    /**
+     * Deduct one unit of stock when a booking is sold/allocated.
+     * Marks the row sold when stock reaches zero.
+     */
+    public function consumeForSale(int $count = 1): void
+    {
+        $count = max(1, $count);
+        $remaining = max(0, $this->stock() - $count);
+
+        $this->forceFill([
+            'quantity' => $remaining,
+            'status' => $remaining === 0 ? self::STATUS_SOLD : self::STATUS_AVAILABLE,
+        ])->save();
+    }
+
+    /**
+     * Release a unique reserved/token unit back to availability.
+     */
+    public function releaseFromBooking(): void
+    {
+        if (! in_array($this->status, [self::STATUS_RESERVED, self::STATUS_TOKEN], true)) {
+            return;
+        }
+
+        $this->forceFill([
+            'status' => self::STATUS_AVAILABLE,
+            'quantity' => max(1, $this->stock()),
+        ])->save();
     }
 
     public static function boot(): void

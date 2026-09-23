@@ -57,7 +57,7 @@ class OrderService
 
             $unit = Unit::query()->whereKey($data['unit_id'])->lockForUpdate()->first();
 
-            if ($unit === null || ! in_array($unit->status, [Unit::STATUS_AVAILABLE, Unit::STATUS_HOLD], true)) {
+            if ($unit === null || ! $unit->isBookable()) {
                 throw ValidationException::withMessages([
                     'unit_id' => 'Choose a unit that is available or on hold.',
                 ]);
@@ -87,9 +87,9 @@ class OrderService
                 'lead_stage_id' => (int) $stageId,
             ])->save();
 
-            $unit->forceFill([
-                'status' => $kind === Order::KIND_TOKEN ? Unit::STATUS_TOKEN : Unit::STATUS_RESERVED,
-            ])->save();
+            $unit->reserveForBooking(
+                $kind === Order::KIND_TOKEN ? Unit::STATUS_TOKEN : Unit::STATUS_RESERVED,
+            );
 
             $order = Order::query()->create([
                 'lead_id' => $lead->id,
@@ -150,9 +150,8 @@ class OrderService
             }
 
             if ($order->unit_id !== null) {
-                Unit::query()->whereKey($order->unit_id)->lockForUpdate()->update([
-                    'status' => Unit::STATUS_AVAILABLE,
-                ]);
+                $unit = Unit::query()->whereKey($order->unit_id)->lockForUpdate()->first();
+                $unit?->releaseFromBooking();
             }
 
             $order->forceFill([
@@ -185,13 +184,12 @@ class OrderService
             }
 
             if ($order->unit_id !== null) {
-                Unit::query()->whereKey($order->unit_id)->lockForUpdate()->update([
-                    'status' => Unit::STATUS_SOLD,
-                ]);
+                $unit = Unit::query()->whereKey($order->unit_id)->lockForUpdate()->first();
+                $unit?->consumeForSale();
             }
 
             $order->forceFill([
-                'status' => Order::STATUS_CURRENT,
+                'status' => Order::STATUS_IN_PROGRESS,
                 'stage' => Order::STAGE_ACTIVE,
                 'allocated_at' => now(),
             ])->save();

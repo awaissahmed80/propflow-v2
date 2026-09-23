@@ -3,12 +3,13 @@
 namespace Tests\Feature\Portal;
 
 use App\Models\Lead;
-use App\Models\LeadActionType;
 use App\Models\LeadStage;
 use App\Models\Order;
 use App\Models\OrderPayment;
+use App\Models\PaymentAccount;
 use App\Models\PaymentInstallment;
 use App\Models\Project;
+use App\Models\Task;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Models\Unit;
@@ -57,6 +58,8 @@ class DealPipelineTest extends TestCase
         $this->assertSame(Unit::STATUS_TOKEN, $unit->fresh()->status);
         Tenant::forgetCurrent();
 
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))->assertRedirect();
+
         $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
             'identity_kind' => 'cnic',
             'identity_number' => '42101-1234567-1',
@@ -83,7 +86,7 @@ class DealPipelineTest extends TestCase
         $order->refresh();
         $order->load('paymentPlan.installments', 'payments');
         $this->assertSame(Order::STAGE_ACTIVE, $order->stage);
-        $this->assertSame(Order::STATUS_CURRENT, $order->status);
+        $this->assertSame(Order::STATUS_IN_PROGRESS, $order->status);
         $this->assertSame('10000.00', $order->paymentPlan->installments->reduce(
             fn (string $carry, PaymentInstallment $row): string => number_format(((float) $carry) + (float) $row->amount, 2, '.', ''),
             '0.00',
@@ -179,6 +182,8 @@ class DealPipelineTest extends TestCase
         $order = Order::query()->first();
         Tenant::forgetCurrent();
 
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))->assertRedirect();
+
         $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
             'identity_kind' => 'passport',
             'identity_number' => 'AB1234567',
@@ -229,6 +234,8 @@ class DealPipelineTest extends TestCase
         $tenant->makeCurrent();
         $order = Order::query()->first();
         Tenant::forgetCurrent();
+
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))->assertRedirect();
 
         $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
             'identity_kind' => 'cnic',
@@ -309,6 +316,8 @@ class DealPipelineTest extends TestCase
         $fromContactId = $order->contact_id;
         Tenant::forgetCurrent();
 
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))->assertRedirect();
+
         $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
             'identity_kind' => 'cnic',
             'identity_number' => '42101-1234567-1',
@@ -365,21 +374,19 @@ class DealPipelineTest extends TestCase
 
         $tenant->makeCurrent();
         $order = Order::query()->first();
-        LeadActionType::ensureDefaults();
-        $action = LeadActionType::query()
-            ->where('kind', LeadActionType::KIND_ACTIVITY)
-            ->value('title');
         Tenant::forgetCurrent();
 
         $this->post(Domain::portal('/bookings/'.$order->code.'/activity'), [
-            'action' => $action,
+            'action' => 'Note',
             'comments' => 'Called buyer about token verification.',
         ])->assertRedirect();
 
         $tenant->makeCurrent();
         $this->assertDatabaseHas('tasks', [
-            'order_id' => $order->id,
-            'action' => $action,
+            'taskable_type' => $order->getMorphClass(),
+            'taskable_id' => $order->id,
+            'action' => 'Note',
+            'type' => Task::TYPE_ACTION,
             'stage' => Order::STAGE_TOKEN,
         ], 'tenant');
         $installment = $order->fresh()->paymentPlan?->installments()->first();
@@ -391,10 +398,23 @@ class DealPipelineTest extends TestCase
         Pdf::assertRespondedWithPdf(fn ($pdf) => $pdf->viewName === 'portal.ledger-statement' && $pdf->isDownload());
 
         if ($installment) {
+            $tenant->makeCurrent();
+            PaymentAccount::ensureDefaults();
+            $bank = PaymentAccount::defaultFor(PaymentAccount::TYPE_BANK);
+            $bank->update([
+                'bank_name' => 'Meezan Bank',
+                'account_title' => 'Propflow Receivables',
+                'account_number' => '0011223344',
+            ]);
+            Tenant::forgetCurrent();
+
             Pdf::fake();
             $this->get(Domain::portal('/bookings/'.$order->code.'/installments/'.$installment->id.'/pay-voucher'))
                 ->assertOk();
-            Pdf::assertRespondedWithPdf(fn ($pdf) => $pdf->viewName === 'portal.payment-request-voucher');
+            Pdf::assertRespondedWithPdf(fn ($pdf) => $pdf->viewName === 'portal.payment-request-voucher'
+                && $pdf->contains('Meezan Bank')
+                && $pdf->contains('Propflow Receivables')
+                && $pdf->contains('0011223344'));
         }
     }
 
@@ -445,6 +465,197 @@ class DealPipelineTest extends TestCase
                 ->has('installments', 1)
                 ->where('installments.0.id', $past->id)
             );
+    }
+
+    public function test_verify_token_advances_to_booking_kyc(): void
+    {
+        [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_deal_verify_kyc');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/convert'), [
+            'unit_id' => $unit->id,
+            'booking_kind' => Order::KIND_TOKEN,
+            'agreed_price' => 5000,
+            'token_amount' => 500,
+            'installment_count' => 1,
+            'first_due_on' => '2026-11-01',
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order = Order::query()->firstOrFail();
+        Tenant::forgetCurrent();
+
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))
+            ->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order->refresh();
+        $this->assertSame(Order::STAGE_BOOKING_KYC, $order->stage);
+        $this->assertSame(Order::STATUS_IN_PROGRESS, $order->status);
+        $this->assertNotNull($order->booking_verified_at);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_kyc_completion_activates_without_payment_plan(): void
+    {
+        [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_deal_kyc_active');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/convert'), [
+            'unit_id' => $unit->id,
+            'booking_kind' => Order::KIND_TOKEN,
+            'agreed_price' => 8000,
+            'token_amount' => 800,
+            'installment_count' => 1,
+            'first_due_on' => '2026-11-01',
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order = Order::query()->firstOrFail();
+        Tenant::forgetCurrent();
+
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))->assertRedirect();
+
+        $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
+            'identity_kind' => 'cnic',
+            'identity_number' => '42101-1234567-1',
+            'nominee_name' => 'Sara',
+            'nominee_relation' => 'Spouse',
+            'nominee_cnic' => '42101-7654321-1',
+            'plot_or_file' => 'F-2',
+            'category' => 'standard',
+            'premium' => 0,
+            'discount' => 0,
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order->refresh();
+        $this->assertSame(Order::STAGE_ACTIVE, $order->stage);
+        $this->assertSame(Order::STATUS_IN_PROGRESS, $order->status);
+        $this->assertNull($order->paymentPlan?->template);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_direct_sale_payment_without_installment_plan(): void
+    {
+        [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_deal_direct_pay');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/convert'), [
+            'unit_id' => $unit->id,
+            'booking_kind' => Order::KIND_TOKEN,
+            'agreed_price' => 4000,
+            'token_amount' => 400,
+            'installment_count' => 1,
+            'first_due_on' => '2026-11-01',
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order = Order::query()->firstOrFail();
+        Tenant::forgetCurrent();
+
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))->assertRedirect();
+        $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
+            'identity_kind' => 'cnic',
+            'identity_number' => '42101-1234567-1',
+            'nominee_name' => 'Sara',
+            'nominee_relation' => 'Spouse',
+            'nominee_cnic' => '42101-7654321-1',
+            'plot_or_file' => 'F-3',
+            'category' => 'standard',
+            'premium' => 0,
+            'discount' => 0,
+        ])->assertRedirect();
+
+        $this->from(Domain::portal('/bookings'))
+            ->post(Domain::portal('/bookings/'.$order->code.'/payments'), [
+                'amount' => 4000,
+                'method' => OrderPayment::METHOD_CASH,
+                'paid_on' => '2026-10-02',
+            ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order->refresh()->load('payments');
+        $this->assertSame(1, $order->payments->count());
+        $this->assertSame('4000.00', $order->payments->first()->amount);
+        $this->assertNull($order->payments->first()->payment_installment_id);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_manual_status_rejects_automated_labels(): void
+    {
+        [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_deal_status_guard');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/convert'), [
+            'unit_id' => $unit->id,
+            'booking_kind' => Order::KIND_TOKEN,
+            'agreed_price' => 2000,
+            'token_amount' => 200,
+            'installment_count' => 1,
+            'first_due_on' => '2026-11-01',
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order = Order::query()->firstOrFail();
+        Tenant::forgetCurrent();
+
+        $this->from(Domain::portal('/bookings?booking='.$order->code))
+            ->patch(Domain::portal('/bookings/'.$order->code), [
+                'status' => Order::STATUS_OVERDUE,
+            ])->assertSessionHasErrors('status');
+
+        $this->patch(Domain::portal('/bookings/'.$order->code), [
+            'status' => Order::STATUS_IN_PROGRESS,
+        ])->assertRedirect('/bookings?booking='.$order->code);
+
+        $tenant->makeCurrent();
+        $this->assertSame(Order::STATUS_IN_PROGRESS, $order->fresh()->status);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_transfer_allowed_before_active_stage(): void
+    {
+        [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_deal_transfer_token');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/convert'), [
+            'unit_id' => $unit->id,
+            'booking_kind' => Order::KIND_TOKEN,
+            'agreed_price' => 6000,
+            'token_amount' => 600,
+            'installment_count' => 1,
+            'first_due_on' => '2026-11-01',
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order = Order::query()->firstOrFail();
+        $fromContactId = $order->contact_id;
+        Tenant::forgetCurrent();
+
+        $this->post(Domain::portal('/bookings/'.$order->code.'/transfer'), [
+            'first_name' => 'New',
+            'last_name' => 'Buyer',
+            'phone_number' => '03001112233',
+            'ndc_cleared' => 1,
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order->refresh();
+        $this->assertNotSame($fromContactId, $order->contact_id);
+        $this->assertSame(Order::STAGE_TOKEN, $order->stage);
+        $this->assertSame('New', $order->contact->first_name);
+        Tenant::forgetCurrent();
     }
 
     protected function membershipCode(Tenant $tenant, User $user): string

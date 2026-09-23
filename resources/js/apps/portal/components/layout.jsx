@@ -17,17 +17,30 @@ import { SpotlightSearch } from "./spotlight-search"
 import { AssistantModal } from "./assistant-modal"
 import { NotificationMenu } from "./notification-menu"
 import { IconButton } from "@/components/ui/icon-button"
-import { useAuth } from "@/hooks/use-auth"
-import dayjs from "dayjs"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { Separator } from "@base-ui/react/separator"
 
+function WorkspaceLabel({ name, className }) {
+    return (
+        <span className={cn("inline-flex min-w-0 items-center gap-2", className)}>
+            <Icon
+                name="building-line"
+                className="shrink-0 text-base text-foreground/70"
+                aria-hidden
+            />
+            <span className="truncate font-semibold text-foreground/80">{name}</span>
+        </span>
+    )
+}
 
 function Layout ({className, children}) {
 
     return(
-        <div className={cn("flex-1 h-full flex w-full flex-col", className)}>
-            {children}
-        </div>
+        <TooltipProvider delay={300}>
+            <div className={cn("flex-1 h-full flex w-full flex-col", className)}>
+                {children}
+            </div>
+        </TooltipProvider>
     )
 }
 
@@ -35,10 +48,7 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
 
     const os = useOS();
     const [ isOpen, setOpen ] = useState(false)
-    const { user } = useAuth()
-    const workspaceName = usePage().props?.tenant?.current?.name
-        || user?.display_name
-        || "your workspace"
+    const workspaceName = usePage().props?.tenant?.current?.name || "Workspace"
     
     useEffect(() => {
         const down = (e) => {
@@ -67,18 +77,25 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
                 }
                 {
                     (breadcrumbs?.length === 0) &&
-                    <div className="text-foreground/50">
-                        It's {dayjs().format('dddd')}
-                        <span className="font-semibold text-foreground/80"> {workspaceName}</span>
-                        — let's make it count!
-                    </div>
+                    <WorkspaceLabel name={workspaceName} />
                 }   
                 {
                     (breadcrumbs?.length > 0) &&
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem>
-                                <BreadcrumbLink render={<Link href="/dashboard" preserveState={false} preserveScroll={false}><Icon name="home-line" /></Link>} />
+                                <BreadcrumbLink
+                                    render={
+                                        <Link
+                                            href="/"
+                                            preserveState={false}
+                                            preserveScroll={false}
+                                            aria-label={workspaceName}
+                                        >
+                                            <WorkspaceLabel name={workspaceName} />
+                                        </Link>
+                                    }
+                                />
                             </BreadcrumbItem>
                             <BreadcrumbSeparator />
                         
@@ -87,8 +104,8 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
                                     <Fragment key={item?.label}>
                                         <BreadcrumbItem>
                                             {
-                                                (item?.to) ?
-                                                <BreadcrumbLink render={<Link href={item.to}>{item?.label}</Link>} />
+                                                (item?.to || item?.href) ?
+                                                <BreadcrumbLink render={<Link href={item.to || item.href}>{item?.label}</Link>} />
                                                 :
                                                 <>{item?.label}</>   
                                             }                                            
@@ -120,7 +137,13 @@ const LayoutHeader = ({title, metaTitle, breadcrumbs=[], showBack=false, childre
                 {children}
             </div>            
             <div className="flex shrink-0 items-center gap-3">
-                <IconButton size="sm" variant="outline" icon="discuss-line" />
+                <IconButton
+                    size="sm"
+                    variant="outline"
+                    icon="discuss-line"
+                    aria-label="Community"
+                    tooltip="Community"
+                />
                 <div className="relative size-6 min-w-6 shrink-0">
                     <NotificationMenu />
                 </div>

@@ -62,7 +62,7 @@ class MediaDestroyTest extends TestCase
             ->assertJsonPath('ok', true);
 
         $tenant->makeCurrent();
-        $this->assertSoftDeleted('assets', ['id' => $asset->id], 'tenant');
+        $this->assertDatabaseMissing('assets', ['id' => $asset->id], 'tenant');
         $this->assertDatabaseMissing('asset_links', [
             'asset_id' => $asset->id,
         ], 'tenant');

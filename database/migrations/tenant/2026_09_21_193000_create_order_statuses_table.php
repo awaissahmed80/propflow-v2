@@ -10,16 +10,12 @@ return new class extends Migration
     {
         Schema::create('order_statuses', function (Blueprint $table): void {
             $table->id();
-            $table->string('stage_label');
-            $table->string('label');
+            $table->string('label')->unique();
             $table->string('title')->nullable();
             $table->integer('priority')->default(0)->nullable();
             $table->string('color', 20)->nullable();
             $table->boolean('is_system')->default(true);
             $table->boolean('is_enabled')->default(true);
-
-            $table->unique(['stage_label', 'label']);
-            $table->index('stage_label');
         });
     }
 

@@ -65,12 +65,6 @@ function buildDefaults(general = {}, configuration = {}) {
         city: general.city ?? "",
         state: general.state ?? "",
         tax_id: general.tax_id ?? "",
-        bank_name: general.bank_name ?? "",
-        account_title: general.account_title ?? "",
-        account_number: general.account_number ?? "",
-        iban: general.iban ?? "",
-        swift: general.swift ?? "",
-        branch: general.branch ?? "",
         currency_code: configuration.currency_code ?? "USD",
         currency_symbol: configuration.currency_symbol ?? "$",
         country: configuration.country ?? "",
@@ -185,12 +179,6 @@ export default function GeneralPanel({
             city: values.city?.trim() || null,
             state: values.state?.trim() || null,
             tax_id: values.tax_id?.trim() || null,
-            bank_name: values.bank_name?.trim() || null,
-            account_title: values.account_title?.trim() || null,
-            account_number: values.account_number?.trim() || null,
-            iban: values.iban?.trim() || null,
-            swift: values.swift?.trim() || null,
-            branch: values.branch?.trim() || null,
             remove_logo: removeLogo,
         };
 
@@ -289,27 +277,6 @@ export default function GeneralPanel({
                             placeholder="Short slogan for proposals and emails"
                             {...register("tagline")}
                         />
-                    </FormRow>
-                </FormSection>
-
-                <FormSection>
-                    <FormRow label="Bank name">
-                        <Input error={fieldError("bank_name")} {...register("bank_name")} />
-                    </FormRow>
-                    <FormRow label="Account title">
-                        <Input error={fieldError("account_title")} {...register("account_title")} />
-                    </FormRow>
-                    <FormRow label="Account number">
-                        <Input error={fieldError("account_number")} {...register("account_number")} />
-                    </FormRow>
-                    <FormRow label="IBAN">
-                        <Input error={fieldError("iban")} {...register("iban")} />
-                    </FormRow>
-                    <FormRow label="SWIFT">
-                        <Input error={fieldError("swift")} {...register("swift")} />
-                    </FormRow>
-                    <FormRow label="Branch">
-                        <Input error={fieldError("branch")} {...register("branch")} />
                     </FormRow>
                 </FormSection>
 

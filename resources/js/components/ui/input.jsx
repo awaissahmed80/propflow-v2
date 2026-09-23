@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Input as InputPrimitive } from "@base-ui/react/input"
+import { forwardRef, useState } from "react";
 import { cn } from "@/lib/utils"
 import { cva } from "class-variance-authority";
 import { Label } from "./label"
@@ -30,7 +29,19 @@ const inputVariants = cva(
     }
 )
 
-function Input({ className, info, size="default", variant="default", required = false, error, label, startElement=null, endElement=null, type, ...props }) {    
+const Input = forwardRef(function Input({
+    className,
+    info,
+    size = "default",
+    variant = "default",
+    required = false,
+    error,
+    label,
+    startElement = null,
+    endElement = null,
+    type = "text",
+    ...props
+}, ref) {
   return (
     <div>
         {
@@ -54,7 +65,8 @@ function Input({ className, info, size="default", variant="default", required = 
                     {startElement}
                 </div>
             }  
-            <InputPrimitive
+            <input
+                ref={ref}
                 type={type}
                 data-slot="input"
                 aria-invalid={!!error}
@@ -83,24 +95,36 @@ function Input({ className, info, size="default", variant="default", required = 
     
       </div>
   );
-}
+});
 
-function PasswordInput ({ className, label, error, startElement=null, ...props }) {
+const PasswordInput = forwardRef(function PasswordInput({
+    className,
+    label,
+    error,
+    startElement = null,
+    ...props
+}, ref) {
+    const [show, setShow] = useState(false)
 
-    const [ show, setShow ] = useState(false)
-
-    return(
-        <Input 
+    return (
+        <Input
+            ref={ref}
             label={label}
             className={className}
             startElement={startElement}
-            type={ show ? "text" : "password"}
+            type={show ? "text" : "password"}
             error={error}
-            endElement={<Icon onClick={() => setShow(!show)} name={show ? 'eye-off-fill' : 'eye-fill'} className={show ? 'text-muted-foreground mr-2' : 'text-muted-foreground/50 mr-2'} />}
+            endElement={
+                <Icon
+                    onClick={() => setShow(!show)}
+                    name={show ? "eye-off-fill" : "eye-fill"}
+                    className={show ? "text-muted-foreground mr-2" : "text-muted-foreground/50 mr-2"}
+                />
+            }
             {...props}
         />
     )
-}
+});
 
 Input.Password = PasswordInput
 export { Input }

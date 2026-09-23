@@ -18,10 +18,13 @@ function StageBadge({
   as: Comp = "span",
   ...props
 }) {
+  const isInteractive = Comp === "button" || Comp === "a"
+
   return (
     <Comp
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+        "inline-flex max-w-full items-center gap-1.5 border px-2.5 py-1 text-xs font-medium transition-colors",
+        isInteractive ? "rounded-md" : "rounded-full",
         selected
           ? "border-primary/40 bg-primary/10 text-primary"
           : "border-border bg-background text-foreground",

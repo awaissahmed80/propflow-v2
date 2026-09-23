@@ -26,7 +26,7 @@ class UnitDestroyTest extends TestCase
         $this->migrateTenant();
     }
 
-    public function test_unit_can_be_soft_deleted(): void
+    public function test_unit_can_be_hard_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_unit_destroy');
 
@@ -44,7 +44,7 @@ class UnitDestroyTest extends TestCase
 
         $response->assertRedirect(Domain::portal('/inventory'));
 
-        $this->assertSoftDeleted('units', ['id' => $unitId], 'tenant');
+        $this->assertDatabaseMissing('units', ['id' => $unitId], 'tenant');
     }
 
     /**

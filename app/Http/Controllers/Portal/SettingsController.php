@@ -15,6 +15,7 @@ use App\Models\MetaData;
 use App\Models\Order;
 use App\Models\OrderStage;
 use App\Models\OrderStatus;
+use App\Models\PaymentAccount;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\Tenant;
@@ -38,6 +39,7 @@ class SettingsController extends Controller
      */
     public const SECTIONS = [
         'general',
+        'bank-cash',
         'meta-data',
         'pipeline',
         'bookings',
@@ -95,6 +97,8 @@ class SettingsController extends Controller
                 ->values()
                 ->all(),
             'orderStages' => $this->orderStagesPayload(),
+            'orderStatuses' => $this->orderStatusesPayload(),
+            'paymentAccounts' => PaymentAccount::catalog(),
             'activityActionTypes' => LeadActionType::catalog(LeadActionType::KIND_ACTIVITY),
             'nextActionTypes' => LeadActionType::catalog(LeadActionType::KIND_NEXT_ACTION),
             'campaignGoalTypes' => CampaignGoalType::catalog(),
@@ -141,12 +145,6 @@ class SettingsController extends Controller
             'city' => $validated['city'] ?? null,
             'state' => $validated['state'] ?? null,
             'tax_id' => $validated['tax_id'] ?? null,
-            'bank_name' => $validated['bank_name'] ?? null,
-            'account_title' => $validated['account_title'] ?? null,
-            'account_number' => $validated['account_number'] ?? null,
-            'iban' => $validated['iban'] ?? null,
-            'swift' => $validated['swift'] ?? null,
-            'branch' => $validated['branch'] ?? null,
             'logo_path' => $current['logo_path'] ?? null,
         ];
 
@@ -194,6 +192,7 @@ class SettingsController extends Controller
     {
         return [
             ['id' => 'general', 'label' => 'General', 'icon' => 'building-line'],
+            ['id' => 'bank-cash', 'label' => 'Bank & Cash', 'icon' => 'bank-card-line'],
             ['id' => 'meta-data', 'label' => 'Meta Data', 'icon' => 'database-2-line'],
             ['id' => 'pipeline', 'label' => 'Lead Pipeline', 'icon' => 'flow-chart'],
             ['id' => 'bookings', 'label' => 'Orders / Bookings', 'icon' => 'book-2-line'],
@@ -250,12 +249,6 @@ class SettingsController extends Controller
             'city' => null,
             'state' => null,
             'tax_id' => null,
-            'bank_name' => null,
-            'account_title' => null,
-            'account_number' => null,
-            'iban' => null,
-            'swift' => null,
-            'branch' => null,
             'logo_path' => null,
         ]);
 
@@ -282,7 +275,7 @@ class SettingsController extends Controller
     }
 
     /**
-     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool, orders_count: int, statuses: list<array{id: int, stage_label: string, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool}>}>
+     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool, orders_count: int}>
      */
     protected function orderStagesPayload(): array
     {
@@ -296,9 +289,6 @@ class SettingsController extends Controller
             ->groupBy('stage')
             ->pluck('aggregate', 'stage');
 
-        $statuses = collect(OrderStatus::catalog(enabledOnly: false))
-            ->groupBy('stage_label');
-
         return OrderStage::query()
             ->orderBy('priority')
             ->get(['id', 'label', 'title', 'priority', 'color', 'is_system', 'is_enabled'])
@@ -311,7 +301,27 @@ class SettingsController extends Controller
                 'is_system' => (bool) $stage->is_system,
                 'is_enabled' => (bool) $stage->is_enabled,
                 'orders_count' => (int) ($counts->get($stage->label) ?? 0),
-                'statuses' => ($statuses->get($stage->label) ?? collect())->values()->all(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array{id: int, label: string, title: string, priority: int, color: ?string, is_system: bool, is_enabled: bool, orders_count: int}>
+     */
+    protected function orderStatusesPayload(): array
+    {
+        OrderStatus::ensureDefaults();
+
+        $counts = Order::query()
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        return collect(OrderStatus::catalog(enabledOnly: false))
+            ->map(fn (array $status): array => [
+                ...$status,
+                'orders_count' => (int) ($counts->get($status['label']) ?? 0),
             ])
             ->values()
             ->all();
@@ -352,7 +362,7 @@ class SettingsController extends Controller
     {
         return Role::query()
             ->with(['permissions:id,name,label,group'])
-            ->orderBy('name')
+            ->orderedByPower()
             ->get()
             ->map(fn (Role $role): array => [
                 'id' => $role->id,

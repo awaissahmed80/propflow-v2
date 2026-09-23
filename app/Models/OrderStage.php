@@ -39,10 +39,10 @@ class OrderStage extends Model
     public static function defaultDefinitions(): array
     {
         return [
-            ['label' => Order::STAGE_TOKEN, 'title' => 'Token', 'priority' => 1, 'color' => '#3B82F6', 'is_system' => true, 'is_enabled' => true],
-            ['label' => Order::STAGE_BOOKING_KYC, 'title' => 'Booking & KYC', 'priority' => 2, 'color' => '#8B5CF6', 'is_system' => true, 'is_enabled' => true],
-            ['label' => Order::STAGE_ACTIVE, 'title' => 'Active', 'priority' => 3, 'color' => '#06B6D4', 'is_system' => true, 'is_enabled' => true],
-            ['label' => Order::STAGE_CLOSED, 'title' => 'Closed', 'priority' => 4, 'color' => '#059669', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STAGE_TOKEN, 'title' => 'Token', 'priority' => 1, 'color' => '#2563EB', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STAGE_BOOKING_KYC, 'title' => 'Booking & KYC', 'priority' => 2, 'color' => '#7C3AED', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STAGE_ACTIVE, 'title' => 'Active', 'priority' => 3, 'color' => '#0D9488', 'is_system' => true, 'is_enabled' => true],
+            ['label' => Order::STAGE_CLOSED, 'title' => 'Closed', 'priority' => 4, 'color' => '#475569', 'is_system' => true, 'is_enabled' => true],
         ];
     }
 

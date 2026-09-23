@@ -143,7 +143,7 @@ export default function UserForm({
     });
 
     const isEditing = Boolean(data?.id);
-    const showPasswordFields = !isEditing || updatePassword;
+    const showPasswordFields = isEditing && updatePassword;
     const firstName = watch("first_name");
     const lastName = watch("last_name");
     const emailAddress = watch("email_address");
@@ -251,17 +251,26 @@ export default function UserForm({
         setProcessing(true);
         setServerErrors({});
 
-        const payload = {
-            first_name: formData.first_name.trim(),
-            last_name: formData.last_name.trim(),
-            title: formData.title.trim(),
-            department: formData.department || null,
-            manager_id: formData.manager_id || null,
-            email_address: formData.email_address.trim(),
-            phone_number: formData.phone_number || null,
-            roles: formData.roles ?? [],
-            remove_avatar: removeAvatar,
-        };
+        const payload = isEditing
+            ? {
+                  first_name: formData.first_name.trim(),
+                  last_name: formData.last_name.trim(),
+                  title: formData.title.trim(),
+                  department: formData.department || null,
+                  manager_id: formData.manager_id || null,
+                  email_address: formData.email_address.trim(),
+                  phone_number: formData.phone_number || null,
+                  roles: formData.roles ?? [],
+                  remove_avatar: removeAvatar,
+              }
+            : {
+                  title: formData.title.trim(),
+                  department: formData.department || null,
+                  manager_id: formData.manager_id || null,
+                  email_address: formData.email_address.trim(),
+                  phone_number: formData.phone_number || null,
+                  roles: formData.roles ?? [],
+              };
 
         if (showPasswordFields) {
             payload.password = formData.password || null;
@@ -303,7 +312,9 @@ export default function UserForm({
             preserveScroll: true,
             preserveState: "errors",
             onSuccess: () => {
-                toast.success("User created successfully");
+                toast.success(
+                    "Invitation sent. Existing accounts are added to this workspace automatically."
+                );
                 handleClose();
             },
             onError: (submitErrors) => {
@@ -311,7 +322,7 @@ export default function UserForm({
                 toast.error(
                     submitErrors.email_address ||
                         submitErrors.message ||
-                        "Unable to create user"
+                        "Unable to send invitation"
                 );
             },
             onFinish: () => setProcessing(false),
@@ -336,11 +347,11 @@ export default function UserForm({
             >
                 <div className="shrink-0 border-b border-border">
                     <DialogHeader className="sr-only">
-                        <DialogTitle>{isEditing ? "Edit user" : "Create user"}</DialogTitle>
+                        <DialogTitle>{isEditing ? "Edit user" : "Invite user"}</DialogTitle>
                         <DialogDescription>
                             {isEditing
                                 ? "Update this user’s profile and access."
-                                : "Add a new user to your organization."}
+                                : "Invite someone to this workspace by email. They won’t be active until they accept."}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -348,21 +359,31 @@ export default function UserForm({
                         <div className="h-14 bg-muted" />
 
                         <div className="relative px-6 pb-4">
-                            <ProfileAvatarPicker
-                                name={previewName}
-                                value={avatarFile}
-                                previewUrl={avatarPreviewUrl}
-                                onChange={handleAvatarChange}
-                                sizeClass="size-20"
-                                className="-mt-8"
-                            />
+                            {isEditing ? (
+                                <ProfileAvatarPicker
+                                    name={previewName}
+                                    value={avatarFile}
+                                    previewUrl={avatarPreviewUrl}
+                                    onChange={handleAvatarChange}
+                                    sizeClass="size-20"
+                                    className="-mt-8"
+                                />
+                            ) : (
+                                <div className="-mt-8 flex size-20 items-center justify-center rounded-full bg-primary/10 ring-4 ring-background">
+                                    <Icon name="mail-send-line" className="text-2xl text-primary" />
+                                </div>
+                            )}
 
                             <div className="mt-3 space-y-0.5">
                                 <div className="truncate text-xl font-semibold tracking-tight text-foreground">
-                                    {previewName}
+                                    {isEditing ? previewName : "Invite user"}
                                 </div>
                                 <div className="truncate text-sm text-muted-foreground">
-                                    {previewEmail}
+                                    {isEditing
+                                        ? previewEmail
+                                        : previewEmail !== "Add an email address"
+                                          ? previewEmail
+                                          : "Send an invite by email"}
                                 </div>
                             </div>
                         </div>
@@ -375,32 +396,34 @@ export default function UserForm({
                     onSubmit={handleSubmit(onSubmit, onInvalid)}
                     noValidate
                 >
-                    <FormRow label="Name" required>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <Input
-                                required
-                                placeholder="First name"
-                                autoComplete="given-name"
-                                error={fieldError("first_name")}
-                                {...register("first_name", {
-                                    required: "First name is required.",
-                                    validate: (value) =>
-                                        value.trim().length > 0 || "First name is required.",
-                                })}
-                            />
-                            <Input
-                                required
-                                placeholder="Last name"
-                                autoComplete="family-name"
-                                error={fieldError("last_name")}
-                                {...register("last_name", {
-                                    required: "Last name is required.",
-                                    validate: (value) =>
-                                        value.trim().length > 0 || "Last name is required.",
-                                })}
-                            />
-                        </div>
-                    </FormRow>
+                    {isEditing ? (
+                        <FormRow label="Name" required>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <Input
+                                    required
+                                    placeholder="First name"
+                                    autoComplete="given-name"
+                                    error={fieldError("first_name")}
+                                    {...register("first_name", {
+                                        required: "First name is required.",
+                                        validate: (value) =>
+                                            value.trim().length > 0 || "First name is required.",
+                                    })}
+                                />
+                                <Input
+                                    required
+                                    placeholder="Last name"
+                                    autoComplete="family-name"
+                                    error={fieldError("last_name")}
+                                    {...register("last_name", {
+                                        required: "Last name is required.",
+                                        validate: (value) =>
+                                            value.trim().length > 0 || "Last name is required.",
+                                    })}
+                                />
+                            </div>
+                        </FormRow>
+                    ) : null}
 
                     <FormRow label="Email address" required>
                         <Input
@@ -420,6 +443,12 @@ export default function UserForm({
                                 },
                             })}
                         />
+                        {!isEditing ? (
+                            <p className="text-xs text-muted-foreground">
+                                We’ll email an invite link. They won’t appear as an active member
+                                until they accept.
+                            </p>
+                        ) : null}
                     </FormRow>
 
                     {isEditing ? (
@@ -499,16 +528,18 @@ export default function UserForm({
                         <div className="min-w-0 space-y-2">
                             <div className="text-sm font-medium text-foreground">
                                 Phone
-                                <span className="text-destructive"> *</span>
+                                {isEditing ? <span className="text-destructive"> *</span> : null}
                             </div>
                             <Controller
                                 name="phone_number"
                                 control={control}
-                                rules={{ required: "Phone number is required." }}
+                                rules={{
+                                    required: isEditing ? "Phone number is required." : false,
+                                }}
                                 render={({ field }) => (
                                     <PhoneInput
                                         label={null}
-                                        required
+                                        required={isEditing}
                                         value={field.value}
                                         onChange={field.onChange}
                                         onBlur={field.onBlur}
@@ -660,7 +691,7 @@ export default function UserForm({
                             Cancel
                         </Button>
                         <Button type="submit" form="user-form" loading={processing}>
-                            {isEditing ? "Save changes" : "Create user"}
+                            {isEditing ? "Save changes" : "Send invite"}
                         </Button>
                     </div>
                 </DialogFooter>

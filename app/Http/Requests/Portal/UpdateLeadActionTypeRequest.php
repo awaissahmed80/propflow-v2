@@ -33,6 +33,7 @@ class UpdateLeadActionTypeRequest extends FormRequest
                     ->ignore($actionType->id),
             ],
             'icon' => ['nullable', 'string', 'max:64'],
+            'color' => ['nullable', 'string', 'max:32', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/'],
             'is_enabled' => ['sometimes', 'boolean'],
         ];
     }

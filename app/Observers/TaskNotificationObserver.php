@@ -2,6 +2,8 @@
 
 namespace App\Observers;
 
+use App\Models\Lead;
+use App\Models\Order;
 use App\Models\Task;
 use App\Support\Notifications\WorkspaceNotifier;
 
@@ -13,13 +15,22 @@ class TaskNotificationObserver
             return;
         }
 
-        $code = $task->lead()->value('code');
+        $task->loadMissing('taskable');
+        $taskable = $task->taskable;
+
+        if ($taskable instanceof Lead) {
+            $href = '/leads#'.$taskable->code;
+        } elseif ($taskable instanceof Order) {
+            $href = '/bookings/'.$taskable->code;
+        } else {
+            $href = '/leads';
+        }
 
         WorkspaceNotifier::send(
             'task_assigned',
             'Task assigned',
             filled($task->action) ? (string) $task->action : 'A task was assigned to you.',
-            filled($code) ? '/leads#'.$code : '/leads',
+            $href,
             WorkspaceNotifier::userOrMembers($task->user_id),
         );
     }

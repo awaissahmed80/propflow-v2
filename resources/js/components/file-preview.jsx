@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
@@ -33,9 +33,16 @@ export function filePreviewMode(file) {
   const extension = extensionOf(file?.name)
 
   if (
-    file?.kind === "media" ||
+    mime.startsWith("audio/") ||
+    ["webm", "mp3", "ogg", "wav", "m4a", "mpeg"].includes(extension || "")
+  ) {
+    return "audio"
+  }
+
+  if (
     mime.startsWith("image/") ||
-    IMAGE_EXTENSIONS.includes(extension || "")
+    IMAGE_EXTENSIONS.includes(extension || "") ||
+    (file?.kind === "media" && !mime)
   ) {
     return "image"
   }
@@ -85,6 +92,13 @@ function fileTypeLabel(name, mime) {
     return "ZIP"
   }
 
+  if (
+    mime?.startsWith("audio/") ||
+    ["webm", "mp3", "ogg", "wav", "m4a", "mpeg"].includes(extension || "")
+  ) {
+    return "AUDIO"
+  }
+
   return (extension || "FILE").slice(0, 4).toUpperCase()
 }
 
@@ -106,6 +120,7 @@ export function FilePreview({
   onIndexChange,
 }) {
   const [activeIndex, setActiveIndex] = useState(index)
+  const iframeRef = useRef(null)
   const total = files.length
   const current = total > 0 ? files[Math.min(Math.max(activeIndex, 0), total - 1)] : null
   const mode = current ? filePreviewMode(current) : "file"
@@ -125,6 +140,35 @@ export function FilePreview({
     const wrapped = ((nextIndex % total) + total) % total
     setActiveIndex(wrapped)
     onIndexChange?.(wrapped)
+  }
+
+  const handlePrint = () => {
+    if (!src) {
+      return
+    }
+
+    if ((mode === "pdf" || mode === "text") && iframeRef.current?.contentWindow) {
+      try {
+        iframeRef.current.contentWindow.focus()
+        iframeRef.current.contentWindow.print()
+        return
+      } catch {
+        // Cross-origin or unavailable — fall through.
+      }
+    }
+
+    if (mode === "image") {
+      const popup = window.open("", "_blank")
+      if (popup) {
+        popup.document.write(
+          `<html><head><title>${current?.name || "Print"}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;"><img src="${src}" style="max-width:100%;height:auto;" onload="window.focus();window.print();" /></body></html>`,
+        )
+        popup.document.close()
+        return
+      }
+    }
+
+    window.open(src, "_blank", "noopener,noreferrer")
   }
 
   return (
@@ -163,8 +207,16 @@ export function FilePreview({
             </div>
           ) : null}
 
+          {current && src && mode === "audio" ? (
+            <div className="flex h-full flex-col items-center justify-center gap-4 px-6">
+              <Icon name="mic-line" className="text-5xl text-muted-foreground" />
+              <audio controls src={src} className="w-full max-w-md" preload="metadata" />
+            </div>
+          ) : null}
+
           {current && src && (mode === "pdf" || mode === "text") ? (
             <iframe
+              ref={iframeRef}
               title={current.name || "File preview"}
               src={src}
               className="size-full border-0 bg-background"
@@ -207,14 +259,25 @@ export function FilePreview({
 
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-6 py-3">
           {src ? (
-            <a
-              href={src}
-              target="_blank"
-              rel="noreferrer"
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Open
-            </a>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handlePrint}
+                disabled={mode === "audio"}
+              >
+                Print
+              </Button>
+              <a
+                href={src}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                Open
+              </a>
+            </>
           ) : null}
           <Button type="button" size="sm" onClick={() => onOpenChange?.(false)}>
             Close
@@ -234,7 +297,9 @@ export function FilePreview({
  * @param {string} [props.className]
  */
 export function FilePreviewTile({ file, onPreview, className }) {
-  const image = filePreviewMode(file) === "image"
+  const mode = filePreviewMode(file)
+  const image = mode === "image"
+  const audio = mode === "audio"
   const src = file.thumbnail_url || file.url
 
   return (
@@ -257,10 +322,12 @@ export function FilePreviewTile({ file, onPreview, className }) {
       ) : (
         <>
           <Icon
-            name="file-text-line"
+            name={audio ? "mic-line" : "file-text-line"}
             className="shrink-0 text-sm text-muted-foreground"
           />
-          <span className="truncate text-xs text-foreground">{file.name}</span>
+          <span className="truncate text-xs text-foreground">
+            {audio ? file.name || "Voice note" : file.name}
+          </span>
         </>
       )}
     </button>

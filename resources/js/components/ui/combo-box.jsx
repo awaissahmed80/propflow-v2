@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { XIcon } from "lucide-react"
 
 import { Label } from "@/components/ui/label"
@@ -63,8 +64,12 @@ function ComboBox({
   onBlur,
 }) {
   const containerRef = React.useRef(null)
+  const triggerRef = React.useRef(null)
+  const listRef = React.useRef(null)
   const [open, setOpen] = React.useState(false)
   const [highlightIndex, setHighlightIndex] = React.useState(-1)
+  const [coords, setCoords] = React.useState(null)
+  const [filterActive, setFilterActive] = React.useState(false)
   const isGroup = variant === "group"
   const draft = String(value ?? "")
 
@@ -74,6 +79,10 @@ function ComboBox({
   )
 
   const filtered = React.useMemo(() => {
+    if (!filterActive) {
+      return localOptions
+    }
+
     const needle = draft.trim().toLowerCase()
 
     if (!needle) {
@@ -83,7 +92,7 @@ function ComboBox({
     return localOptions.filter((option) =>
       option.label.toLowerCase().includes(needle)
     )
-  }, [localOptions, draft])
+  }, [localOptions, draft, filterActive])
 
   const setOpenState = React.useCallback(
     (nextOpen) => {
@@ -97,15 +106,65 @@ function ComboBox({
     [onOpenChange]
   )
 
+  const updatePosition = React.useCallback(() => {
+    const trigger = triggerRef.current
+
+    if (!trigger) {
+      return
+    }
+
+    const rect = trigger.getBoundingClientRect()
+    const gap = 4
+    const maxHeight = 240
+    const spaceBelow = window.innerHeight - rect.bottom - gap
+    const spaceAbove = rect.top - gap
+    const placeAbove = spaceBelow < Math.min(maxHeight, 120) && spaceAbove > spaceBelow
+    const available = placeAbove ? spaceAbove : spaceBelow
+    const height = Math.min(maxHeight, Math.max(available, 0))
+
+    setCoords({
+      top: placeAbove ? Math.max(gap, rect.top - gap - height) : rect.bottom + gap,
+      left: rect.left,
+      width: Math.max(rect.width, isGroup ? 192 : rect.width),
+      maxHeight: height || maxHeight,
+    })
+  }, [isGroup])
+
+  const showList = open && !disabled && filtered.length > 0
+
+  React.useLayoutEffect(() => {
+    if (!showList) {
+      setCoords(null)
+      return
+    }
+
+    updatePosition()
+
+    window.addEventListener("resize", updatePosition)
+    window.addEventListener("scroll", updatePosition, true)
+
+    return () => {
+      window.removeEventListener("resize", updatePosition)
+      window.removeEventListener("scroll", updatePosition, true)
+    }
+  }, [showList, updatePosition, filtered.length, draft])
+
   React.useEffect(() => {
     if (!open) {
       return
     }
 
     const onPointerDown = (event) => {
-      if (!containerRef.current?.contains(event.target)) {
-        setOpenState(false)
+      const target = event.target
+
+      if (
+        containerRef.current?.contains(target) ||
+        listRef.current?.contains(target)
+      ) {
+        return
       }
+
+      setOpenState(false)
     }
 
     document.addEventListener("pointerdown", onPointerDown)
@@ -124,6 +183,7 @@ function ComboBox({
       return
     }
 
+    setFilterActive(false)
     onValueChange?.(option.value)
     setOpenState(false)
   }
@@ -131,14 +191,69 @@ function ComboBox({
   const clearValue = (event) => {
     event.preventDefault()
     event.stopPropagation()
+    setFilterActive(false)
     onValueChange?.("")
     setOpenState(true)
   }
 
-  const showList = open && !disabled && filtered.length > 0
   const activeOption =
     highlightIndex >= 0 && highlightIndex < filtered.length
       ? filtered[highlightIndex]
+      : null
+
+  const listbox =
+    showList && coords
+      ? createPortal(
+          <div
+            ref={listRef}
+            id={id ? `${id}-listbox` : undefined}
+            role="listbox"
+            className={cn(
+              "fixed z-[100] overflow-hidden rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10"
+            )}
+            style={{
+              top: coords.top,
+              left: coords.left,
+              width: coords.width,
+              maxHeight: coords.maxHeight,
+            }}
+          >
+            <ul
+              className="overflow-y-auto p-1"
+              style={{ maxHeight: coords.maxHeight }}
+            >
+              {filtered.map((option, index) => {
+                const isActive = index === highlightIndex
+                const isSelected =
+                  option.value.toLowerCase() === draft.trim().toLowerCase()
+
+                return (
+                  <li
+                    key={option.value}
+                    id={id ? `${id}-option-${index}` : undefined}
+                    role="option"
+                    aria-selected={isSelected || isActive}
+                    data-disabled={option.disabled || undefined}
+                    className={cn(
+                      "relative flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-hidden select-none whitespace-nowrap",
+                      "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
+                      isActive && !isSelected && "bg-accent text-accent-foreground",
+                      isSelected && "bg-primary text-primary-foreground"
+                    )}
+                    onMouseEnter={() => setHighlightIndex(index)}
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      selectOption(option)
+                    }}
+                  >
+                    {option.label}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>,
+          document.body
+        )
       : null
 
   return (
@@ -157,6 +272,7 @@ function ComboBox({
       ) : null}
 
       <div
+        ref={triggerRef}
         className={cn(
           "relative flex h-control items-center gap-1 rounded-md border border-input bg-transparent px-2.5 shadow-xs transition-[color,box-shadow]",
           "has-[input:focus-within]:border-ring has-[input:focus-within]:ring-[3px] has-[input:focus-within]:ring-ring/50",
@@ -186,15 +302,22 @@ function ComboBox({
           value={draft}
           autoComplete="off"
           onChange={(event) => {
+            setFilterActive(true)
             onValueChange?.(event.target.value)
             setOpenState(true)
           }}
           onFocus={() => {
             if (!disabled) {
+              setFilterActive(false)
               setOpenState(true)
             }
           }}
           onBlur={(event) => {
+            // Keep open while interacting with the portaled list.
+            if (listRef.current?.contains(event.relatedTarget)) {
+              return
+            }
+
             setOpenState(false)
             onBlur?.(event)
           }}
@@ -248,47 +371,7 @@ function ComboBox({
         ) : null}
       </div>
 
-      {showList ? (
-        <div
-          id={id ? `${id}-listbox` : undefined}
-          role="listbox"
-          className={cn(
-            "absolute top-[calc(100%+0.25rem)] right-0 left-0 z-50 overflow-hidden rounded-md bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10",
-            isGroup && "min-w-48"
-          )}
-        >
-          <ul className="max-h-60 overflow-y-auto p-1">
-            {filtered.map((option, index) => {
-              const isActive = index === highlightIndex
-              const isSelected =
-                option.value.toLowerCase() === draft.trim().toLowerCase()
-
-              return (
-                <li
-                  key={option.value}
-                  id={id ? `${id}-option-${index}` : undefined}
-                  role="option"
-                  aria-selected={isSelected || isActive}
-                  data-disabled={option.disabled || undefined}
-                  className={cn(
-                    "relative flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-hidden select-none whitespace-nowrap",
-                    "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
-                    isActive && !isSelected && "bg-accent text-accent-foreground",
-                    isSelected && "bg-primary text-primary-foreground"
-                  )}
-                  onMouseEnter={() => setHighlightIndex(index)}
-                  onMouseDown={(event) => {
-                    event.preventDefault()
-                    selectOption(option)
-                  }}
-                >
-                  {option.label}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      ) : null}
+      {listbox}
 
       {error && !isGroup ? (
         <div className="text-[13px] text-destructive">{error}</div>

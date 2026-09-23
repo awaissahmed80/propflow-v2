@@ -21,8 +21,8 @@ return new class extends Migration
             $table->string('country')->nullable();
             $table->string('city')->nullable();
             $table->string('location')->nullable();
-            $table->string('status', 20)->nullable();
-            $table->string('type', 20)->nullable();
+            $table->string('status', 50)->nullable();
+            $table->string('type', 200)->nullable();
             $table->date('start_date')->nullable();
             $table->date('end_date')->nullable();
             $table->json('details')->nullable();

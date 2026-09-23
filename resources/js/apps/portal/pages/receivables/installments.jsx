@@ -90,6 +90,7 @@ export default function ReceivablesInstallments({
             <Layout.Header
                 metaTitle="Installment Engine"
                 breadcrumbs={[
+                    { label: "Sales" },
                     { label: "Receivables" },
                     { label: "Installment Engine" },
                 ]}

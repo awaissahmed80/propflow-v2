@@ -2,18 +2,17 @@
 
 namespace Tests\Feature\Portal;
 
-use App\Models\AssetLink;
+use App\Mail\WorkspaceInviteMail;
 use App\Models\Role;
 use App\Models\Tenant;
+use App\Models\TenantInvitation;
 use App\Models\TenantUser;
 use App\Models\User;
 use App\Services\TenantContext;
-use App\Support\AssetManager;
 use App\Support\Domain;
 use Database\Seeders\TenantDatabaseSeeder;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class UserStoreTest extends TestCase
@@ -25,97 +24,96 @@ class UserStoreTest extends TestCase
         config([
             'app.base_domain' => 'propflow.test',
             'app.url_scheme' => 'https',
+            'mail.default' => 'array',
         ]);
 
         $this->migrateLandlord();
         $this->migrateTenant();
-    }
-
-    protected function tearDown(): void
-    {
-        File::deleteDirectory(public_path('assets/avatars'));
-
-        parent::tearDown();
+        Mail::fake();
     }
 
     public function test_guest_cannot_store_user(): void
     {
         $this->post(Domain::portal('/users'), [
-            'first_name' => 'Imran',
-            'last_name' => 'Nawaz',
             'title' => 'Sales Exec',
             'email_address' => 'imran@example.com',
-            'phone_number' => '+923001234567',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
         ])->assertRedirect(Domain::auth());
     }
 
-    public function test_authenticated_tenant_user_can_create_user_with_avatar(): void
+    public function test_authenticated_tenant_user_can_invite_new_member(): void
     {
-        [$actor, $tenant] = $this->createTenantUserWithSeededRoles('tenant_user_store_avatar');
+        [$actor, $tenant] = $this->createTenantUserWithSeededRoles('tenant_user_store_invite');
 
         $this->actingAs($actor);
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
-        $avatar = UploadedFile::fake()->image('avatar.jpg', 120, 120);
-
         $response = $this->post(Domain::portal('/users'), [
-            'first_name' => 'Imran',
-            'last_name' => 'Nawaz',
             'title' => 'Sales Exec',
             'department' => 'Marketing',
             'manager_id' => $actor->id,
             'email_address' => 'imran.nawaz@example.com',
-            'phone_number' => '+923001234567',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-            'roles' => ['Manager'],
-            'avatar' => $avatar,
+            'roles' => ['Business Manager'],
         ]);
 
-        $created = User::query()->where('email_address', 'imran.nawaz@example.com')->first();
-        $this->assertNotNull($created);
+        $response->assertRedirect(Domain::portal('/users'));
 
-        $membership = TenantUser::query()
+        $this->assertNull(User::query()->where('email_address', 'imran.nawaz@example.com')->first());
+
+        $invitation = TenantInvitation::query()
             ->where('tenant_id', $tenant->id)
-            ->where('user_id', $created->id)
+            ->where('email', 'imran.nawaz@example.com')
             ->first();
 
-        $this->assertNotNull($membership);
-        $response->assertRedirect(Domain::portal('/users?user='.$membership->code));
+        $this->assertNotNull($invitation);
+        $this->assertSame('Sales Exec', $invitation->title);
+        $this->assertSame(['Business Manager'], $invitation->roles);
 
-        $this->assertSame('Imran Nawaz', $created->display_name);
-        $this->assertSame('Sales Exec', $membership->title);
-        $this->assertSame('Marketing', $membership->department);
-        $this->assertSame($actor->id, $membership->manager_id);
-
-        $tenant->makeCurrent();
-        $this->assertTrue($created->hasRole('Manager'));
-
-        $link = AssetLink::query()
-            ->where('assetable_type', User::class)
-            ->where('assetable_id', $created->id)
-            ->where('linkage', AssetManager::LINKAGE_AVATAR)
-            ->first();
-
-        $this->assertNotNull($link);
-        $this->assertNotNull($link->asset);
-        $this->assertFileExists(public_path('assets/'.$link->asset->path));
-
-        Tenant::forgetCurrent();
-        $this->get(Domain::portal('/users?user='.$membership->code))
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page
-                ->component('users/index', false)
-                ->where('selectedUser.email_address', 'imran.nawaz@example.com')
-                ->where('selectedUser.avatar', url('assets/'.$link->asset->path))
-            );
+        Mail::assertSent(WorkspaceInviteMail::class);
 
         Tenant::forgetCurrent();
     }
 
-    public function test_email_must_be_unique(): void
+    public function test_inviting_existing_user_does_not_create_membership_yet(): void
+    {
+        [$actor, $tenant] = $this->createTenantUserWithSeededRoles('tenant_user_store_existing');
+
+        $existing = User::factory()->tenant()->create([
+            'email_address' => 'imran.nawaz@example.com',
+        ]);
+
+        $this->actingAs($actor);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $response = $this->post(Domain::portal('/users'), [
+            'title' => 'Sales Exec',
+            'department' => 'Marketing',
+            'manager_id' => $actor->id,
+            'email_address' => 'imran.nawaz@example.com',
+            'roles' => ['Business Manager'],
+        ]);
+
+        $response->assertRedirect(Domain::portal('/users'));
+
+        $this->assertNull(
+            TenantUser::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('user_id', $existing->id)
+                ->first()
+        );
+
+        $this->assertNotNull(
+            TenantInvitation::query()
+                ->where('tenant_id', $tenant->id)
+                ->where('email', 'imran.nawaz@example.com')
+                ->first()
+        );
+
+        Mail::assertSent(WorkspaceInviteMail::class);
+
+        Tenant::forgetCurrent();
+    }
+
+    public function test_email_must_not_already_belong_to_workspace(): void
     {
         [$actor, $tenant] = $this->createTenantUserWithSeededRoles('tenant_user_store_unique');
 
@@ -123,13 +121,8 @@ class UserStoreTest extends TestCase
         session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
 
         $this->post(Domain::portal('/users'), [
-            'first_name' => 'Dup',
-            'last_name' => 'User',
             'title' => 'Sales',
             'email_address' => $actor->email_address,
-            'phone_number' => '+923009999999',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
         ])->assertSessionHasErrors('email_address');
 
         Tenant::forgetCurrent();
@@ -157,7 +150,7 @@ class UserStoreTest extends TestCase
             '--force' => true,
         ]);
 
-        $this->assertNotNull(Role::query()->where('name', 'Manager')->first());
+        $this->assertNotNull(Role::query()->where('name', 'Business Manager')->first());
 
         return [$user, $tenant];
     }

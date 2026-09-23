@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['kind', 'label', 'title', 'priority', 'icon', 'is_system', 'is_enabled'])]
+#[Fillable(['kind', 'label', 'title', 'priority', 'icon', 'color', 'is_system', 'is_enabled'])]
 #[Connection('tenant')]
 #[Table(timestamps: false)]
 class LeadActionType extends Model
@@ -24,6 +24,8 @@ class LeadActionType extends Model
     public const KIND_NEXT_ACTION = 'next_action';
 
     public const LABEL_DO_NOTHING = 'do_nothing';
+
+    public const DEFAULT_COLOR = '#64B5F6';
 
     /**
      * @param  Builder<static>  $query
@@ -44,28 +46,28 @@ class LeadActionType extends Model
     }
 
     /**
-     * @return list<array{label: string, title: string, priority: int, icon: ?string, is_system: bool, is_enabled: bool}>
+     * @return list<array{label: string, title: string, priority: int, icon: ?string, color: string, is_system: bool, is_enabled: bool}>
      */
     public static function defaultDefinitions(string $kind): array
     {
         if ($kind === self::KIND_ACTIVITY) {
             return [
-                ['label' => 'call', 'title' => 'Call', 'priority' => 1, 'icon' => 'phone-line', 'is_system' => true, 'is_enabled' => true],
-                ['label' => 'meeting', 'title' => 'Meeting', 'priority' => 2, 'icon' => 'team-line', 'is_system' => true, 'is_enabled' => true],
-                ['label' => 'site_visit', 'title' => 'Site Visit', 'priority' => 3, 'icon' => 'map-pin-line', 'is_system' => true, 'is_enabled' => true],
-                ['label' => 'email', 'title' => 'Email', 'priority' => 4, 'icon' => 'mail-line', 'is_system' => true, 'is_enabled' => true],
-                ['label' => 'message', 'title' => 'Message', 'priority' => 5, 'icon' => 'chat-1-line', 'is_system' => true, 'is_enabled' => true],
-                ['label' => 'whatsapp_call', 'title' => 'WhatsApp Call', 'priority' => 6, 'icon' => 'whatsapp-line', 'is_system' => true, 'is_enabled' => true],
-                ['label' => 'whatsapp_message', 'title' => 'WhatsApp Message', 'priority' => 7, 'icon' => 'whatsapp-line', 'is_system' => true, 'is_enabled' => true],
-                ['label' => 'note', 'title' => 'Note', 'priority' => 8, 'icon' => 'sticky-note-line', 'is_system' => true, 'is_enabled' => true],
+                ['label' => 'call', 'title' => 'Call', 'priority' => 1, 'icon' => 'phone-line', 'color' => '#64B5F6', 'is_system' => true, 'is_enabled' => true],
+                ['label' => 'meeting', 'title' => 'Meeting', 'priority' => 2, 'icon' => 'team-line', 'color' => '#FFB74D', 'is_system' => true, 'is_enabled' => true],
+                ['label' => 'site_visit', 'title' => 'Site Visit', 'priority' => 3, 'icon' => 'map-pin-line', 'color' => '#9575CD', 'is_system' => true, 'is_enabled' => true],
+                ['label' => 'email', 'title' => 'Email', 'priority' => 4, 'icon' => 'mail-line', 'color' => '#F06292', 'is_system' => true, 'is_enabled' => true],
+                ['label' => 'message', 'title' => 'Message', 'priority' => 5, 'icon' => 'chat-1-line', 'color' => '#0284C7', 'is_system' => true, 'is_enabled' => true],
+                ['label' => 'whatsapp_call', 'title' => 'WhatsApp Call', 'priority' => 6, 'icon' => 'whatsapp-line', 'color' => '#16A34A', 'is_system' => true, 'is_enabled' => true],
+                ['label' => 'whatsapp_message', 'title' => 'WhatsApp Message', 'priority' => 7, 'icon' => 'whatsapp-line', 'color' => '#0D9488', 'is_system' => true, 'is_enabled' => true],
+                ['label' => 'note', 'title' => 'Note', 'priority' => 8, 'icon' => 'sticky-note-line', 'color' => '#64748B', 'is_system' => true, 'is_enabled' => true],
             ];
         }
 
         return [
-            ['label' => 'follow_up', 'title' => 'Follow-up', 'priority' => 1, 'icon' => 'calendar-check-line', 'is_system' => true, 'is_enabled' => true],
-            ['label' => 'arrange_site_visit', 'title' => 'Arrange Site Visit', 'priority' => 2, 'icon' => 'map-pin-line', 'is_system' => true, 'is_enabled' => true],
-            ['label' => 'arrange_meeting', 'title' => 'Arrange Meeting', 'priority' => 3, 'icon' => 'team-line', 'is_system' => true, 'is_enabled' => true],
-            ['label' => self::LABEL_DO_NOTHING, 'title' => 'Do Nothing', 'priority' => 4, 'icon' => 'close-circle-line', 'is_system' => true, 'is_enabled' => true],
+            ['label' => 'follow_up', 'title' => 'Follow-up', 'priority' => 1, 'icon' => 'calendar-check-line', 'color' => '#16A34A', 'is_system' => true, 'is_enabled' => true],
+            ['label' => 'arrange_site_visit', 'title' => 'Arrange Site Visit', 'priority' => 2, 'icon' => 'map-pin-line', 'color' => '#FF8A65', 'is_system' => true, 'is_enabled' => true],
+            ['label' => 'arrange_meeting', 'title' => 'Arrange Meeting', 'priority' => 3, 'icon' => 'team-line', 'color' => '#0284C7', 'is_system' => true, 'is_enabled' => true],
+            ['label' => self::LABEL_DO_NOTHING, 'title' => 'Do Nothing', 'priority' => 4, 'icon' => 'close-circle-line', 'color' => '#FFB74D', 'is_system' => true, 'is_enabled' => true],
         ];
     }
 
@@ -90,7 +92,7 @@ class LeadActionType extends Model
     }
 
     /**
-     * @return list<array{id: int, kind: string, label: string, title: string, priority: int, icon: ?string, is_system: bool, is_enabled: bool}>
+     * @return list<array{id: int, kind: string, label: string, title: string, priority: int, icon: ?string, color: ?string, is_system: bool, is_enabled: bool}>
      */
     public static function catalog(string $kind, bool $enabledOnly = false): array
     {
@@ -105,7 +107,7 @@ class LeadActionType extends Model
         }
 
         return $query
-            ->get(['id', 'kind', 'label', 'title', 'priority', 'icon', 'is_system', 'is_enabled'])
+            ->get(['id', 'kind', 'label', 'title', 'priority', 'icon', 'color', 'is_system', 'is_enabled'])
             ->map(fn (self $row): array => [
                 'id' => $row->id,
                 'kind' => $row->kind,
@@ -113,6 +115,7 @@ class LeadActionType extends Model
                 'title' => $row->title,
                 'priority' => $row->priority,
                 'icon' => $row->icon,
+                'color' => $row->color ?: self::DEFAULT_COLOR,
                 'is_system' => (bool) $row->is_system,
                 'is_enabled' => (bool) $row->is_enabled,
             ])

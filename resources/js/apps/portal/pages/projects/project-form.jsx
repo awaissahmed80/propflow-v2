@@ -21,10 +21,10 @@ import {
     InputGroupNumberInput,
 } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { MetaComboBox } from "@/components/ui/meta-combo-box";
 import { SelectBox } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { useMeta } from "@/hooks/use-meta";
 import { cn } from "@/lib/utils";
 
@@ -36,13 +36,7 @@ const STATUS_OPTIONS = [
     { value: "archived", label: "Archived" },
 ];
 
-const createDefaults = {
-    title: "",
-    type: "",
-    status: "draft",
-};
-
-const editDefaults = {
+const formDefaults = {
     title: "",
     description: "",
     type: "",
@@ -56,6 +50,26 @@ const editDefaults = {
     end_date: "",
     balloting_enabled: false,
 };
+
+function buildPayload(formData) {
+    return {
+        title: formData.title.trim(),
+        description: formData.description?.trim() || null,
+        type: formData.type || null,
+        country: formData.country?.trim() || null,
+        city: formData.city || null,
+        location: formData.location?.trim() || null,
+        status: formData.status || "draft",
+        area_unit: formData.area_unit || null,
+        total_area:
+            formData.total_area === null || formData.total_area === ""
+                ? null
+                : Number(formData.total_area),
+        start_date: formData.start_date || null,
+        end_date: formData.end_date || null,
+        balloting_enabled: Boolean(formData.balloting_enabled),
+    };
+}
 
 export default function ProjectForm({
     isOpen,
@@ -73,7 +87,7 @@ export default function ProjectForm({
         control,
         formState: { errors },
     } = useForm({
-        defaultValues: isEditing ? editDefaults : createDefaults,
+        defaultValues: formDefaults,
         mode: "onSubmit",
         reValidateMode: "onChange",
     });
@@ -81,7 +95,7 @@ export default function ProjectForm({
     const fieldError = (name) => serverErrors[name] || errors[name]?.message;
 
     const handleClose = () => {
-        reset(isEditing ? editDefaults : createDefaults);
+        reset(formDefaults);
         setServerErrors({});
         onClose(false);
     };
@@ -116,7 +130,10 @@ export default function ProjectForm({
             return;
         }
 
-        reset(createDefaults);
+        reset({
+            ...formDefaults,
+            area_unit: defaultAreaUnit,
+        });
     }, [isOpen, data, reset, meta.AREA]);
 
     const onInvalid = (validationErrors) => {
@@ -133,59 +150,14 @@ export default function ProjectForm({
         setProcessing(true);
         setServerErrors({});
 
-        if (isEditing) {
-            router.patch(
-                update.url(data.code),
-                {
-                    title: formData.title.trim(),
-                    description: formData.description?.trim() || null,
-                    type: formData.type || null,
-                    country: formData.country?.trim() || null,
-                    city: formData.city || null,
-                    location: formData.location?.trim() || null,
-                    status: formData.status || "draft",
-                    area_unit: formData.area_unit || null,
-                    total_area:
-                        formData.total_area === null || formData.total_area === ""
-                            ? null
-                            : Number(formData.total_area),
-                    start_date: formData.start_date || null,
-                    end_date: formData.end_date || null,
-                    balloting_enabled: Boolean(formData.balloting_enabled),
-                },
-                {
-                    preserveScroll: true,
-                    preserveState: "errors",
-                    onSuccess: () => {
-                        toast.success("Project updated successfully");
-                        handleClose();
-                    },
-                    onError: (submitErrors) => {
-                        setServerErrors(submitErrors);
-                        toast.error(
-                            submitErrors.title ||
-                                submitErrors.message ||
-                                "Unable to update project"
-                        );
-                    },
-                    onFinish: () => setProcessing(false),
-                }
-            );
-            return;
-        }
+        const payload = buildPayload(formData);
 
-        router.post(
-            store.url(),
-            {
-                title: formData.title.trim(),
-                type: formData.type || null,
-                status: formData.status || "draft",
-            },
-            {
+        if (isEditing) {
+            router.patch(update.url(data.code), payload, {
                 preserveScroll: true,
                 preserveState: "errors",
                 onSuccess: () => {
-                    toast.success("Project created successfully");
+                    toast.success("Project updated successfully");
                     handleClose();
                 },
                 onError: (submitErrors) => {
@@ -193,12 +165,31 @@ export default function ProjectForm({
                     toast.error(
                         submitErrors.title ||
                             submitErrors.message ||
-                            "Unable to create project"
+                            "Unable to update project"
                     );
                 },
                 onFinish: () => setProcessing(false),
-            }
-        );
+            });
+            return;
+        }
+
+        router.post(store.url(), payload, {
+            preserveScroll: true,
+            preserveState: "errors",
+            onSuccess: () => {
+                toast.success("Project created successfully");
+                handleClose();
+            },
+            onError: (submitErrors) => {
+                setServerErrors(submitErrors);
+                toast.error(
+                    submitErrors.title ||
+                        submitErrors.message ||
+                        "Unable to create project"
+                );
+            },
+            onFinish: () => setProcessing(false),
+        });
     };
 
     return (
@@ -213,9 +204,7 @@ export default function ProjectForm({
             <DialogContent
                 showCloseButton
                 className={cn(
-                    "grid gap-0 overflow-hidden rounded-md p-0",
-                    isEditing ? "sm:max-w-2xl" : "sm:max-w-lg",
-                    "max-h-[min(92vh,48rem)] grid-rows-[auto_minmax(0,1fr)_auto]"
+                    "grid max-h-[min(92vh,48rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-md p-0 sm:max-w-2xl"
                 )}
             >
                 <DialogHeader className="gap-3 border-b border-border px-6 py-5 text-left">
@@ -230,7 +219,7 @@ export default function ProjectForm({
                             <DialogDescription>
                                 {isEditing
                                     ? "Update the project’s basic information and location."
-                                    : "Start with the basics. You can refine details on the project page."}
+                                    : "Set up the project’s basic information and location."}
                             </DialogDescription>
                         </div>
                     </div>
@@ -255,29 +244,33 @@ export default function ProjectForm({
                             })}
                         />
 
-                        {isEditing ? (
-                            <div className="space-y-0.5">
-                                <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
-                                    Description
-                                </Label>
-                                <Textarea
-                                    placeholder="Short overview of the project"
-                                    className="min-h-20 rounded-md dark:bg-input/30"
-                                    {...register("description", {
-                                        maxLength: {
-                                            value: 5000,
-                                            message:
-                                                "Description must be 5000 characters or less.",
-                                        },
-                                    })}
+                        <Controller
+                            name="description"
+                            control={control}
+                            rules={{
+                                validate: (value) => {
+                                    if (!value) {
+                                        return true;
+                                    }
+
+                                    return (
+                                        String(value).length <= 10000 ||
+                                        "Description must be 10000 characters or less."
+                                    );
+                                },
+                            }}
+                            render={({ field }) => (
+                                <MarkdownEditor
+                                    id="project-description"
+                                    label="Description"
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    onBlur={field.onBlur}
+                                    placeholder="Describe the project — use headings, lists, and images as needed"
+                                    error={fieldError("description")}
                                 />
-                                {fieldError("description") ? (
-                                    <div className="text-[13px] text-destructive">
-                                        {fieldError("description")}
-                                    </div>
-                                ) : null}
-                            </div>
-                        ) : null}
+                            )}
+                        />
 
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <Controller
@@ -312,144 +305,141 @@ export default function ProjectForm({
                             />
                         </div>
 
-                        {isEditing ? (
-                            <>
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <Input
+                                label="Location"
+                                placeholder="Area, street, or landmark"
+                                error={fieldError("location")}
+                                {...register("location")}
+                            />
+
+                            <div className="space-y-0.5">
+                                <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
+                                    Total Area
+                                </Label>
+                                <InputGroup>
                                     <Controller
-                                        name="country"
+                                        name="total_area"
                                         control={control}
                                         render={({ field }) => (
-                                            <MetaComboBox
-                                                label="Country"
-                                                metaType="COUNTRY"
+                                            <InputGroupNumberInput
+                                                id="project-total-area"
                                                 value={field.value}
-                                                onValueChange={field.onChange}
-                                                placeholder="Type or select..."
-                                                error={fieldError("country")}
+                                                onChange={field.onChange}
+                                                allowDecimal
+                                                min={0}
+                                                placeholder="0"
+                                                error={fieldError("total_area")}
                                             />
                                         )}
                                     />
-                                    <Controller
-                                        name="city"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <MetaComboBox
-                                                label="City"
-                                                metaType="CITY"
-                                                value={field.value}
-                                                onValueChange={field.onChange}
-                                                placeholder="Type or select..."
-                                                error={fieldError("city")}
-                                            />
-                                        )}
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <Input
-                                        label="Location"
-                                        placeholder="Area, street, or landmark"
-                                        error={fieldError("location")}
-                                        {...register("location")}
-                                    />
-
-                                    <div className="space-y-0.5">
-                                        <Label className="mb-1 flex flex-row items-center text-label font-medium text-muted-foreground">
-                                            Total Area
-                                        </Label>
-                                        <InputGroup>
-                                            <Controller
-                                                name="total_area"
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <InputGroupNumberInput
-                                                        id="project-total-area"
-                                                        value={field.value}
-                                                        onChange={field.onChange}
-                                                        allowDecimal
-                                                        min={0}
-                                                        placeholder="0"
-                                                        error={fieldError("total_area")}
-                                                    />
-                                                )}
-                                            />
-                                            <InputGroupAddon align="inline-end">
-                                                <Controller
-                                                    name="area_unit"
-                                                    control={control}
-                                                    render={({ field }) => (
-                                                        <SelectBox
-                                                            variant="group"
-                                                            value={field.value}
-                                                            onValueChange={field.onChange}
-                                                            options={meta.AREA ?? []}
-                                                            placeholder="Unit"
-                                                            error={fieldError("area_unit")}
-                                                        />
-                                                    )}
+                                    <InputGroupAddon align="inline-end">
+                                        <Controller
+                                            name="area_unit"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <SelectBox
+                                                    variant="group"
+                                                    value={field.value}
+                                                    onValueChange={field.onChange}
+                                                    options={meta.AREA ?? []}
+                                                    placeholder="Unit"
+                                                    error={fieldError("area_unit")}
                                                 />
-                                            </InputGroupAddon>
-                                        </InputGroup>
-                                        {fieldError("total_area") || fieldError("area_unit") ? (
-                                            <div className="text-[13px] text-destructive">
-                                                {fieldError("total_area") || fieldError("area_unit")}
-                                            </div>
-                                        ) : null}
+                                            )}
+                                        />
+                                    </InputGroupAddon>
+                                </InputGroup>
+                                {fieldError("total_area") || fieldError("area_unit") ? (
+                                    <div className="text-[13px] text-destructive">
+                                        {fieldError("total_area") || fieldError("area_unit")}
                                     </div>
-                                </div>
+                                ) : null}
+                            </div>
+                        </div>
 
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <Controller
-                                        name="start_date"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <DatePicker
-                                                label="Start date"
-                                                value={field.value}
-                                                onChange={field.onChange}
-                                                placeholder="Select Date..."
-                                                error={fieldError("start_date")}
-                                            />
-                                        )}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <Controller
+                                name="country"
+                                control={control}
+                                render={({ field }) => (
+                                    <MetaComboBox
+                                        label="Country"
+                                        metaType="COUNTRY"
+                                        value={field.value}
+                                        onValueChange={field.onChange}
+                                        placeholder="Type or select..."
+                                        error={fieldError("country")}
                                     />
-                                    <Controller
-                                        name="end_date"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <DatePicker
-                                                label="End date"
-                                                value={field.value}
-                                                onChange={field.onChange}
-                                                placeholder="Select Date..."
-                                                error={fieldError("end_date")}
-                                            />
-                                        )}
+                                )}
+                            />
+                            <Controller
+                                name="city"
+                                control={control}
+                                render={({ field }) => (
+                                    <MetaComboBox
+                                        label="City"
+                                        metaType="CITY"
+                                        value={field.value}
+                                        onValueChange={field.onChange}
+                                        placeholder="Type or select..."
+                                        error={fieldError("city")}
+                                    />
+                                )}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <Controller
+                                name="start_date"
+                                control={control}
+                                render={({ field }) => (
+                                    <DatePicker
+                                        label="Start date"
+                                        value={field.value}
+                                        onChange={field.onChange}
+                                        placeholder="Select Date..."
+                                        error={fieldError("start_date")}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="end_date"
+                                control={control}
+                                render={({ field }) => (
+                                    <DatePicker
+                                        label="End date"
+                                        value={field.value}
+                                        onChange={field.onChange}
+                                        placeholder="Select Date..."
+                                        error={fieldError("end_date")}
+                                    />
+                                )}
+                            />
+                        </div>
+
+                        <Controller
+                            name="balloting_enabled"
+                            control={control}
+                            render={({ field }) => (
+                                <div className="flex items-start justify-between gap-4 rounded-md border border-border px-4 py-3">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-medium text-foreground">
+                                            Balloting enabled
+                                        </p>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">
+                                            Optional society plot allotment step for bookings on this
+                                            project.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        className="mt-0.5 shrink-0"
+                                        checked={Boolean(field.value)}
+                                        onCheckedChange={field.onChange}
                                     />
                                 </div>
-
-                                <Controller
-                                    name="balloting_enabled"
-                                    control={control}
-                                    render={({ field }) => (
-                                        <div className="flex items-start justify-between gap-4 rounded-md border border-border px-4 py-3">
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-medium text-foreground">
-                                                    Balloting enabled
-                                                </p>
-                                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                                    Optional society plot allotment step for bookings on this project.
-                                                </p>
-                                            </div>
-                                            <Switch
-                                                className="mt-0.5 shrink-0"
-                                                checked={Boolean(field.value)}
-                                                onCheckedChange={field.onChange}
-                                            />
-                                        </div>
-                                    )}
-                                />
-                            </>
-                        ) : null}
+                            )}
+                        />
                     </div>
                 </form>
 

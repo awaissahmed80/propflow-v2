@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { BlockPicker } from "react-color";
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import {
@@ -12,6 +13,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,60 @@ function pathFrom(url) {
 }
 
 const ACTION_DND_TYPE = "SETTINGS_LEAD_ACTION_TYPE";
+const DEFAULT_COLOR = "#64B5F6";
+
+const ACTION_COLORS = [
+    "#64B5F6",
+    "#2563EB",
+    "#81C784",
+    "#16A34A",
+    "#FFB74D",
+    "#D97706",
+    "#9575CD",
+    "#7C3AED",
+    "#E57373",
+    "#4DB6AC",
+    "#0D9488",
+    "#0284C7",
+    "#FF8A65",
+    "#7986CB",
+    "#4F46E5",
+    "#F06292",
+    "#90A4AE",
+    "#64748B",
+    "#94A3B8",
+];
+
+function ActionColorSwatch({ value, onChange, disabled = false, label = "Change color" }) {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger
+                disabled={disabled}
+                aria-label={label}
+                className={cn(
+                    "size-3 shrink-0 rounded-full ring-2 ring-background transition-transform hover:scale-110",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    disabled && "pointer-events-none opacity-50"
+                )}
+                style={{ backgroundColor: value || DEFAULT_COLOR }}
+            />
+            <PopoverContent align="start" className="w-auto gap-0 overflow-hidden p-0">
+                <BlockPicker
+                    color={value || DEFAULT_COLOR}
+                    colors={ACTION_COLORS}
+                    triangle="hide"
+                    width="220px"
+                    onChange={(color) => {
+                        onChange?.(color.hex);
+                        setOpen(false);
+                    }}
+                />
+            </PopoverContent>
+        </Popover>
+    );
+}
 
 function SortableActionCard({
     item,
@@ -47,6 +103,7 @@ function SortableActionCard({
     const [title, setTitle] = useState(item.title);
     const [editing, setEditing] = useState(false);
     const enabled = item.is_enabled !== false;
+    const color = item.color || DEFAULT_COLOR;
 
     useEffect(() => {
         setTitle(item.title);
@@ -85,7 +142,7 @@ function SortableActionCard({
         }
 
         setEditing(false);
-        onUpdate(item, { title: next });
+        onUpdate(item, { title: next, color });
     };
 
     return (
@@ -105,7 +162,22 @@ function SortableActionCard({
                 <Icon name="draggable" className="text-base" />
             </button>
 
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            <ActionColorSwatch
+                value={color}
+                disabled={processing}
+                label={`Change color for ${item.title}`}
+                onChange={(nextColor) =>
+                    onUpdate(item, { title: item.title, color: nextColor })
+                }
+            />
+
+            <span
+                className="flex size-7 shrink-0 items-center justify-center rounded-md"
+                style={{
+                    backgroundColor: `${color}22`,
+                    color,
+                }}
+            >
                 <Icon name={item.icon || "flag-line"} className="text-base" />
             </span>
 
@@ -179,6 +251,7 @@ export function LeadActionTypesSection({
     const itemsRef = useRef(itemsProp);
     const [adding, setAdding] = useState(false);
     const [newTitle, setNewTitle] = useState("");
+    const [newColor, setNewColor] = useState(DEFAULT_COLOR);
     const [processing, setProcessing] = useState(false);
     const dragOrderDirty = useRef(false);
     const addInputRef = useRef(null);
@@ -254,16 +327,19 @@ export function LeadActionTypesSection({
         setProcessing(true);
         router.post(
             pathFrom(storeActionType.url()),
-            { kind, title: nextTitle },
+            { kind, title: nextTitle, color: newColor },
             {
                 preserveScroll: true,
                 onSuccess: () => {
                     setAdding(false);
                     setNewTitle("");
+                    setNewColor(DEFAULT_COLOR);
                     toast.success("Added");
                 },
                 onError: (errors) =>
-                    toast.error(errors.title || errors.message || "Unable to add"),
+                    toast.error(
+                        errors.title || errors.color || errors.message || "Unable to add"
+                    ),
                 onFinish: () => setProcessing(false),
             }
         );
@@ -277,10 +353,19 @@ export function LeadActionTypesSection({
         setProcessing(true);
         router.put(pathFrom(updateActionType.url(item.id)), payload, {
             preserveScroll: true,
+            optimistic: (props) => ({
+                [propKey]: (props[propKey] || []).map((row) =>
+                    row.id === item.id ? { ...row, ...payload } : row
+                ),
+            }),
             onSuccess: () => toast.success("Updated"),
             onError: (errors) =>
                 toast.error(
-                    errors.title || errors.action_type || errors.message || "Unable to update"
+                    errors.title ||
+                        errors.color ||
+                        errors.action_type ||
+                        errors.message ||
+                        "Unable to update"
                 ),
             onFinish: () => setProcessing(false),
         });
@@ -309,7 +394,11 @@ export function LeadActionTypesSection({
             return next;
         });
 
-        updateItem(item, { title: item.title, is_enabled: nextEnabled });
+        updateItem(item, {
+            title: item.title,
+            color: item.color || DEFAULT_COLOR,
+            is_enabled: nextEnabled,
+        });
     };
 
     const removeItem = async (item) => {
@@ -373,8 +462,20 @@ export function LeadActionTypesSection({
                                 createItem(newTitle);
                             }}
                         >
-                            <span className="inline-flex size-7 shrink-0 items-center justify-center text-muted-foreground">
-                                <Icon name="add-line" className="text-base" />
+                            <ActionColorSwatch
+                                value={newColor}
+                                disabled={processing}
+                                label="Choose color"
+                                onChange={setNewColor}
+                            />
+                            <span
+                                className="inline-flex size-7 shrink-0 items-center justify-center rounded-md"
+                                style={{
+                                    backgroundColor: `${newColor}22`,
+                                    color: newColor,
+                                }}
+                            >
+                                <Icon name="flag-line" className="text-base" />
                             </span>
                             <div className="min-w-0 flex-1">
                                 <Input
@@ -387,6 +488,7 @@ export function LeadActionTypesSection({
                                         if (event.key === "Escape") {
                                             setAdding(false);
                                             setNewTitle("");
+                                            setNewColor(DEFAULT_COLOR);
                                         }
                                     }}
                                 />
@@ -409,6 +511,7 @@ export function LeadActionTypesSection({
                                     onClick={() => {
                                         setAdding(false);
                                         setNewTitle("");
+                                        setNewColor(DEFAULT_COLOR);
                                     }}
                                 />
                             </div>

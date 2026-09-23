@@ -5,6 +5,7 @@ use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\HandlePortalRequests;
 use App\Http\Middleware\ResolveTenantByIdentifier;
+use App\Services\TenantContext;
 use App\Support\Domain;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -59,7 +60,13 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->redirectGuestsTo(fn () => Domain::auth());
-        $middleware->redirectUsersTo(fn () => Domain::portal());
+        $middleware->redirectUsersTo(function () {
+            if (! session()->has(TenantContext::SESSION_TENANT_ID)) {
+                return Domain::auth('/workspaces');
+            }
+
+            return Domain::portal();
+        });
 
         $middleware->web(append: [
             // HandleAppearance::class,

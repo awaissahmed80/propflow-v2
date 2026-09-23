@@ -62,7 +62,7 @@ class ProjectProgressController extends Controller
     public function destroy(string $project, int $progress): RedirectResponse
     {
         $projectModel = Project::query()->where('code', $project)->firstOrFail();
-        $this->progressForProject($projectModel, $progress)->delete();
+        $this->progressForProject($projectModel, $progress)->forceDelete();
 
         return to_route('portal.projects.show', $projectModel);
     }

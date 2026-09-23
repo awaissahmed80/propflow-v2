@@ -32,10 +32,25 @@ class UpdateUnitRequest extends FormRequest
             'price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'size' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'area_type' => ['sometimes', 'nullable', 'string', 'max:50'],
-            'quantity' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'quantity' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:999999'],
             'status' => ['sometimes', 'nullable', 'string', Rule::in(Unit::statuses())],
             'features' => ['sometimes', 'nullable', 'array'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if (! $this->exists('size') || $this->input('size') === null || $this->input('size') === '') {
+            return;
+        }
+
+        if (! is_numeric($this->input('size'))) {
+            return;
+        }
+
+        $this->merge([
+            'size' => round((float) $this->input('size'), 2),
+        ]);
     }
 
     public function withValidator(Validator $validator): void

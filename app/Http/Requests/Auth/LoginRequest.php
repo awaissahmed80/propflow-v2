@@ -69,7 +69,7 @@ class LoginRequest extends FormRequest
 
         RateLimiter::clear($this->throttleKey());
 
-        $this->attributes->set('tenant_membership', $memberships->first());
+        $this->attributes->set('tenant_memberships', $memberships);
     }
 
     /**

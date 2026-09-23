@@ -20,12 +20,21 @@ class TaskFactory extends Factory
     {
         return [
             'user_id' => null,
-            'lead_id' => Lead::factory(),
+            'taskable_type' => Lead::class,
+            'taskable_id' => Lead::factory(),
             'action' => fake()->randomElement(Task::activityTypes()),
             'comments' => fake()->sentence(),
             'status' => Task::STATUS_COMPLETED,
             'type' => Task::TYPE_ACTION,
         ];
+    }
+
+    public function forLead(Lead $lead): static
+    {
+        return $this->state(fn (): array => [
+            'taskable_type' => $lead->getMorphClass(),
+            'taskable_id' => $lead->id,
+        ]);
     }
 
     public function systemLog(): static

@@ -25,7 +25,7 @@ class ContactDestroyTest extends TestCase
         $this->migrateTenant();
     }
 
-    public function test_contact_can_be_soft_deleted(): void
+    public function test_contact_can_be_hard_deleted(): void
     {
         [$user, $tenant] = $this->createTenantUser('tenant_contact_destroy');
 
@@ -41,7 +41,7 @@ class ContactDestroyTest extends TestCase
         $response->assertRedirect(Domain::portal('/contacts'));
 
         $tenant->makeCurrent();
-        $this->assertSoftDeleted('contacts', ['id' => $contact->id], 'tenant');
+        $this->assertDatabaseMissing('contacts', ['id' => $contact->id], 'tenant');
         Tenant::forgetCurrent();
     }
 

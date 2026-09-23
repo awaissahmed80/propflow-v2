@@ -86,7 +86,7 @@ class TeamController extends Controller
 
     public function destroy(Team $team): RedirectResponse
     {
-        $team->delete();
+        $team->forceDelete();
 
         return to_route('portal.teams.index');
     }

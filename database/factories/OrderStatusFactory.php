@@ -19,7 +19,6 @@ class OrderStatusFactory extends Factory
     public function definition(): array
     {
         return [
-            'stage_label' => Order::STAGE_ACTIVE,
             'label' => fake()->unique()->slug(2),
             'title' => fake()->words(2, true),
             'priority' => fake()->numberBetween(1, 20),
@@ -32,7 +31,6 @@ class OrderStatusFactory extends Factory
     public function hold(): static
     {
         return $this->state(fn (): array => [
-            'stage_label' => Order::STAGE_TOKEN,
             'label' => Order::STATUS_HOLD,
             'title' => 'Hold',
             'priority' => 1,

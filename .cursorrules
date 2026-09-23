@@ -1,0 +1,70 @@
+# Role & Project Scope
+You are an expert full-stack developer specializing in Laravel, Inertia.js, React (JavaScript), and Multi-Tenant architecture.
+This project uses:
+- Backend: Laravel with Multi-Tenancy (Spatie package architecture)
+- Frontend: Inertia.js with React (Pure JavaScript - NO TypeScript)
+- Database: Multi-tenant isolated databases/schemas with central user authentication in landlord db
+
+---
+
+# General Rules
+- ALWAYS write pure, clean JavaScript (ES6+) for the frontend. Do NOT use TypeScript or `.tsx` files.
+- Never write code or propose solutions that breach multi-tenancy boundaries or create cross-tenant data leaks.
+- Ensure all backend routes for portal(tenant), queries, and logic strictly respect tenant isolation.
+- Keep Inertia response payloads lean—only pass necessary props to the frontend.
+
+---
+
+# Backend Rules (Laravel & Multi-Tenancy)
+
+### Tenant Context & Data Safety
+- Ensure any model operation that touches tenant data runs within the tenant context.
+- Avoid raw SQL queries that bypass Eloquent tenant scopes unless explicitly required and verified safe.
+- For job queues or background tasks, ensure the tenant context (`Tenancy::initialize($tenant)`) is dispatched alongside the job.
+- Never store tenant-specific state in global or singletons across requests.
+
+### Controllers & Inertia Responses
+- Always use Inertia responses unless api json data required for rtk query, instead of standard API JSON responses or Blade views:
+  `return inertia('Pages/Path/To/Component', [ 'data' => $data ]);`
+- Use Lazy Evaluation (`Inertia::lazy()`) or Partial Reloads for heavy data attributes.
+- Use `request()->validate()` inside Form Requests rather than inline in controllers.
+- Route model binding must enforce tenant ownership checks automatically via tenancy middleware/scopes.
+
+---
+
+# Frontend Rules (Inertia.js + React / JavaScript)
+
+### User Interface and User Experience (UI/UX)
+- Follow same UI/UX patterns throughout the project
+- Never use code/slug for projects/units/leads etc in any UI unless specified
+- Make modal unique code capitalized whenever it is used in UI
+
+### React & File Structure
+- Use `.jsx` file extensions for React components and `.js` for utility/helper files.
+- Don't use multiple large components in same .jsx for large components inside pages folder e.g. lead details panel, booking details etc, instead create a seperate .jsx file  inside the related page and module unless it is reuseable and can be shared with other page components, then you can put it in /resources/js/[app_module]/components 
+- Place all pages inside `resources/js/apps/[portal|auth|public]/pages/` and reusable components inside `resources/js/components/`.
+- Use functional components with hooks exclusively.
+- Use named imports for React hooks (`import { useState, useEffect } from 'react'`).
+- ALWAYS reuse existing UI components and form patterns (e.g. `Input` / `Input.Password` with `register`, `PhoneInput` with `Controller`). Check login and sibling forms first — do not invent alternate wiring or new similar components; extend the existing ones when functionality is missing.
+- For app specific shared components please use `resources/js/apps/[portal|auth|public]/components/`
+
+
+### Inertia Usage
+- Use `@inertiajs/react` hooks:
+  - `useForm` for form state management, validation error handling, and submitting.
+  - `usePage` to access global props (e.g., authenticated user, current tenant info, flash messages).
+  - `<Link>` component for internal navigation instead of standard `<a>` tags.
+- When submitting forms with tenant context in the URL, use Laravel Ziggy routes (`route('tenant.dashboard')`) or standard relative paths. Do NOT hardcode domains.
+
+### Code Style (JavaScript)
+- Always follow my existing code patterns 
+- Rely on standard JSDoc comments for complex function parameters if clarity is needed, but do NOT introduce JS type annotations or TypeScript syntax.
+- Use object destructuring for component props: `export default function UserList({ users, filters })`.
+- Use template literals instead of string concatenation.
+
+---
+
+# Tenant Domain & Routing Considerations
+- Handle multi-tenant URLs cleanly with session based tenants as the user auth lies in landlord db.
+- Ensure Ziggy route helper handles dynamic tenant parameters gracefully without breaking navigation.
+# Always check authorization using Laravel Policies/Gates before returning Inertia pages or mutating data.

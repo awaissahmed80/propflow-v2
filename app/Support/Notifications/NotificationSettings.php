@@ -68,6 +68,18 @@ class NotificationSettings
                         'description' => 'When a follow-up date has passed',
                         'default' => true,
                     ],
+                    [
+                        'key' => 'personal_reminder_due',
+                        'title' => 'Personal Reminder Due',
+                        'description' => 'When one of your reminders is due today',
+                        'default' => true,
+                    ],
+                    [
+                        'key' => 'personal_reminder_overdue',
+                        'title' => 'Personal Reminder Overdue',
+                        'description' => 'When one of your reminders is past due',
+                        'default' => true,
+                    ],
                 ],
             ],
             [
@@ -98,6 +110,12 @@ class NotificationSettings
                         'key' => 'installment_due',
                         'title' => 'Installment Due',
                         'description' => 'Seven days before an installment is due',
+                        'default' => true,
+                    ],
+                    [
+                        'key' => 'installment_overdue',
+                        'title' => 'Installment Overdue',
+                        'description' => 'When an installment due date has passed for an assigned booking',
                         'default' => true,
                     ],
                     [

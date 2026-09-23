@@ -32,10 +32,25 @@ class StoreUnitRequest extends FormRequest
             'price' => ['nullable', 'numeric', 'min:0'],
             'size' => ['nullable', 'numeric', 'min:0'],
             'area_type' => ['nullable', 'string', 'max:50'],
-            'quantity' => ['nullable', 'integer', 'min:1'],
+            'quantity' => ['nullable', 'integer', 'min:1', 'max:999999'],
             'status' => ['nullable', 'string', Rule::in(Unit::statuses())],
             'features' => ['nullable', 'array'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if (! $this->has('size') || $this->input('size') === null || $this->input('size') === '') {
+            return;
+        }
+
+        if (! is_numeric($this->input('size'))) {
+            return;
+        }
+
+        $this->merge([
+            'size' => round((float) $this->input('size'), 2),
+        ]);
     }
 
     public function withValidator(Validator $validator): void

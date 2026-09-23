@@ -35,6 +35,7 @@ class StoreLeadActionTypeRequest extends FormRequest
                 Rule::unique(LeadActionType::class, 'label')->where(fn ($query) => $query->where('kind', $kind)),
             ],
             'icon' => ['nullable', 'string', 'max:64'],
+            'color' => ['nullable', 'string', 'max:32', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/'],
         ];
     }
 

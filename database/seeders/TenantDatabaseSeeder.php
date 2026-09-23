@@ -7,13 +7,11 @@ use App\Models\LeadActionType;
 use App\Models\LeadStage;
 use App\Models\MetaData;
 use App\Models\OrderStage;
+use App\Models\PaymentAccount;
 use App\Models\PaymentPlanTemplate;
-use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
-use App\Support\TenantPermissions;
 use Illuminate\Database\Seeder;
-use Spatie\Permission\PermissionRegistrar;
 
 class TenantDatabaseSeeder extends Seeder
 {
@@ -23,13 +21,11 @@ class TenantDatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-
-        $this->seedPermissions();
-        $adminRole = $this->seedDefaultRoles();
+        $this->call(TenantPermissionsSeeder::class);
 
         /** @var User|null $admin */
         $admin = config('seeder.tenant_admin_user');
+        $adminRole = Role::query()->where('name', 'Admin')->first();
 
         if ($admin instanceof User && $adminRole) {
             $admin->unsetRelation('roles')->unsetRelation('permissions');
@@ -45,40 +41,6 @@ class TenantDatabaseSeeder extends Seeder
         $this->seedDefaultUnitTypes();
     }
 
-    protected function seedPermissions(): void
-    {
-        foreach (TenantPermissions::catalog() as $group) {
-            foreach ($group['permissions'] as $permission) {
-                $model = Permission::findOrCreate($permission['name'], 'web');
-                $model->forceFill([
-                    'group' => $group['group'],
-                    'label' => $permission['label'],
-                ])->save();
-            }
-        }
-    }
-
-    protected function seedDefaultRoles(): ?Role
-    {
-        $adminRole = null;
-
-        foreach (TenantPermissions::defaultRoles() as $roleData) {
-            $role = Role::findOrCreate($roleData['name'], 'web');
-            $role->forceFill([
-                'description' => $roleData['description'],
-                'is_system' => true,
-                'is_enabled' => true,
-            ])->save();
-            $role->syncPermissions($roleData['permissions']);
-
-            if ($roleData['name'] === 'Admin') {
-                $adminRole = $role;
-            }
-        }
-
-        return $adminRole;
-    }
-
     protected function seedDefaultLeadStages(): void
     {
         LeadStage::ensureDefaults();
@@ -88,6 +50,7 @@ class TenantDatabaseSeeder extends Seeder
     {
         OrderStage::ensureDefaults();
         MetaData::ensurePaymentMethods();
+        PaymentAccount::ensureDefaults();
     }
 
     protected function seedDefaultLeadActionTypes(): void

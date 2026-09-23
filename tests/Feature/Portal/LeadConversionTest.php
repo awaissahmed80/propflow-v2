@@ -94,7 +94,7 @@ class LeadConversionTest extends TestCase
             $rows->sum(fn (PaymentInstallment $row): int => (int) round(((float) $row->amount) * 100)),
         );
         $this->assertTrue(
-            Task::query()->where('lead_id', $lead->id)->where('action', 'Deal booked')->exists(),
+            Task::query()->whereMorphedTo('taskable', $lead)->where('action', 'Deal booked')->exists(),
         );
         Tenant::forgetCurrent();
     }
@@ -180,7 +180,7 @@ class LeadConversionTest extends TestCase
         $this->assertSame(Unit::STATUS_AVAILABLE, $unit->status);
         $this->assertSame($wonId, $lead->lead_stage_id);
         $this->assertTrue(
-            Task::query()->where('lead_id', $lead->id)->where('action', 'Booking cancelled')->exists(),
+            Task::query()->whereMorphedTo('taskable', $lead)->where('action', 'Booking cancelled')->exists(),
         );
         Tenant::forgetCurrent();
 
@@ -267,7 +267,7 @@ class LeadConversionTest extends TestCase
         $this->assertNotNull($order->allocated_at);
         $this->assertSame(Unit::STATUS_SOLD, $unit->status);
         $this->assertTrue(
-            Task::query()->where('lead_id', $lead->id)->where('action', 'Unit allocated')->exists(),
+            Task::query()->whereMorphedTo('taskable', $lead)->where('action', 'Unit allocated')->exists(),
         );
         Tenant::forgetCurrent();
 

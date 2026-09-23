@@ -30,6 +30,7 @@ class OrderResource extends JsonResource
             'lead_id' => $this->lead_id,
             'booking_kind' => $this->booking_kind,
             'agreed_price' => $this->agreed_price !== null ? (float) $this->agreed_price : 0,
+            'balance_due' => $this->resolveBalanceDue(),
             'status' => $this->status,
             'stage' => $this->stage ?: Order::STAGE_TOKEN,
             'assigned_to' => $this->assigned_to,
@@ -45,12 +46,15 @@ class OrderResource extends JsonResource
                 ]))) ?: 'Contact #'.$contact->id,
                 'phone_number' => $contact->phone_number,
                 'email_address' => $contact->email_address,
+                'cnic' => $contact->cnic,
+                'address' => $contact->address,
                 'type' => $contact->type ?? null,
             ] : null,
             'project' => $this->whenLoaded('project', fn () => $this->project ? [
                 'id' => $this->project->id,
                 'title' => $this->project->title,
                 'code' => $this->project->code ?? null,
+                'location' => $this->project->location ?? null,
                 'thumbnail' => $this->project->getAttribute('thumbnail_url'),
             ] : null),
             'unit' => $this->whenLoaded('unit', fn () => $this->unit ? [
@@ -58,6 +62,9 @@ class OrderResource extends JsonResource
                 'code' => $this->unit->code,
                 'name' => $this->unit->name,
                 'status' => $this->unit->status,
+                'type' => $this->unit->type,
+                'size' => $this->unit->size !== null ? (float) $this->unit->size : null,
+                'area_type' => $this->unit->area_type,
             ] : null),
             'lead' => $lead ? [
                 'id' => $lead->id,
@@ -98,6 +105,20 @@ class OrderResource extends JsonResource
                 ])->values()->all()
                 : [],
         ];
+    }
+
+    protected function resolveBalanceDue(): float
+    {
+        if ($this->balance_due !== null) {
+            return (float) $this->balance_due;
+        }
+
+        $net = (float) ($this->agreed_price ?? 0)
+            + (float) ($this->premium ?? 0)
+            - (float) ($this->discount ?? 0);
+        $paid = (float) ($this->payments_sum ?? 0);
+
+        return max(0, round($net - $paid, 2));
     }
 
     /**

@@ -47,6 +47,7 @@ const emptyValues = {
     price: null,
     size: null,
     area_type: "",
+    quantity: 1,
     status: "AVAILABLE",
     description: "",
 };
@@ -148,6 +149,10 @@ export default function UnitForm({
                 price: data.price ?? null,
                 size: data.size ?? null,
                 area_type: data.area_type ?? "",
+                quantity:
+                    data.quantity == null || data.quantity === ""
+                        ? 1
+                        : Number(data.quantity),
                 status: data.status ?? "AVAILABLE",
                 description: data.description ?? "",
             });
@@ -251,11 +256,23 @@ export default function UnitForm({
                 size:
                     values.size === "" || values.size == null
                         ? null
-                        : Number(values.size),
+                        : Math.round(Number(values.size) * 100) / 100,
                 area_type: values.area_type || null,
                 status: values.status || "AVAILABLE",
                 description: values.description || null,
-                quantity: 1,
+                quantity: (() => {
+                    if (values.quantity === "" || values.quantity == null) {
+                        return 1;
+                    }
+
+                    const parsed = Math.round(Number(values.quantity));
+
+                    if (!Number.isFinite(parsed)) {
+                        return 1;
+                    }
+
+                    return Math.max(isEditing ? 0 : 1, parsed);
+                })(),
             };
 
             const visit = {
@@ -392,6 +409,8 @@ export default function UnitForm({
                                                 value={field.value}
                                                 onChange={field.onChange}
                                                 allowDecimal
+                                                step={0.01}
+                                                maxDecimals={2}
                                                 min={0}
                                                 placeholder="0"
                                             />
@@ -452,6 +471,48 @@ export default function UnitForm({
                                 )}
                             />
                         </div>
+
+                        <Controller
+                            name="quantity"
+                            control={control}
+                            rules={{
+                                required: "Quantity is required.",
+                                min: { value: 1, message: "Quantity must be at least 1." },
+                            }}
+                            render={({ field }) => (
+                                <div className="space-y-0.5">
+                                    <Label className="mb-1 text-label font-medium text-muted-foreground">
+                                        Quantity
+                                    </Label>
+                                    <InputGroup
+                                        className={cn(
+                                            fieldError("quantity") && "border-destructive"
+                                        )}
+                                    >
+                                        <InputGroupNumberInput
+                                            value={field.value}
+                                            onChange={field.onChange}
+                                            min={1}
+                                            step={1}
+                                            placeholder="1"
+                                        />
+                                        <InputGroupAddon align="inline-end">
+                                            <span className="px-2 text-xs text-muted-foreground">
+                                                units
+                                            </span>
+                                        </InputGroupAddon>
+                                    </InputGroup>
+                                    <p className="text-xs text-muted-foreground">
+                                        Use more than 1 for bulk inventory. Each sale deducts one.
+                                    </p>
+                                    {fieldError("quantity") ? (
+                                        <p className="text-sm text-destructive">
+                                            {fieldError("quantity")}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            )}
+                        />
 
                         <Controller
                             name="status"

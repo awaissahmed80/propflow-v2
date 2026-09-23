@@ -24,7 +24,7 @@ function normalizePath(value) {
 }
 
 /**
- * Horizontal section switcher for Operations hubs (Bookings / Receivables / Commissions).
+ * Horizontal section switcher for Sales hubs (Receivables / Commissions).
  */
 export function OperationsSubnav({ items = [] }) {
     const { url } = usePage();

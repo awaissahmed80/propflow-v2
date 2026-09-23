@@ -5,8 +5,11 @@ namespace App\Http\Middleware;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\TenantContext;
+use App\Support\Domain;
 use Closure;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Support\Header as InertiaHeader;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureTenantContext
@@ -36,7 +39,13 @@ class EnsureTenantContext
         $tenant = Tenant::current() ?? $this->resolveTenantFromSession();
 
         if (! $tenant) {
-            abort(403, 'No tenant selected.');
+            $workspacesUrl = Domain::auth('/workspaces');
+
+            if ($request->header(InertiaHeader::INERTIA)) {
+                return Inertia::location($workspacesUrl);
+            }
+
+            return redirect()->to($workspacesUrl);
         }
 
         if ($user->isTenantUser() && ! $this->tenantContext->userBelongsToTenant($user, $tenant)) {

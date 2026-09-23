@@ -80,7 +80,7 @@ class UserIndexTest extends TestCase
             '--database' => 'tenant',
             '--force' => true,
         ]);
-        $other->assignRole('Manager');
+        $other->assignRole('Business Manager');
         Tenant::forgetCurrent();
 
         $this->actingAs($user);

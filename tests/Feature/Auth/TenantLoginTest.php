@@ -72,6 +72,110 @@ class TenantLoginTest extends TestCase
         );
     }
 
+    public function test_user_with_multiple_workspaces_must_choose_one(): void
+    {
+        $user = User::factory()->tenant()->create([
+            'email_address' => 'multi@example.com',
+            'password' => Hash::make('password'),
+            'status' => UserStatus::Active,
+        ]);
+
+        $tenantA = Tenant::factory()->create([
+            'name' => 'Alpha Realty',
+            'database' => 'tenant_login_alpha',
+        ]);
+        $tenantB = Tenant::factory()->create([
+            'name' => 'Beta Homes',
+            'database' => 'tenant_login_beta',
+        ]);
+
+        TenantUser::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenantA->id,
+            'status' => TenantMembershipStatus::Active,
+        ]);
+        TenantUser::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenantB->id,
+            'status' => TenantMembershipStatus::Active,
+        ]);
+
+        $response = $this->from(Domain::auth())->post(Domain::auth('/login'), [
+            'email_address' => 'multi@example.com',
+            'password' => 'password',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertNull(session(TenantContext::SESSION_TENANT_ID));
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('auth/login', false)
+            ->where('status', 'select_workspace')
+            ->has('workspaces', 2)
+            ->where('workspaces.0.name', 'Alpha Realty')
+            ->where('workspaces.1.name', 'Beta Homes')
+        );
+    }
+
+    public function test_user_can_select_workspace_after_login(): void
+    {
+        $user = User::factory()->tenant()->create([
+            'email_address' => 'picker@example.com',
+            'password' => Hash::make('password'),
+            'status' => UserStatus::Active,
+        ]);
+
+        $tenantA = Tenant::factory()->create(['database' => 'tenant_login_pick_a']);
+        $tenantB = Tenant::factory()->create(['database' => 'tenant_login_pick_b']);
+
+        TenantUser::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenantA->id,
+        ]);
+        TenantUser::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $tenantB->id,
+        ]);
+
+        $this->actingAs($user);
+
+        $response = $this->post(Domain::auth('/workspaces/select'), [
+            'tenant_id' => $tenantB->id,
+        ]);
+
+        $this->assertSame($tenantB->id, session(TenantContext::SESSION_TENANT_ID));
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('auth/login', false)
+            ->where('status', 'authenticated')
+            ->where('redirect', Domain::portal())
+        );
+    }
+
+    public function test_cannot_select_workspace_without_membership(): void
+    {
+        $user = User::factory()->tenant()->create([
+            'password' => Hash::make('password'),
+        ]);
+        $ownTenant = Tenant::factory()->create(['database' => 'tenant_login_own']);
+        $otherTenant = Tenant::factory()->create(['database' => 'tenant_login_other']);
+
+        TenantUser::factory()->create([
+            'user_id' => $user->id,
+            'tenant_id' => $ownTenant->id,
+        ]);
+
+        $this->actingAs($user);
+
+        $this->from(Domain::auth('/workspaces'))
+            ->post(Domain::auth('/workspaces/select'), [
+                'tenant_id' => $otherTenant->id,
+            ])
+            ->assertSessionHasErrors('tenant_id');
+
+        $this->assertNull(session(TenantContext::SESSION_TENANT_ID));
+    }
+
     public function test_invalid_credentials_return_validation_error(): void
     {
         User::factory()->tenant()->create([
@@ -141,8 +245,7 @@ class TenantLoginTest extends TestCase
             ->assertInertia(fn ($page) => $page->component('dashboard/index', false));
 
         $this->get(Domain::portal('/dashboard'))
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page->component('dashboard/index', false));
+            ->assertRedirect(Domain::portal());
     }
 
     public function test_authenticated_user_can_logout_and_is_sent_to_auth(): void

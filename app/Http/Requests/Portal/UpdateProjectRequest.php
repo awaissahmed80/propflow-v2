@@ -22,7 +22,7 @@ class UpdateProjectRequest extends FormRequest
     {
         return [
             'title' => ['sometimes', 'required', 'string', 'max:150'],
-            'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'type' => ['sometimes', 'nullable', 'string', 'max:50'],
             'purpose' => ['sometimes', 'nullable', 'string', 'max:100'],
             'country' => ['sometimes', 'nullable', 'string', 'max:100'],
