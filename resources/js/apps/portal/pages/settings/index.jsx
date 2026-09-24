@@ -57,6 +57,7 @@ export default function SettingsIndex({
     stages = [],
     orderStages = [],
     orderStatuses = [],
+    bookingDocumentTypes = [],
     paymentAccounts = [],
     activityActionTypes = [],
     nextActionTypes = [],
@@ -191,6 +192,7 @@ export default function SettingsIndex({
                                     stages={stages}
                                     orderStages={orderStages}
                                     orderStatuses={orderStatuses}
+                                    bookingDocumentTypes={bookingDocumentTypes}
                                     paymentAccounts={paymentAccounts}
                                     activityActionTypes={activityActionTypes}
                                     nextActionTypes={nextActionTypes}

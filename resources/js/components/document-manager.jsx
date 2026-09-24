@@ -139,6 +139,7 @@ function formatRelativeDate(value) {
  * @param {boolean} [props.embedded]
  * @param {boolean} [props.open]
  * @param {(open: boolean) => void} [props.onOpenChange]
+ * @param {number|string|null} [props.lockedFolderId] Stay inside this folder (no create/navigate/move-out).
  */
 function DocumentManager({
   embedded = false,
@@ -151,6 +152,8 @@ function DocumentManager({
   assetableType,
   assetableId,
   linkage = "DOCUMENT",
+  label = null,
+  lockedFolderId = null,
   selectedIds = EMPTY_SELECTED_IDS,
   selectable: selectableProp,
   onSelectionChange,
@@ -158,10 +161,12 @@ function DocumentManager({
 }) {
   const isOpen = embedded || open
   const selectable = selectableProp ?? !embedded
+  const isFolderLocked = lockedFolderId != null && lockedFolderId !== ""
+  const lockedId = isFolderLocked ? lockedFolderId : null
   const [folders, setFolders] = useState([])
   const [items, setItems] = useState([])
   const [query, setQuery] = useState("")
-  const [currentFolderId, setCurrentFolderId] = useState(null)
+  const [currentFolderId, setCurrentFolderId] = useState(lockedId)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -213,6 +218,10 @@ function DocumentManager({
   }, [folders, currentFolderId])
 
   const visibleFolders = useMemo(() => {
+    if (isFolderLocked) {
+      return []
+    }
+
     let rows = []
 
     if (!currentFolderId) {
@@ -234,11 +243,16 @@ function DocumentManager({
         .toLowerCase()
         .includes(needle)
     )
-  }, [folders, currentFolderId, currentFolder, query])
+  }, [folders, currentFolderId, currentFolder, query, isFolderLocked])
 
-  const canCreateFolder = !currentFolder || !currentFolder.parent_id
+  const canCreateFolder =
+    !isFolderLocked && (!currentFolder || !currentFolder.parent_id)
 
   const moveTargets = useMemo(() => {
+    if (isFolderLocked) {
+      return []
+    }
+
     const rows = [{ id: null, label: "Unfiled" }]
 
     folders.forEach((folder) => {
@@ -249,7 +263,7 @@ function DocumentManager({
     })
 
     return rows
-  }, [folders])
+  }, [folders, isFolderLocked])
 
   useEffect(() => {
     if (!isOpen) {
@@ -257,11 +271,11 @@ function DocumentManager({
     }
 
     setQuery("")
-    setCurrentFolderId(null)
+    setCurrentFolderId(lockedId)
     setNewFolderName("")
     setCreateFolderOpen(false)
     void bootstrap()
-  }, [isOpen])
+  }, [isOpen, lockedId])
 
   useEffect(() => {
     if (!isOpen) {
@@ -318,6 +332,11 @@ function DocumentManager({
   }
 
   const handleCreateFolder = async () => {
+    if (isFolderLocked) {
+      toast.error("Folders cannot be created inside this booking folder")
+      return
+    }
+
     const name = newFolderName.trim()
 
     if (!name) {
@@ -349,6 +368,10 @@ function DocumentManager({
   }
 
   const handleDeleteFolder = async (folder) => {
+    if (isFolderLocked) {
+      return
+    }
+
     const confirmed = await confirm(
       `Delete folder "${folder.name}"? All files inside will be permanently deleted and unlinked everywhere.`,
       "Delete folder"
@@ -395,6 +418,11 @@ function DocumentManager({
   }
 
   const handleMoveFile = async (item, folderId) => {
+    if (isFolderLocked) {
+      toast.error("Files cannot be moved out of this booking folder")
+      return
+    }
+
     try {
       await moveDocumentsToFolder([item.id], folderId)
       await refreshFolders()
@@ -417,9 +445,10 @@ function DocumentManager({
         assetableType,
         assetableId,
         linkage,
+        label,
         assetIds: selection,
       })
-      onApplied?.()
+      await onApplied?.()
       onOpenChange?.(false)
     } catch (error) {
       toast.error(error.message || "Unable to save selection")
@@ -451,16 +480,18 @@ function DocumentManager({
           uploading={uploading}
           onUpload={handleUpload}
           actions={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!canCreateFolder}
-              onClick={() => setCreateFolderOpen(true)}
-            >
-              <Icon name="folder-add-line" className="text-base" />
-              Create Folder
-            </Button>
+            isFolderLocked ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canCreateFolder}
+                onClick={() => setCreateFolderOpen(true)}
+              >
+                <Icon name="folder-add-line" className="text-base" />
+                Create Folder
+              </Button>
+            )
           }
         />
       }
@@ -514,27 +545,37 @@ function DocumentManager({
             embedded ? "pt-3" : "border-b border-border px-6 py-2"
           )}
         >
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => setCurrentFolderId(null)}
-          >
-            All files
-          </button>
-          {currentFolder.parent ? (
+          {isFolderLocked ? (
             <>
-              <Icon name="arrow-right-s-line" className="text-muted-foreground" />
+              <Icon name="folder-fill" className="text-base text-sky-500" />
+              <span className="font-medium text-foreground">{currentFolder.name}</span>
+              <span className="text-xs text-muted-foreground">Booking folder</span>
+            </>
+          ) : (
+            <>
               <button
                 type="button"
                 className="text-muted-foreground hover:text-foreground"
-                onClick={() => setCurrentFolderId(currentFolder.parent.id)}
+                onClick={() => setCurrentFolderId(null)}
               >
-                {currentFolder.parent.name}
+                All files
               </button>
+              {currentFolder.parent ? (
+                <>
+                  <Icon name="arrow-right-s-line" className="text-muted-foreground" />
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => setCurrentFolderId(currentFolder.parent.id)}
+                  >
+                    {currentFolder.parent.name}
+                  </button>
+                </>
+              ) : null}
+              <Icon name="arrow-right-s-line" className="text-muted-foreground" />
+              <span className="font-medium text-foreground">{currentFolder.name}</span>
             </>
-          ) : null}
-          <Icon name="arrow-right-s-line" className="text-muted-foreground" />
-          <span className="font-medium text-foreground">{currentFolder.name}</span>
+          )}
         </div>
       ) : null}
 
@@ -705,18 +746,22 @@ function FileTile({
           >
             Open
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {moveTargets.map((target) => (
-            <DropdownMenuItem
-              key={target.id ?? "unfiled"}
-              onClick={(event) => {
-                event.stopPropagation()
-                onMove(target.id)
-              }}
-            >
-              Move to {target.label}
-            </DropdownMenuItem>
-          ))}
+          {moveTargets.length > 0 ? (
+            <>
+              <DropdownMenuSeparator />
+              {moveTargets.map((target) => (
+                <DropdownMenuItem
+                  key={target.id ?? "unfiled"}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onMove(target.id)
+                  }}
+                >
+                  Move to {target.label}
+                </DropdownMenuItem>
+              ))}
+            </>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"

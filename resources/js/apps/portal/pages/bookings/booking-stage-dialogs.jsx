@@ -3,9 +3,8 @@ import { router, usePage } from "@inertiajs/react";
 import { toast } from "sonner";
 import {
     ballot,
-    storeBooking as booking,
+    bookingFormPdf,
     deliver,
-    enterBookingKyc,
     handover,
     litigation,
     payment,
@@ -28,6 +27,9 @@ import { NumberInput } from "@/components/ui/number-input";
 import { SelectBox } from "@/components/ui/select";
 import { Icon } from "@/components/ui/icon";
 import { formatMoney } from "@/lib/currency";
+import { cn } from "@/lib/utils";
+import { bookingApi } from "@/portal/store/api";
+import { BookingKycForm } from "./booking-kyc-form";
 
 const FALLBACK_PAYMENT_METHODS = ["Cash", "Pay order", "Cheque", "Bank transfer"];
 
@@ -45,7 +47,7 @@ function pathFrom(url) {
     return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
-function post(url, data, success, onDone) {
+function post(url, data, success, onDone, options = {}) {
     router.post(pathFrom(url), data, {
         preserveScroll: true,
         forceFormData: data instanceof FormData || data?.receipt instanceof File,
@@ -53,7 +55,11 @@ function post(url, data, success, onDone) {
             toast.success(success);
             onDone?.();
         },
-        onError: (errors) => toast.error(Object.values(errors)[0] || "Unable to update this booking"),
+        onError: (errors) => {
+            toast.error(Object.values(errors)[0] || "Unable to update this booking");
+            options.onError?.(errors);
+        },
+        onFinish: () => options.onFinish?.(),
     });
 }
 
@@ -125,18 +131,51 @@ export function stageColor(stage, orderStages = []) {
     return match?.color || null;
 }
 
-export function BookingStageDialog({ open, onOpenChange, action, order, deal }) {
+export function BookingStageDialog({
+    open,
+    onOpenChange,
+    action,
+    order,
+    deal,
+    projects = [],
+    units = [],
+    paymentAccounts = [],
+    bookingDocumentTypes = [],
+    onPanelUpdated,
+    onPreview,
+}) {
     const { errors = {} } = usePage().props;
+    const [verifyStep, setVerifyStep] = useState("form");
+    const [verifyErrors, setVerifyErrors] = useState({});
+    const [kycStep, setKycStep] = useState("identity");
+    const [kycErrors, setKycErrors] = useState({});
+
+    useEffect(() => {
+        if (open && action === "verify") {
+            setVerifyStep("form");
+            setVerifyErrors({});
+        }
+
+        if (open && (action === "enter_kyc" || action === "booking")) {
+            setKycStep("identity");
+            setKycErrors({});
+        }
+    }, [open, action]);
 
     if (!action || !order) {
         return null;
     }
 
+    const isKyc = action === "enter_kyc" || action === "booking";
+
     const title =
         {
-            verify: "Verify token",
-            booking: "Verify token",
-            enter_kyc: "Enter Booking & KYC",
+            verify:
+                verifyStep === "done"
+                    ? "Token verified"
+                    : verifyStep === "review"
+                      ? "Confirm token details"
+                      : "Verify token",
             plan: "Set payment plan",
             tracking: "Record payment",
             payment: "Record payment",
@@ -149,80 +188,735 @@ export function BookingStageDialog({ open, onOpenChange, action, order, deal }) 
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>{title}</DialogTitle>
-                    <DialogDescription>
-                        {order.contact?.display_name || "Booking"}
-                        {order.unit?.name ? ` · ${order.unit.name}` : ""}
-                        {deal?.net_price != null ? ` · Net ${formatMoney(deal.net_price)}` : ""}
-                    </DialogDescription>
-                </DialogHeader>
-                {action === "verify" ? (
-                    <VerifyTokenForm order={order} onDone={() => onOpenChange(false)} />
-                ) : null}
-                {action === "enter_kyc" || action === "booking" ? (
+            <DialogContent
+                className={
+                    isKyc
+                        ? "flex h-[min(90vh,48rem)] max-h-[92vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl lg:max-w-5xl"
+                        : action === "verify"
+                          ? "max-h-[90vh] gap-8 overflow-y-auto p-7 sm:max-w-2xl"
+                          : "max-h-[90vh] overflow-y-auto sm:max-w-lg"
+                }
+            >
+                {isKyc ? (
                     <BookingKycForm
                         order={order}
                         deal={deal}
-                        errors={errors}
+                        errors={{ ...errors, ...kycErrors }}
+                        step={kycStep}
+                        onStepChange={setKycStep}
+                        onErrorsChange={setKycErrors}
+                        onPanelUpdated={onPanelUpdated}
+                        bookingDocumentTypes={bookingDocumentTypes}
+                        onPreview={onPreview}
                         onDone={() => onOpenChange(false)}
                     />
-                ) : null}
-                {action === "plan" ? (
-                    <PlanForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
-                ) : null}
-                {action === "tracking" || action === "payment" ? (
-                    <PaymentForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
-                ) : null}
-                {action === "ballot" ? (
-                    <BallotForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
-                ) : null}
-                {action === "transfer" ? (
-                    <TransferForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
-                ) : null}
-                {action === "litigation" ? (
-                    <LitigationForm order={order} deal={deal} onDone={() => onOpenChange(false)} />
-                ) : null}
-                {action === "handover" ? (
-                    <HandoverForm order={order} deal={deal} errors={errors} onDone={() => onOpenChange(false)} />
-                ) : null}
-                {action === "deliver" ? (
-                    <DeliverForm order={order} onDone={() => onOpenChange(false)} />
-                ) : null}
+                ) : (
+                    <>
+                        <DialogHeader>
+                            <DialogTitle>{title}</DialogTitle>
+                            <DialogDescription>
+                                {order.contact?.display_name || "Booking"}
+                                {order.unit?.name ? ` · ${order.unit.name}` : ""}
+                                {deal?.net_price != null
+                                    ? ` · Net ${formatMoney(deal.net_price)}`
+                                    : ""}
+                            </DialogDescription>
+                        </DialogHeader>
+                        {action === "verify" ? (
+                            <VerifyTokenForm
+                                order={order}
+                                deal={deal}
+                                projects={projects}
+                                units={units}
+                                paymentAccounts={paymentAccounts}
+                                errors={{ ...errors, ...verifyErrors }}
+                                step={verifyStep}
+                                onStepChange={setVerifyStep}
+                                onErrorsChange={setVerifyErrors}
+                                onPanelUpdated={onPanelUpdated}
+                                onDone={() => onOpenChange(false)}
+                            />
+                        ) : null}
+                        {action === "plan" ? (
+                            <PlanForm
+                                order={order}
+                                deal={deal}
+                                errors={errors}
+                                onDone={() => onOpenChange(false)}
+                            />
+                        ) : null}
+                        {action === "tracking" || action === "payment" ? (
+                            <PaymentForm
+                                order={order}
+                                deal={deal}
+                                errors={errors}
+                                onDone={() => onOpenChange(false)}
+                            />
+                        ) : null}
+                        {action === "ballot" ? (
+                            <BallotForm
+                                order={order}
+                                deal={deal}
+                                errors={errors}
+                                onDone={() => onOpenChange(false)}
+                            />
+                        ) : null}
+                        {action === "transfer" ? (
+                            <TransferForm
+                                order={order}
+                                deal={deal}
+                                errors={errors}
+                                onDone={() => onOpenChange(false)}
+                            />
+                        ) : null}
+                        {action === "litigation" ? (
+                            <LitigationForm
+                                order={order}
+                                deal={deal}
+                                onDone={() => onOpenChange(false)}
+                            />
+                        ) : null}
+                        {action === "handover" ? (
+                            <HandoverForm
+                                order={order}
+                                deal={deal}
+                                errors={errors}
+                                onDone={() => onOpenChange(false)}
+                            />
+                        ) : null}
+                        {action === "deliver" ? (
+                            <DeliverForm order={order} onDone={() => onOpenChange(false)} />
+                        ) : null}
+                    </>
+                )}
             </DialogContent>
         </Dialog>
     );
 }
 
-function BookingKycForm({ order, deal, errors, onDone }) {
-    const bookingData = deal?.booking || {};
-    const [form, setForm] = useState({
-        identity_kind: bookingData.identity_kind || "cnic",
-        identity_number: bookingData.identity_number || "",
-        overseas: Boolean(bookingData.overseas),
-        local_phone: bookingData.local_phone || "",
-        nominee_name: bookingData.nominee_name || "",
-        nominee_relation: bookingData.nominee_relation || "",
-        nominee_cnic: bookingData.nominee_cnic || "",
-        nominee_phone: bookingData.nominee_phone || "",
-        phase: bookingData.phase || "",
-        sector: bookingData.sector || "",
-        plot_or_file: bookingData.plot_or_file || order.unit?.name || "",
-        category: bookingData.category || "standard",
-        premium: bookingData.premium != null ? Number(bookingData.premium) : 0,
-        discount: bookingData.discount != null ? Number(bookingData.discount) : 0,
+function unitOptionLabel(unit) {
+    const name = unit?.name || "Unit";
+
+    return unit?.price != null ? `${name} · ${formatMoney(unit.price)}` : name;
+}
+
+function paymentAccountLabel(account) {
+    const typeLabel = account?.type === "cash" ? "Cash" : "Bank";
+    const details = [account?.bank_name, account?.account_number].filter(Boolean).join(" · ");
+
+    return details
+        ? `${account.name} (${typeLabel}) · ${details}`
+        : `${account.name} (${typeLabel})`;
+}
+
+function defaultPaymentAccountId(accounts = []) {
+    const rows = Array.isArray(accounts) ? accounts : [];
+    const preferred = rows.find((row) => row.is_default) || rows[0];
+
+    return preferred?.id != null ? String(preferred.id) : "";
+}
+
+function formatReviewDate(value) {
+    if (!value) {
+        return "—";
+    }
+
+    const date = new Date(`${value}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
     });
+}
+
+function validateVerifyTokenForm(form) {
+    const next = {};
+
+    if (!String(form.project_id || "").trim()) {
+        next.project_id = "Select a project.";
+    }
+
+    if (!String(form.unit_id || "").trim()) {
+        next.unit_id = "Select a unit.";
+    }
+
+    if (!String(form.contact_name || "").trim()) {
+        next.contact_name = "Enter the customer name.";
+    }
+
+    if (!String(form.phone_number || "").trim()) {
+        next.phone_number = "Enter a phone number.";
+    }
+
+    if (form.email_address && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.email_address).trim())) {
+        next.email_address = "Enter a valid email address.";
+    }
+
+    if (form.agreed_price == null || Number(form.agreed_price) < 0) {
+        next.agreed_price = "Enter the agreed price.";
+    }
+
+    if (form.token_amount == null || Number(form.token_amount) <= 0) {
+        next.token_amount = "Enter the token amount.";
+    } else if (
+        form.agreed_price != null &&
+        Number(form.token_amount) > Number(form.agreed_price)
+    ) {
+        next.token_amount = "The token amount cannot be more than the agreed price.";
+    }
+
+    if (!String(form.payment_account_id || "").trim()) {
+        next.payment_account_id = "Select a deposit account.";
+    }
+
+    if (!String(form.method || "").trim()) {
+        next.method = "Select a payment method.";
+    }
+
+    if (!String(form.paid_on || "").trim()) {
+        next.paid_on = "Select the payment date.";
+    }
+
+    if (!form.receipt) {
+        next.receipt = "Upload proof of token payment.";
+    }
+
+    return next;
+}
+
+function ReviewSection({ icon, title, children, className }) {
+    return (
+        <section
+            className={cn(
+                "space-y-3 rounded-xl border border-border/70 bg-card p-4 shadow-xs",
+                className,
+            )}
+        >
+            <h3 className="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                <Icon name={icon} className="text-base" />
+                {title}
+            </h3>
+            {children}
+        </section>
+    );
+}
+
+function ReviewFact({ label, value, className }) {
+    return (
+        <div className={cn("min-w-0 space-y-1", className)}>
+            <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                {label}
+            </p>
+            <p className="wrap-break-word text-sm font-medium text-foreground">{value || "—"}</p>
+        </div>
+    );
+}
+
+function ReviewMetric({ label, value, emphasize = false }) {
+    return (
+        <div
+            className={cn(
+                "min-w-0 rounded-xl border px-3.5 py-3 shadow-xs",
+                emphasize
+                    ? "border-primary/25 bg-primary/5"
+                    : "border-border/70 bg-background",
+            )}
+        >
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
+            <p
+                className={cn(
+                    "mt-1 truncate text-lg font-semibold tracking-tight tabular-nums",
+                    emphasize ? "text-primary" : "text-foreground",
+                )}
+            >
+                {value || "—"}
+            </p>
+        </div>
+    );
+}
+
+function VerifyTokenForm({
+    order,
+    deal,
+    projects = [],
+    units = [],
+    paymentAccounts = [],
+    errors,
+    step = "form",
+    onStepChange,
+    onErrorsChange,
+    onPanelUpdated,
+    onDone,
+}) {
+    const methods = paymentMethodOptions(deal);
+    const accounts =
+        paymentAccounts.length > 0
+            ? paymentAccounts
+            : Array.isArray(deal?.payment_accounts)
+              ? deal.payment_accounts
+              : [];
+    const contact = order?.contact || {};
+    const [form, setForm] = useState({
+        contact_name: contact.display_name || "",
+        phone_number: contact.phone_number || "",
+        email_address: contact.email_address || "",
+        identity_kind: deal?.booking?.identity_kind || "cnic",
+        identity_number:
+            deal?.booking?.identity_number || contact.cnic || "",
+        project_id: order?.project_id ? String(order.project_id) : order?.project?.id ? String(order.project.id) : "",
+        unit_id: order?.unit_id ? String(order.unit_id) : order?.unit?.id ? String(order.unit.id) : "",
+        payment_account_id: defaultPaymentAccountId(accounts),
+        agreed_price:
+            order?.agreed_price != null
+                ? Number(order.agreed_price)
+                : deal?.net_price != null
+                  ? Number(deal.net_price)
+                  : null,
+        token_amount:
+            deal?.booking?.token_amount != null && Number(deal.booking.token_amount) > 0
+                ? Number(deal.booking.token_amount)
+                : null,
+        method: methods[0] || "Cash",
+        reference: "",
+        paid_on: new Date().toISOString().slice(0, 10),
+        receipt: null,
+    });
+    const [clientErrors, setClientErrors] = useState({});
+    const [submitting, setSubmitting] = useState(false);
+    const [verifyToken] = bookingApi.useVerifyTokenMutation();
+
+    const fieldErrors = { ...clientErrors, ...errors };
+
+    const projectOptions = useMemo(
+        () =>
+            projects.map((project) => ({
+                value: String(project.id),
+                label: project.title,
+                image: project.thumbnail || undefined,
+                icon: project.thumbnail ? undefined : "community-line",
+            })),
+        [projects],
+    );
+
+    const unitOptions = useMemo(() => {
+        const currentUnitId = order?.unit_id
+            ? String(order.unit_id)
+            : order?.unit?.id
+              ? String(order.unit.id)
+              : "";
+
+        return units
+            .filter((unit) => {
+                const bookable = unit.status === "AVAILABLE" || unit.status === "HOLD";
+                const current = String(unit.id) === currentUnitId;
+
+                if (!bookable && !current) {
+                    return false;
+                }
+
+                if (form.project_id && String(unit.project_id) !== form.project_id) {
+                    return false;
+                }
+
+                return true;
+            })
+            .map((unit) => ({
+                value: String(unit.id),
+                label: unitOptionLabel(unit),
+            }));
+    }, [units, form.project_id, order?.unit_id, order?.unit?.id]);
+
+    const accountOptions = useMemo(
+        () =>
+            accounts.map((account) => ({
+                value: String(account.id),
+                label: paymentAccountLabel(account),
+            })),
+        [accounts],
+    );
+
+    const selectedProject = projects.find((item) => String(item.id) === String(form.project_id));
+    const selectedUnit = units.find((item) => String(item.id) === String(form.unit_id));
+    const selectedAccount = accounts.find(
+        (item) => String(item.id) === String(form.payment_account_id),
+    );
+    const bookingNumber = order?.booking_number || deal?.booking?.booking_number;
+    const letterDownloadUrl = order?.code
+        ? pathFrom(bookingFormPdf.url(order.code))
+        : null;
+
+    const downloadLetter = () => {
+        if (!letterDownloadUrl) {
+            return;
+        }
+
+        window.location.assign(letterDownloadUrl);
+    };
+
+    const goToReview = () => {
+        const nextErrors = validateVerifyTokenForm(form);
+
+        if (Object.keys(nextErrors).length > 0) {
+            setClientErrors(nextErrors);
+            onErrorsChange?.({});
+            toast.error(Object.values(nextErrors)[0]);
+            return;
+        }
+
+        setClientErrors({});
+        onErrorsChange?.({});
+        onStepChange?.("review");
+    };
+
+    const confirmVerify = async () => {
+        if (!order?.code) {
+            return;
+        }
+
+        setSubmitting(true);
+        onErrorsChange?.({});
+
+        try {
+            const panel = await verifyToken({
+                code: order.code,
+                contact_name: form.contact_name,
+                phone_number: form.phone_number,
+                email_address: form.email_address || "",
+                identity_kind: form.identity_kind || "cnic",
+                identity_number: form.identity_number || "",
+                cnic: form.identity_kind === "cnic" ? form.identity_number || "" : "",
+                project_id: form.project_id ? Number(form.project_id) : null,
+                unit_id: form.unit_id ? Number(form.unit_id) : null,
+                payment_account_id: form.payment_account_id
+                    ? Number(form.payment_account_id)
+                    : null,
+                agreed_price: form.agreed_price,
+                token_amount: form.token_amount,
+                method: form.method,
+                reference: form.reference || "",
+                paid_on: form.paid_on,
+                receipt: form.receipt,
+            }).unwrap();
+
+            toast.success("Token verified");
+            onPanelUpdated?.(panel);
+            onStepChange?.("done");
+        } catch (error) {
+            const nextErrors = {};
+            const rawErrors = error?.errors && typeof error.errors === "object" ? error.errors : {};
+
+            Object.entries(rawErrors).forEach(([key, value]) => {
+                nextErrors[key] = Array.isArray(value) ? value[0] : value;
+            });
+
+            if (Object.keys(nextErrors).length > 0) {
+                onErrorsChange?.(nextErrors);
+            }
+
+            toast.error(
+                Object.values(nextErrors)[0] ||
+                    error?.message ||
+                    "Unable to verify this token",
+            );
+            onStepChange?.("form");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    if (step === "done") {
+        return (
+            <div className="space-y-6">
+                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-sm text-foreground">
+                    <p className="font-medium">Token payment verified</p>
+                    <p className="mt-1.5 text-muted-foreground">
+                        {bookingNumber
+                            ? `Booking number ${bookingNumber} is ready for documentation.`
+                            : "You can download the booking confirmation letter now."}
+                    </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-4 shadow-xs">
+                    <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">
+                            Booking confirmation letter
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Download the branded PDF for this booking.
+                        </p>
+                    </div>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        disabled={!letterDownloadUrl}
+                        onClick={downloadLetter}
+                    >
+                        <Icon name="download-2-line" className="text-base" />
+                        Download
+                    </Button>
+                </div>
+
+                <DialogFooter className="pt-1">
+                    <Button type="button" onClick={() => onDone?.()}>
+                        Done
+                    </Button>
+                </DialogFooter>
+            </div>
+        );
+    }
+
+    if (step === "review") {
+        const unitName = selectedUnit?.name || "—";
+        const accountTypeLabel = selectedAccount?.type === "cash" ? "Cash" : "Bank";
+
+        return (
+            <div className="space-y-6">
+                <p className="text-sm text-muted-foreground">
+                    Review everything below, then confirm to verify the token payment.
+                </p>
+
+                <article className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-xs">
+                    <div className="flex gap-3 p-4">
+                        <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-muted sm:size-18">
+                            {selectedProject?.thumbnail ? (
+                                <img
+                                    src={selectedProject.thumbnail}
+                                    alt=""
+                                    className="absolute inset-0 size-full object-cover"
+                                />
+                            ) : (
+                                <div className="flex size-full items-center justify-center text-muted-foreground">
+                                    <Icon name="community-line" className="text-xl" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1.5 py-0.5">
+                            <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                                Property
+                            </p>
+                            <h4 className="truncate text-base font-semibold tracking-tight text-foreground">
+                                {unitName}
+                            </h4>
+                            <p className="truncate text-sm text-muted-foreground">
+                                {selectedProject?.title || "—"}
+                            </p>
+                            {selectedUnit?.price != null ? (
+                                <p className="text-xs text-muted-foreground">
+                                    List price{" "}
+                                    <span className="font-medium text-foreground">
+                                        {formatMoney(selectedUnit.price)}
+                                    </span>
+                                </p>
+                            ) : null}
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 border-t border-border/70 bg-muted/20 p-4">
+                        <ReviewMetric
+                            label="Agreed price"
+                            value={
+                                form.agreed_price != null
+                                    ? formatMoney(form.agreed_price)
+                                    : null
+                            }
+                        />
+                        <ReviewMetric
+                            label="Token amount"
+                            value={
+                                form.token_amount != null
+                                    ? formatMoney(form.token_amount)
+                                    : null
+                            }
+                            emphasize
+                        />
+                    </div>
+                </article>
+
+                <ReviewSection icon="user-line" title="Customer">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <ReviewFact label="Name" value={form.contact_name} className="sm:col-span-2" />
+                        <ReviewFact label="Phone" value={form.phone_number} />
+                        <ReviewFact label="Email" value={form.email_address} />
+                        <ReviewFact
+                            label="Identity"
+                            value={
+                                form.identity_number
+                                    ? `${String(form.identity_kind || "cnic").toUpperCase()} · ${form.identity_number}`
+                                    : null
+                            }
+                            className="sm:col-span-2"
+                        />
+                    </div>
+                </ReviewSection>
+
+                <ReviewSection icon="bank-card-line" title="Token payment">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <ReviewFact
+                            label="Deposit account"
+                            value={
+                                selectedAccount
+                                    ? `${selectedAccount.name} · ${accountTypeLabel}`
+                                    : null
+                            }
+                            className="sm:col-span-2"
+                        />
+                        {selectedAccount &&
+                        (selectedAccount.bank_name || selectedAccount.account_number) ? (
+                            <ReviewFact
+                                label="Account details"
+                                value={[selectedAccount.bank_name, selectedAccount.account_number]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                className="sm:col-span-2"
+                            />
+                        ) : null}
+                        <ReviewFact label="Method" value={form.method} />
+                        <ReviewFact label="Paid on" value={formatReviewDate(form.paid_on)} />
+                        <ReviewFact label="Reference" value={form.reference} />
+                        <div className="min-w-0 space-y-1">
+                            <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                                Proof
+                            </p>
+                            {form.receipt?.name ? (
+                                <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-2.5 py-1.5 text-sm font-medium text-foreground">
+                                    <Icon
+                                        name="file-text-line"
+                                        className="shrink-0 text-base text-muted-foreground"
+                                    />
+                                    <span className="min-w-0 truncate">{form.receipt.name}</span>
+                                </div>
+                            ) : (
+                                <p className="text-sm font-medium text-foreground">—</p>
+                            )}
+                        </div>
+                    </div>
+                </ReviewSection>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-4 shadow-xs">
+                    <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">
+                            Booking confirmation letter
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            The letter updates with the booking number after you confirm.
+                        </p>
+                    </div>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        disabled={!letterDownloadUrl}
+                        onClick={downloadLetter}
+                    >
+                        <Icon name="download-2-line" className="text-base" />
+                        Download
+                    </Button>
+                </div>
+
+                <DialogFooter className="pt-1 sm:justify-between">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onStepChange?.("form")}
+                        disabled={submitting}
+                    >
+                        Back
+                    </Button>
+                    <Button type="button" loading={submitting} onClick={confirmVerify}>
+                        Confirm
+                    </Button>
+                </DialogFooter>
+            </div>
+        );
+    }
 
     return (
         <form
-            className="space-y-3"
+            className="space-y-6"
             onSubmit={(event) => {
                 event.preventDefault();
-                post(booking.url(order.code), form, "Booking & KYC saved", onDone);
+                goToReview();
             }}
-        >
-            <div className="grid gap-3 sm:grid-cols-2">
+            >
+       
+
+            <div className="grid gap-4 sm:grid-cols-2">
+                <SelectBox
+                    label="Project"
+                    required
+                    clearable
+                    value={form.project_id}
+                    options={projectOptions}
+                    placeholder="Select project"
+                    error={fieldErrors.project_id}
+                    onValueChange={(value) =>
+                        setForm((current) => ({
+                            ...current,
+                            project_id: value || "",
+                            unit_id: "",
+                        }))
+                    }
+                />
+                <SelectBox
+                    label="Unit"
+                    required
+                    clearable
+                    value={form.unit_id}
+                    options={unitOptions}
+                    placeholder="Select unit"
+                    error={fieldErrors.unit_id}
+                    onValueChange={(value) => {
+                        const next = value || "";
+                        const unit = units.find((item) => String(item.id) === next);
+
+                        setForm((current) => ({
+                            ...current,
+                            unit_id: next,
+                            project_id: unit?.project_id
+                                ? String(unit.project_id)
+                                : current.project_id,
+                            agreed_price:
+                                unit?.price != null ? Number(unit.price) : current.agreed_price,
+                        }));
+                    }}
+                />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                    label="Customer name"
+                    required
+                    value={form.contact_name}
+                    error={fieldErrors.contact_name}
+                    onChange={(event) =>
+                        setForm((current) => ({ ...current, contact_name: event.target.value }))
+                    }
+                />
+                <Input
+                    label="Phone"
+                    required
+                    value={form.phone_number}
+                    error={fieldErrors.phone_number}
+                    onChange={(event) =>
+                        setForm((current) => ({ ...current, phone_number: event.target.value }))
+                    }
+                />
+                <Input
+                    label="Email"
+                    type="email"
+                    value={form.email_address}
+                    error={fieldErrors.email_address}
+                    onChange={(event) =>
+                        setForm((current) => ({ ...current, email_address: event.target.value }))
+                    }
+                />
                 <SelectBox
                     label="Identity"
                     value={form.identity_kind}
@@ -231,92 +925,122 @@ function BookingKycForm({ order, deal, errors, onDone }) {
                         { value: "nicop", label: "NICOP" },
                         { value: "passport", label: "Passport" },
                     ]}
-                    onValueChange={(value) => setForm((current) => ({ ...current, identity_kind: value || "cnic" }))}
+                    onValueChange={(value) =>
+                        setForm((current) => ({
+                            ...current,
+                            identity_kind: value || "cnic",
+                        }))
+                    }
                 />
                 <Input
                     label="Identity number"
-                    required
                     value={form.identity_number}
-                    error={errors.identity_number}
-                    onChange={(event) => setForm((current) => ({ ...current, identity_number: event.target.value }))}
-                />
-                <Input
-                    label="Nominee"
-                    required
-                    value={form.nominee_name}
-                    error={errors.nominee_name}
-                    onChange={(event) => setForm((current) => ({ ...current, nominee_name: event.target.value }))}
-                />
-                <Input
-                    label="Relation"
-                    required
-                    value={form.nominee_relation}
-                    error={errors.nominee_relation}
-                    onChange={(event) => setForm((current) => ({ ...current, nominee_relation: event.target.value }))}
-                />
-                <Input
-                    label="Nominee CNIC"
-                    required
-                    value={form.nominee_cnic}
-                    error={errors.nominee_cnic}
-                    onChange={(event) => setForm((current) => ({ ...current, nominee_cnic: event.target.value }))}
-                />
-                <Input
-                    label="Plot / file"
-                    required
-                    value={form.plot_or_file}
-                    error={errors.plot_or_file}
-                    onChange={(event) => setForm((current) => ({ ...current, plot_or_file: event.target.value }))}
-                />
-                <SelectBox
-                    label="Category"
-                    value={form.category}
-                    options={(deal?.categories || []).map((item) => ({ value: item.id, label: item.label }))}
-                    onValueChange={(value) => setForm((current) => ({ ...current, category: value || "standard" }))}
-                />
-                <NumberInput
-                    label="Premium"
-                    min={0}
-                    step={0.01}
-                    allowDecimal
-                    value={form.premium}
-                    error={errors.premium}
-                    onChange={(value) => setForm((current) => ({ ...current, premium: value ?? 0 }))}
-                />
-                <NumberInput
-                    label="Discount"
-                    min={0}
-                    step={0.01}
-                    allowDecimal
-                    value={form.discount}
-                    error={errors.discount}
-                    onChange={(value) => setForm((current) => ({ ...current, discount: value ?? 0 }))}
+                    error={fieldErrors.identity_number || fieldErrors.cnic}
+                    onChange={(event) =>
+                        setForm((current) => ({
+                            ...current,
+                            identity_number: event.target.value,
+                        }))
+                    }
                 />
             </div>
-            <DialogFooter>
-                <Button type="submit">Save &amp; activate</Button>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+                <NumberInput
+                    label="Agreed price"
+                    required
+                    min={0}
+                    step={0.01}
+                    allowDecimal
+                    value={form.agreed_price}
+                    error={fieldErrors.agreed_price}
+                    onChange={(value) => setForm((current) => ({ ...current, agreed_price: value }))}
+                />
+                <NumberInput
+                    label="Token amount"
+                    required
+                    min={0.01}
+                    step={0.01}
+                    allowDecimal
+                    value={form.token_amount}
+                    error={fieldErrors.token_amount}
+                    onChange={(value) => setForm((current) => ({ ...current, token_amount: value }))}
+                />
+                <SelectBox
+                    label="Deposit account"
+                    required
+                    value={form.payment_account_id}
+                    options={accountOptions}
+                    placeholder="Select account"
+                    error={fieldErrors.payment_account_id}
+                    onValueChange={(value) =>
+                        setForm((current) => ({
+                            ...current,
+                            payment_account_id: value || "",
+                        }))
+                    }
+                />
+                <ComboBox
+                    label="Payment method"
+                    required
+                    value={form.method}
+                    options={methods}
+                    placeholder="Cash, Pay order..."
+                    error={fieldErrors.method}
+                    onValueChange={(value) =>
+                        setForm((current) => ({
+                            ...current,
+                            method: value || methods[0] || "Cash",
+                        }))
+                    }
+                />
+                <DatePicker
+                    label="Paid on"
+                    required
+                    value={form.paid_on}
+                    error={fieldErrors.paid_on}
+                    onChange={(value) => setForm((current) => ({ ...current, paid_on: value }))}
+                />
+                <Input
+                    label="Reference"
+                    value={form.reference}
+                    error={fieldErrors.reference}
+                    onChange={(event) =>
+                        setForm((current) => ({ ...current, reference: event.target.value }))
+                    }
+                />
+            </div>
+
+            <div className="space-y-2">
+                <p className="text-label font-medium text-muted-foreground">
+                    Proof of token payment <span className="text-destructive">*</span>
+                </p>
+                <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2.5 text-sm shadow-xs transition-colors hover:bg-muted/40">
+                    <Icon name="upload-2-line" className="shrink-0 text-base text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-foreground">
+                        {form.receipt?.name || "Upload an image or PDF"}
+                    </span>
+                    <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        className="sr-only"
+                        onChange={(event) =>
+                            setForm((current) => ({
+                                ...current,
+                                receipt: event.target.files?.[0] || null,
+                            }))
+                        }
+                    />
+                </label>
+                {fieldErrors.receipt ? (
+                    <p className="text-[13px] text-destructive">{fieldErrors.receipt}</p>
+                ) : null}
+            </div>
+
+            <DialogFooter className="pt-1">
+                <Button type="submit">Continue</Button>
             </DialogFooter>
         </form>
-    );
-}
-
-function VerifyTokenForm({ order, onDone }) {
-    return (
-        <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-                Confirm the token payment and move this booking into Booking &amp; KYC.
-            </p>
-            <DialogFooter>
-                <Button
-                    type="button"
-                    onClick={() =>
-                        post(enterBookingKyc.url(order.code), {}, "Token verified", onDone)
-                    }
-                >
-                    Verify token
-                </Button>
-            </DialogFooter>
-        </div>
     );
 }
 

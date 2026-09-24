@@ -356,9 +356,6 @@ export default function CampaignShow({
                                 {campaign.status}
                             </span>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                            Insights on the left · campaign tools on the right
-                        </p>
                     </div>
                     <div className="ml-auto flex items-center gap-2">
                         {!isExternalIntake && landingUrl ? (

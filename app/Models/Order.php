@@ -7,6 +7,7 @@ use App\Traits\LogUserActivity;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Connection;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,10 +18,12 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 #[Fillable([
     'code',
+    'booking_number',
     'lead_id',
     'contact_id',
     'project_id',
     'unit_id',
+    'document_folder_id',
     'assigned_to',
     'booking_kind',
     'agreed_price',
@@ -28,10 +31,13 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
     'stage',
     'identity_kind',
     'identity_number',
+    'customer_legal_name',
     'overseas',
     'local_phone',
+    'international_phone',
     'nominee_name',
     'nominee_relation',
+    'nominee_identity_kind',
     'nominee_cnic',
     'nominee_phone',
     'phase',
@@ -205,6 +211,22 @@ class Order extends Model
     }
 
     /**
+     * Bookings that still occupy unit inventory stock.
+     *
+     * @param  Builder<Order>  $query
+     * @return Builder<Order>
+     */
+    public function scopeActiveOccupancy($query)
+    {
+        return $query
+            ->where(function ($builder): void {
+                $builder
+                    ->whereNull('cancelled_at')
+                    ->where('status', '!=', self::STATUS_CANCELLED);
+            });
+    }
+
+    /**
      * @return MorphMany<Task, $this>
      */
     public function activities(): MorphMany
@@ -290,6 +312,69 @@ class Order extends Model
     }
 
     /**
+     * @return BelongsTo<AssetFolder, $this>
+     */
+    public function documentFolder(): BelongsTo
+    {
+        return $this->belongsTo(AssetFolder::class, 'document_folder_id');
+    }
+
+    /**
+     * Ensure this booking has a dedicated top-level document library folder.
+     */
+    public function ensureDocumentFolder(): AssetFolder
+    {
+        if ($this->document_folder_id) {
+            $existing = AssetFolder::query()->find($this->document_folder_id);
+
+            if ($existing !== null) {
+                return $existing;
+            }
+        }
+
+        $this->loadMissing(['contact', 'unit']);
+
+        $folder = AssetFolder::query()->create([
+            'name' => $this->documentFolderName(),
+            'kind' => AssetManager::KIND_DOCUMENT,
+            'parent_id' => null,
+            'order' => ((int) AssetFolder::query()
+                ->where('kind', AssetManager::KIND_DOCUMENT)
+                ->whereNull('parent_id')
+                ->max('order')) + 1,
+        ]);
+
+        $this->forceFill(['document_folder_id' => $folder->id])->save();
+
+        return $folder;
+    }
+
+    protected function documentFolderName(): string
+    {
+        $contact = $this->contact
+            ? trim(implode(' ', array_filter([
+                $this->contact->first_name,
+                $this->contact->last_name,
+            ])))
+            : '';
+        $unit = $this->unit?->name;
+
+        if ($contact !== '' && filled($unit)) {
+            return $contact.' · '.$unit;
+        }
+
+        if ($contact !== '') {
+            return $contact;
+        }
+
+        if (filled($unit)) {
+            return 'Booking · '.$unit;
+        }
+
+        return 'Booking documents';
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function assignee(): BelongsTo
@@ -337,6 +422,7 @@ class Order extends Model
             'contact_id' => 'integer',
             'project_id' => 'integer',
             'unit_id' => 'integer',
+            'document_folder_id' => 'integer',
             'assigned_to' => 'integer',
             'agreed_price' => 'decimal:2',
             'overseas' => 'boolean',

@@ -101,9 +101,6 @@ export default function CampaignsIndex({
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">
                             Campaigns
                         </h1>
-                        <p className="text-xs text-muted-foreground">
-                            Landing pages and lead capture forms
-                        </p>
                     </div>
                     <FilterInput
                         value={search}

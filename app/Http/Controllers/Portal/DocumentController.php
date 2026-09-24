@@ -8,6 +8,7 @@ use App\Http\Requests\Portal\SyncAssetLinksRequest;
 use App\Http\Resources\Portal\AssetResource;
 use App\Models\Asset;
 use App\Models\AssetFolder;
+use App\Models\Order;
 use App\Support\AssetManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -98,7 +99,21 @@ class DocumentController extends Controller
             $assetable,
             strtoupper($validated['linkage']),
             $validated['asset_ids'] ?? [],
+            $validated['label'] ?? null,
         );
+
+        if ($assetable instanceof Order) {
+            $folder = $assetable->ensureDocumentFolder();
+            $assetIds = array_values(array_filter(array_map('intval', $validated['asset_ids'] ?? [])));
+
+            if ($assetIds !== []) {
+                Asset::query()
+                    ->where('tag', AssetManager::KIND_DOCUMENT)
+                    ->whereIn('id', $assetIds)
+                    ->get()
+                    ->each(fn (Asset $asset) => $this->assets->moveToFolder($asset, $folder));
+            }
+        }
 
         return response()->json(['ok' => true]);
     }

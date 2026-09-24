@@ -43,7 +43,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $this->sharedAuthUser($request),
             ],
             'urls' => [
                 'home' => Domain::url(null, '/'),
@@ -58,6 +58,31 @@ class HandleInertiaRequests extends Middleware
                 'open_meta_config' => fn () => $request->session()->get('open_meta_config'),
                 'open_whatsapp_config' => fn () => $request->session()->get('open_whatsapp_config'),
             ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function sharedAuthUser(Request $request): ?array
+    {
+        $user = $request->user();
+
+        if ($user === null) {
+            return null;
+        }
+
+        $permissions = [];
+
+        try {
+            $permissions = $user->getAllPermissions()->pluck('name')->values()->all();
+        } catch (\Throwable) {
+            $permissions = [];
+        }
+
+        return [
+            ...$user->toArray(),
+            'permissions' => $permissions,
         ];
     }
 }

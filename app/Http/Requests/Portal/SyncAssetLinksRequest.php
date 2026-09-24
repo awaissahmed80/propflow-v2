@@ -34,6 +34,7 @@ class SyncAssetLinksRequest extends FormRequest
             ],
             'asset_ids' => ['present', 'array'],
             'asset_ids.*' => ['integer', 'distinct', 'min:1'],
+            'label' => ['nullable', 'string', 'max:120'],
         ];
     }
 
@@ -46,6 +47,9 @@ class SyncAssetLinksRequest extends FormRequest
             'linkage' => is_string($this->linkage)
                 ? strtoupper(trim($this->linkage))
                 : $this->linkage,
+            'label' => is_string($this->label)
+                ? trim($this->label)
+                : $this->label,
         ]);
     }
 }

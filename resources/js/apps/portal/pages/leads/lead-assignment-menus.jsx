@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import { update } from "@/actions/App/Http/Controllers/Portal/LeadController";
@@ -7,12 +6,13 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
-import { SelectBox } from "@/components/ui/select";
 import { HEAT_OPTIONS, heatMeta } from "@/lib/heat";
 import { cn } from "@/lib/utils";
+import { closeOutcomeFromStageLabel } from "./lead-close-helpers";
 
 export function patchLead(lead, payload, successMessage = "Lead updated") {
     if (lead?.deal_locked) {
@@ -32,17 +32,16 @@ export function patchLead(lead, payload, successMessage = "Lead updated") {
  * @param {string} props.label
  * @param {string} props.displayValue
  * @param {boolean} [props.disabled]
- * @param {() => void} props.onEdit
  * @param {import("react").ReactNode} [props.leading]
  * @param {string} [props.className]
  */
-function EditableValueButton({
+function HeaderValueTrigger({
     label,
     displayValue,
     disabled = false,
-    onEdit,
     leading = null,
     className,
+    ...rest
 }) {
     const empty = !displayValue || displayValue === "—";
 
@@ -50,26 +49,49 @@ function EditableValueButton({
         <button
             type="button"
             disabled={disabled}
-            onClick={onEdit}
             aria-label={`Edit ${label}`}
             title={`Click to edit ${label}`}
             className={cn(
-                "-mx-1.5 inline-flex min-w-0 max-w-full items-center gap-2 rounded-md px-1.5 py-0.5 text-left text-sm transition-colors",
-                "border border-transparent border-b-border/70 border-b-dashed",
-                "hover:bg-muted/60 hover:border-b-primary/40",
+                "-mx-1 inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-sm transition-colors",
+                "hover:bg-muted/60",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                "disabled:cursor-default disabled:border-transparent disabled:hover:bg-transparent disabled:hover:border-transparent",
+                "disabled:cursor-default disabled:hover:bg-transparent",
+                "data-popup-open:bg-muted/60",
                 empty ? "text-muted-foreground" : "text-foreground",
                 className
             )}
+            {...rest}
         >
             {leading}
-            <span className="truncate">{displayValue || "—"}</span>
+            <span className="whitespace-nowrap">{displayValue || "—"}</span>
         </button>
     );
 }
 
-export function StageMenu({ lead, stages, locked = false }) {
+/**
+ * @param {object} props
+ * @param {string} props.label
+ * @param {import("react").ReactNode} props.children
+ */
+function HeaderField({ label, children }) {
+    return (
+        <div className="w-auto shrink-0 space-y-0.5">
+            <div className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+                {label}
+            </div>
+            {children}
+        </div>
+    );
+}
+
+/**
+ * @param {object} props
+ * @param {object} props.lead
+ * @param {Array} props.stages
+ * @param {boolean} [props.locked]
+ * @param {(outcome: "won" | "lost") => void} [props.onCloseDealRequest]
+ */
+export function StageMenu({ lead, stages, locked = false, onCloseDealRequest }) {
     const color = lead.stage?.color || "var(--muted-foreground)";
 
     return (
@@ -93,16 +115,26 @@ export function StageMenu({ lead, stages, locked = false }) {
             />
             <DropdownMenuContent align="end" className="min-w-40">
                 {stages.map((stage) => {
-                    const selected = Number(lead.lead_stage_id) === Number(stage.id);
+                    const selected =
+                        Number(lead.lead_stage_id) === Number(stage.id);
                     const stageColor = stage.color || "var(--muted-foreground)";
+                    const closeOutcome = closeOutcomeFromStageLabel(stage.label);
 
                     return (
                         <DropdownMenuItem
                             key={stage.id}
                             disabled={selected || locked}
-                            onClick={() =>
-                                patchLead(lead, { lead_stage_id: Number(stage.id) })
-                            }
+                            onClick={() => {
+                                if (closeOutcome) {
+                                    onCloseDealRequest?.(closeOutcome);
+
+                                    return;
+                                }
+
+                                patchLead(lead, {
+                                    lead_stage_id: Number(stage.id),
+                                });
+                            }}
                         >
                             <span
                                 className="size-1.5 shrink-0 rounded-sm"
@@ -111,7 +143,10 @@ export function StageMenu({ lead, stages, locked = false }) {
                             />
                             {stage.title}
                             {selected ? (
-                                <Icon name="check-line" className="ml-auto text-sm" />
+                                <Icon
+                                    name="check-line"
+                                    className="ml-auto text-sm"
+                                />
                             ) : null}
                         </DropdownMenuItem>
                     );
@@ -188,78 +223,14 @@ export function HeatMenu({ lead, locked = false }) {
     );
 }
 
-/**
- * @param {object} props
- * @param {string} props.label
- * @param {import("react").ReactNode} props.children
- */
-function HeaderField({ label, children }) {
-    return (
-        <div className="min-w-0 flex-1 space-y-1">
-            <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                {label}
-            </div>
-            {children}
-        </div>
-    );
-}
-
 export function AssigneeMenu({ lead, assignees, locked = false }) {
-    const [editing, setEditing] = useState(false);
-    const wrapRef = useRef(null);
     const hasAssignees = assignees.length > 0;
-
-    const options = assignees.map((user) => ({
-        value: String(user.id),
-        label: user.display_name,
-        avatar: {
-            name: user.display_name,
-            src: user.avatar || undefined,
-        },
-    }));
-
     const selected =
         assignees.find((user) => Number(user.id) === Number(lead?.assigned_to)) ||
         lead?.assignee ||
         null;
     const displayValue = selected?.display_name || "—";
-
-    useEffect(() => {
-        if (!editing || !hasAssignees) {
-            return undefined;
-        }
-
-        const frame = requestAnimationFrame(() => {
-            const trigger = wrapRef.current?.querySelector(
-                '[data-slot="select-trigger"]'
-            );
-
-            if (trigger instanceof HTMLElement) {
-                trigger.click();
-            }
-        });
-
-        const onPointerDown = (event) => {
-            const target = event.target;
-
-            if (
-                wrapRef.current?.contains(target) ||
-                (target instanceof Element &&
-                    target.closest('[data-slot="select-content"]'))
-            ) {
-                return;
-            }
-
-            setEditing(false);
-        };
-
-        document.addEventListener("pointerdown", onPointerDown);
-
-        return () => {
-            cancelAnimationFrame(frame);
-            document.removeEventListener("pointerdown", onPointerDown);
-        };
-    }, [editing, hasAssignees]);
+    const currentId = lead?.assigned_to ?? null;
 
     if (!hasAssignees) {
         return (
@@ -271,110 +242,105 @@ export function AssigneeMenu({ lead, assignees, locked = false }) {
 
     return (
         <HeaderField label="Assigned to">
-            {editing && !locked ? (
-                <div ref={wrapRef}>
-                    <SelectBox
-                        className="min-w-0 w-full"
-                        value={lead?.assigned_to ? String(lead.assigned_to) : ""}
-                        options={options}
-                        placeholder="Assign to…"
-                        clearable
-                        onValueChange={(value) => {
-                            const next = value ? Number(value) : null;
-
-                            if ((lead?.assigned_to ?? null) !== next) {
-                                patchLead(
-                                    lead,
-                                    { assigned_to: next },
-                                    next ? "Assignee updated" : "Assignee cleared"
-                                );
-                            }
-
-                            setEditing(false);
-                        }}
-                    />
-                </div>
-            ) : (
-                <EditableValueButton
-                    label="assignee"
-                    displayValue={displayValue}
+            <DropdownMenu>
+                <DropdownMenuTrigger
                     disabled={locked}
-                    onEdit={() => setEditing(true)}
-                    leading={
-                        selected ? (
-                            <Avatar
-                                name={selected.display_name}
-                                src={selected.avatar || undefined}
-                                size="sm"
-                                className="size-5 shrink-0"
-                                textClass="text-[8px]"
-                            />
-                        ) : (
-                            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                                <Icon name="user-line" className="text-xs" />
-                            </span>
-                        )
+                    render={
+                        <HeaderValueTrigger
+                            label="assignee"
+                            displayValue={displayValue}
+                            disabled={locked}
+                            leading={
+                                selected ? (
+                                    <Avatar
+                                        name={selected.display_name}
+                                        src={selected.avatar || undefined}
+                                        size="sm"
+                                        className="size-5 shrink-0"
+                                        textClass="text-[8px]"
+                                    />
+                                ) : (
+                                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                                        <Icon name="user-line" className="text-xs" />
+                                    </span>
+                                )
+                            }
+                        />
                     }
                 />
-            )}
+                <DropdownMenuContent align="start" className="min-w-48">
+                    {assignees.map((user) => {
+                        const selectedItem =
+                            Number(user.id) === Number(currentId);
+
+                        return (
+                            <DropdownMenuItem
+                                key={user.id}
+                                disabled={selectedItem || locked}
+                                onClick={() => {
+                                    if (selectedItem) {
+                                        return;
+                                    }
+
+                                    patchLead(
+                                        lead,
+                                        { assigned_to: Number(user.id) },
+                                        "Assignee updated"
+                                    );
+                                }}
+                            >
+                                <Avatar
+                                    name={user.display_name}
+                                    src={user.avatar || undefined}
+                                    size="sm"
+                                    className="size-5 shrink-0"
+                                    textClass="text-[8px]"
+                                />
+                                {user.display_name}
+                                {selectedItem ? (
+                                    <Icon
+                                        name="check-line"
+                                        className="ml-auto text-sm"
+                                    />
+                                ) : null}
+                            </DropdownMenuItem>
+                        );
+                    })}
+                    {currentId != null ? (
+                        <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                disabled={locked}
+                                onClick={() =>
+                                    patchLead(
+                                        lead,
+                                        { assigned_to: null },
+                                        "Assignee cleared"
+                                    )
+                                }
+                            >
+                                <Icon
+                                    name="user-unfollow-line"
+                                    className="text-base text-muted-foreground"
+                                />
+                                Unassigned
+                            </DropdownMenuItem>
+                        </>
+                    ) : null}
+                </DropdownMenuContent>
+            </DropdownMenu>
         </HeaderField>
     );
 }
 
 export function ProjectMenu({ lead, projects, locked = false }) {
-    const [editing, setEditing] = useState(false);
-    const wrapRef = useRef(null);
     const hasProjects = projects.length > 0;
-
-    const options = projects.map((project) => ({
-        value: String(project.id),
-        label: project.title,
-        image: project.thumbnail || undefined,
-        icon: project.thumbnail ? undefined : "community-line",
-    }));
-
     const selected =
         projects.find((project) => Number(project.id) === Number(lead?.project_id)) ||
         lead?.project ||
         null;
     const displayValue = selected?.title || "—";
-
-    useEffect(() => {
-        if (!editing || !hasProjects) {
-            return undefined;
-        }
-
-        const frame = requestAnimationFrame(() => {
-            const trigger = wrapRef.current?.querySelector(
-                '[data-slot="select-trigger"]'
-            );
-
-            if (trigger instanceof HTMLElement) {
-                trigger.click();
-            }
-        });
-
-        const onPointerDown = (event) => {
-            const target = event.target;
-
-            if (
-                wrapRef.current?.contains(target) ||
-                (target instanceof Element &&
-                    target.closest('[data-slot="select-content"]'))
-            ) {
-                return;
-            }
-
-            setEditing(false);
-        };
-
-        document.addEventListener("pointerdown", onPointerDown);
-
-        return () => {
-            cancelAnimationFrame(frame);
-            document.removeEventListener("pointerdown", onPointerDown);
-        };
-    }, [editing, hasProjects]);
+    const currentId = lead?.project_id ?? null;
 
     if (!hasProjects) {
         return (
@@ -386,50 +352,101 @@ export function ProjectMenu({ lead, projects, locked = false }) {
 
     return (
         <HeaderField label="Project">
-            {editing && !locked ? (
-                <div ref={wrapRef}>
-                    <SelectBox
-                        className="min-w-0 w-full"
-                        value={lead?.project_id ? String(lead.project_id) : ""}
-                        options={options}
-                        placeholder="Select project…"
-                        clearable
-                        onValueChange={(value) => {
-                            const next = value ? Number(value) : null;
-
-                            if ((lead?.project_id ?? null) !== next) {
-                                patchLead(
-                                    lead,
-                                    { project_id: next },
-                                    next ? "Project updated" : "Project cleared"
-                                );
-                            }
-
-                            setEditing(false);
-                        }}
-                    />
-                </div>
-            ) : (
-                <EditableValueButton
-                    label="project"
-                    displayValue={displayValue}
+            <DropdownMenu>
+                <DropdownMenuTrigger
                     disabled={locked}
-                    onEdit={() => setEditing(true)}
-                    leading={
-                        selected?.thumbnail ? (
-                            <img
-                                src={selected.thumbnail}
-                                alt=""
-                                className="size-5 shrink-0 rounded object-cover"
-                            />
-                        ) : (
-                            <span className="flex size-5 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
-                                <Icon name="community-line" className="text-xs" />
-                            </span>
-                        )
+                    render={
+                        <HeaderValueTrigger
+                            label="project"
+                            displayValue={displayValue}
+                            disabled={locked}
+                            leading={
+                                selected?.thumbnail ? (
+                                    <img
+                                        src={selected.thumbnail}
+                                        alt=""
+                                        className="size-5 shrink-0 rounded object-cover"
+                                    />
+                                ) : (
+                                    <span className="flex size-5 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                                        <Icon
+                                            name="community-line"
+                                            className="text-xs"
+                                        />
+                                    </span>
+                                )
+                            }
+                        />
                     }
                 />
-            )}
+                <DropdownMenuContent align="start" className="min-w-48">
+                    {projects.map((project) => {
+                        const selectedItem =
+                            Number(project.id) === Number(currentId);
+
+                        return (
+                            <DropdownMenuItem
+                                key={project.id}
+                                disabled={selectedItem || locked}
+                                onClick={() => {
+                                    if (selectedItem) {
+                                        return;
+                                    }
+
+                                    patchLead(
+                                        lead,
+                                        { project_id: Number(project.id) },
+                                        "Project updated"
+                                    );
+                                }}
+                            >
+                                {project.thumbnail ? (
+                                    <img
+                                        src={project.thumbnail}
+                                        alt=""
+                                        className="size-5 shrink-0 rounded object-cover"
+                                    />
+                                ) : (
+                                    <span className="flex size-5 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                                        <Icon
+                                            name="community-line"
+                                            className="text-xs"
+                                        />
+                                    </span>
+                                )}
+                                {project.title}
+                                {selectedItem ? (
+                                    <Icon
+                                        name="check-line"
+                                        className="ml-auto text-sm"
+                                    />
+                                ) : null}
+                            </DropdownMenuItem>
+                        );
+                    })}
+                    {currentId != null ? (
+                        <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                disabled={locked}
+                                onClick={() =>
+                                    patchLead(
+                                        lead,
+                                        { project_id: null },
+                                        "Project cleared"
+                                    )
+                                }
+                            >
+                                <Icon
+                                    name="close-circle-line"
+                                    className="text-base text-muted-foreground"
+                                />
+                                No project
+                            </DropdownMenuItem>
+                        </>
+                    ) : null}
+                </DropdownMenuContent>
+            </DropdownMenu>
         </HeaderField>
     );
 }

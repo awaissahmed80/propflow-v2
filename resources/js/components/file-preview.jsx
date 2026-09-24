@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Icon } from "@/components/ui/icon"
+import { IconButton } from "@/components/ui/icon-button"
 import { cn } from "@/lib/utils"
 
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif", "svg"]
@@ -103,6 +104,135 @@ function fileTypeLabel(name, mime) {
 }
 
 /**
+ * @param {string} value
+ */
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+}
+
+/**
+ * Print HTML without opening a new browser tab.
+ *
+ * @param {string} html
+ * @param {string} [title]
+ */
+function printHtmlDocument(html, title) {
+  const iframe = document.createElement("iframe")
+  iframe.setAttribute("aria-hidden", "true")
+  iframe.setAttribute("tabindex", "-1")
+  Object.assign(iframe.style, {
+    position: "fixed",
+    right: "0",
+    bottom: "0",
+    width: "0",
+    height: "0",
+    border: "0",
+    visibility: "hidden",
+    pointerEvents: "none",
+  })
+
+  const blob = new Blob([html], { type: "text/html" })
+  const url = URL.createObjectURL(blob)
+  let cleaned = false
+
+  const cleanup = () => {
+    if (cleaned) {
+      return
+    }
+    cleaned = true
+    URL.revokeObjectURL(url)
+    iframe.remove()
+  }
+
+  iframe.addEventListener("load", () => {
+    try {
+      const win = iframe.contentWindow
+      if (!win) {
+        cleanup()
+        return
+      }
+
+      if (title && iframe.contentDocument) {
+        iframe.contentDocument.title = title
+      }
+
+      win.focus()
+      win.addEventListener("afterprint", cleanup, { once: true })
+      setTimeout(() => {
+        win.print()
+      }, 50)
+      // Safari / some browsers never fire afterprint.
+      setTimeout(cleanup, 60_000)
+    } catch {
+      cleanup()
+    }
+  })
+
+  iframe.src = url
+  document.body.appendChild(iframe)
+}
+
+/**
+ * Print a remote document (e.g. PDF) via a hidden iframe — no new tab.
+ *
+ * @param {string} href
+ */
+function printFromUrl(href) {
+  if (!href) {
+    return
+  }
+
+  const iframe = document.createElement("iframe")
+  iframe.setAttribute("aria-hidden", "true")
+  iframe.setAttribute("tabindex", "-1")
+  Object.assign(iframe.style, {
+    position: "fixed",
+    right: "0",
+    bottom: "0",
+    width: "0",
+    height: "0",
+    border: "0",
+    visibility: "hidden",
+    pointerEvents: "none",
+  })
+
+  let cleaned = false
+  const cleanup = () => {
+    if (cleaned) {
+      return
+    }
+    cleaned = true
+    iframe.remove()
+  }
+
+  iframe.addEventListener("load", () => {
+    try {
+      const win = iframe.contentWindow
+      if (!win) {
+        cleanup()
+        return
+      }
+      win.focus()
+      win.addEventListener("afterprint", cleanup, { once: true })
+      setTimeout(() => {
+        win.print()
+      }, 250)
+      setTimeout(cleanup, 60_000)
+    } catch {
+      cleanup()
+    }
+  })
+
+  iframe.src = href
+  document.body.appendChild(iframe)
+}
+
+/**
  * In-panel preview for library attachments.
  *
  * @param {object} props
@@ -111,6 +241,10 @@ function fileTypeLabel(name, mime) {
  * @param {Array<{ id?: string|number, name?: string, url?: string, thumbnail_url?: string|null, type?: string|null, kind?: string }>} [props.files]
  * @param {number} [props.index]
  * @param {(index: number) => void} [props.onIndexChange]
+ * @param {string | null} [props.downloadUrl] Optional PDF (or other) download href shown as Download PDF.
+ * @param {"a4" | null} [props.pageAspect] When "a4", frames PDF/HTML previews in portrait A4 proportions.
+ * @param {string | null} [props.emailTo] Contact email; when set, shows an email action.
+ * @param {() => void | Promise<void>} [props.onEmail] Called when the email action is clicked.
  */
 export function FilePreview({
   open,
@@ -118,17 +252,24 @@ export function FilePreview({
   files = [],
   index = 0,
   onIndexChange,
+  downloadUrl = null,
+  pageAspect = null,
+  emailTo = null,
+  onEmail = null,
 }) {
   const [activeIndex, setActiveIndex] = useState(index)
+  const [emailing, setEmailing] = useState(false)
   const iframeRef = useRef(null)
   const total = files.length
   const current = total > 0 ? files[Math.min(Math.max(activeIndex, 0), total - 1)] : null
   const mode = current ? filePreviewMode(current) : "file"
   const src = current?.url
+  const canEmail = Boolean(emailTo && typeof onEmail === "function")
 
   useEffect(() => {
     if (open) {
       setActiveIndex(index)
+      setEmailing(false)
     }
   }, [open, index])
 
@@ -147,40 +288,133 @@ export function FilePreview({
       return
     }
 
-    if ((mode === "pdf" || mode === "text") && iframeRef.current?.contentWindow) {
+    if ((mode === "pdf" || mode === "text") && iframeRef.current) {
       try {
-        iframeRef.current.contentWindow.focus()
-        iframeRef.current.contentWindow.print()
-        return
+        const frameDoc = iframeRef.current.contentDocument
+
+        if (frameDoc?.documentElement) {
+          printHtmlDocument(
+            `<!DOCTYPE html>${frameDoc.documentElement.outerHTML}`,
+            current?.name || "Document",
+          )
+          return
+        }
       } catch {
         // Cross-origin or unavailable — fall through.
+      }
+
+      if (downloadUrl) {
+        printFromUrl(downloadUrl)
+        return
       }
     }
 
     if (mode === "image") {
-      const popup = window.open("", "_blank")
-      if (popup) {
-        popup.document.write(
-          `<html><head><title>${current?.name || "Print"}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;"><img src="${src}" style="max-width:100%;height:auto;" onload="window.focus();window.print();" /></body></html>`,
-        )
-        popup.document.close()
-        return
-      }
+      printHtmlDocument(
+        `<!DOCTYPE html><html><head><title>${escapeHtml(current?.name || "Print")}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;"><img src="${escapeHtml(src)}" style="max-width:100%;height:auto;" /></body></html>`,
+        current?.name || "Print",
+      )
+      return
     }
 
-    window.open(src, "_blank", "noopener,noreferrer")
+    printFromUrl(downloadUrl || src)
   }
+
+  const handleEmail = async () => {
+    if (!canEmail || emailing) {
+      return
+    }
+
+    setEmailing(true)
+
+    try {
+      await onEmail()
+    } finally {
+      setEmailing(false)
+    }
+  }
+
+  const a4Preview = pageAspect === "a4" && (mode === "pdf" || mode === "text")
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(85vh,44rem)] max-h-[92vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
-        <DialogHeader className="shrink-0 border-b border-border px-6 py-4 pr-12">
-          <DialogTitle className="truncate">
-            {current?.name || "File preview"}
-          </DialogTitle>
-          <DialogDescription>
-            {total > 1 ? `${activeIndex + 1} of ${total}` : "Attachment preview"}
-          </DialogDescription>
+      <DialogContent
+        showCloseButton={false}
+        className={cn(
+          "flex max-h-[92vh] w-full flex-col gap-0 overflow-hidden p-0",
+          a4Preview
+            ? "h-[min(92vh,56rem)] sm:max-w-3xl"
+            : "h-[min(85vh,44rem)] sm:max-w-4xl",
+        )}
+      >
+        <DialogHeader className="shrink-0 space-y-0 border-b border-border px-6 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 space-y-0.5">
+              <DialogTitle className="truncate text-base">
+                {current?.name || "File preview"}
+              </DialogTitle>
+              <DialogDescription className="truncate">
+                {total > 1
+                  ? `${activeIndex + 1} of ${total}`
+                  : canEmail
+                    ? `Attachment preview · ${emailTo}`
+                    : "Attachment preview"}
+              </DialogDescription>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {src ? (
+                <IconButton
+                  type="button"
+                  variant="ghost"
+                  size="lg"
+                  className="text-lg"
+                  icon="printer-line"
+                  aria-label="Print"
+                  tooltip="Print"
+                  disabled={mode === "audio"}
+                  onClick={handlePrint}
+                />
+              ) : null}
+              {src && downloadUrl ? (
+                <IconButton
+                  type="button"
+                  variant="ghost"
+                  size="lg"
+                  className="text-lg"
+                  icon="download-2-line"
+                  aria-label="Download PDF"
+                  tooltip="Download PDF"
+                  onClick={() => {
+                    window.open(downloadUrl, "_blank", "noopener,noreferrer")
+                  }}
+                />
+              ) : null}
+              {src && canEmail ? (
+                <IconButton
+                  type="button"
+                  variant="ghost"
+                  size="lg"
+                  className="text-lg"
+                  icon="mail-send-line"
+                  aria-label={`Email to ${emailTo}`}
+                  tooltip={`Email to ${emailTo}`}
+                  loading={emailing}
+                  disabled={emailing}
+                  onClick={handleEmail}
+                />
+              ) : null}
+              <IconButton
+                type="button"
+                variant="ghost"
+                size="lg"
+                className="text-lg"
+                icon="close-line"
+                aria-label="Close"
+                tooltip="Close"
+                onClick={() => onOpenChange?.(false)}
+              />
+            </div>
+          </div>
         </DialogHeader>
 
         <div className="relative min-h-0 flex-1 bg-muted/30">
@@ -214,12 +448,25 @@ export function FilePreview({
             </div>
           ) : null}
 
-          {current && src && (mode === "pdf" || mode === "text") ? (
+          {current && src && (mode === "pdf" || mode === "text") && a4Preview ? (
+            <div className="flex h-full w-full items-center justify-center overflow-auto p-4 sm:p-6">
+              <div className="aspect-[210/297] w-full max-w-[min(100%,calc((min(92vh,56rem)-9rem)*210/297))] shrink-0 overflow-hidden rounded-sm border border-border bg-white shadow-md">
+                <iframe
+                  ref={iframeRef}
+                  title={current.name || "File preview"}
+                  src={src}
+                  className="size-full border-0 bg-white"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {current && src && (mode === "pdf" || mode === "text") && !a4Preview ? (
             <iframe
               ref={iframeRef}
               title={current.name || "File preview"}
               src={src}
-              className="size-full border-0 bg-background"
+              className="size-full border-0 bg-white"
             />
           ) : null}
 
@@ -255,33 +502,6 @@ export function FilePreview({
               <ChevronRightIcon className="size-4" />
             </Button>
           ) : null}
-        </div>
-
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-6 py-3">
-          {src ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handlePrint}
-                disabled={mode === "audio"}
-              >
-                Print
-              </Button>
-              <a
-                href={src}
-                target="_blank"
-                rel="noreferrer"
-                className={buttonVariants({ variant: "outline", size: "sm" })}
-              >
-                Open
-              </a>
-            </>
-          ) : null}
-          <Button type="button" size="sm" onClick={() => onOpenChange?.(false)}>
-            Close
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

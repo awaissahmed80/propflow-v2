@@ -119,6 +119,10 @@ class LeadActivity
                 'due_date' => $dueDate,
                 'contacted_at' => now(),
             ])->save();
+
+            app(LeadScoreCalculator::class)->apply(
+                $lead->loadMissing(['stage', 'unit', 'tasks']),
+            );
         });
     }
 

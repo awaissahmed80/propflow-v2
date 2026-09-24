@@ -11,6 +11,10 @@ use Illuminate\Validation\Validator;
 
 class ConvertLeadRequest extends FormRequest
 {
+    public const PAYMENT_ONE = 'one_payment';
+
+    public const PAYMENT_INSTALLMENTS = 'installments';
+
     public function authorize(): bool
     {
         return true;
@@ -18,8 +22,30 @@ class ConvertLeadRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $payload = [];
+
         if ($this->input('booking_kind') === Order::KIND_RESERVE) {
-            $this->merge(['token_amount' => 0]);
+            $payload['token_amount'] = 0;
+        }
+
+        if ($this->input('token_amount') === '' || $this->input('token_amount') === null) {
+            $payload['token_amount'] = 0;
+        }
+
+        $paymentMode = $this->input('payment_mode', self::PAYMENT_INSTALLMENTS);
+
+        if ($paymentMode === self::PAYMENT_ONE) {
+            $payload['installment_count'] = 1;
+        } elseif ($this->input('installment_count') === '' || $this->input('installment_count') === null) {
+            $payload['installment_count'] = 1;
+        }
+
+        if ($this->input('first_due_on') === '' || $this->input('first_due_on') === null) {
+            $payload['first_due_on'] = now()->toDateString();
+        }
+
+        if ($payload !== []) {
+            $this->merge($payload);
         }
     }
 
@@ -33,8 +59,9 @@ class ConvertLeadRequest extends FormRequest
             'booking_kind' => ['required', 'string', Rule::in([Order::KIND_TOKEN, Order::KIND_RESERVE])],
             'agreed_price' => ['required', 'numeric', 'min:0'],
             'token_amount' => ['nullable', 'numeric', 'min:0'],
-            'installment_count' => ['required', 'integer', 'min:1', 'max:60'],
-            'first_due_on' => ['required', 'date'],
+            'payment_mode' => ['nullable', 'string', Rule::in([self::PAYMENT_ONE, self::PAYMENT_INSTALLMENTS])],
+            'installment_count' => ['nullable', 'integer', 'min:1', 'max:60'],
+            'first_due_on' => ['nullable', 'date'],
         ];
     }
 
@@ -49,12 +76,8 @@ class ConvertLeadRequest extends FormRequest
                     return;
                 }
 
-                $token = (float) $this->input('token_amount');
+                $token = (float) $this->input('token_amount', 0);
                 $agreed = (float) $this->input('agreed_price');
-
-                if ($token <= 0) {
-                    $validator->errors()->add('token_amount', 'Enter a token amount.');
-                }
 
                 if ($token > $agreed) {
                     $validator->errors()->add('token_amount', 'The token amount cannot be more than the agreed price.');

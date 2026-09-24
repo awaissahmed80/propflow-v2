@@ -10,6 +10,7 @@ import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
 import { ProjectCardPopover } from "../../components/project-card";
+import { formatUnitQuantity } from "../../components/unit-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckboxControl } from "@/components/ui/checkbox";
@@ -152,8 +153,8 @@ function UnitRow({ unit, projectCard, checked = false, onToggleCheck, onEdit, on
                     aria-label={`Select ${unit.name || "unit"}`}
                 />
             </td>
-            <td className="px-4 py-3 align-middle">
-                <div className="font-medium text-foreground">{unit.name || "Unit"}</div>
+            <td className="w-28 max-w-28 px-4 py-3 align-middle">
+                <div className="truncate font-medium text-foreground">{unit.name || "Unit"}</div>
             </td>
             <td className="px-4 py-3 align-middle text-sm text-foreground">
                 {projectCard ? (
@@ -188,9 +189,9 @@ function UnitRow({ unit, projectCard, checked = false, onToggleCheck, onEdit, on
                 {formatSize(unit.size, unit.area_type)}
             </td>
             <td className="px-4 py-3 align-middle text-sm tabular-nums text-foreground">
-                {unit.quantity == null ? 1 : Number(unit.quantity)}
+                {formatUnitQuantity(unit)}
             </td>
-            <td className="px-4 py-3 align-middle text-sm text-foreground">
+            <td className="whitespace-nowrap px-4 py-3 align-middle text-sm tabular-nums text-foreground">
                 {formatMoney(unit.price)}
             </td>
             <td className="px-4 py-3 align-middle">
@@ -749,14 +750,16 @@ function Inventory({
                                                     aria-label="Select all units on this page"
                                                 />
                                             </th>
-                                            <th className="w-44 px-4 py-3 font-medium">Unit</th>
+                                            <th className="w-28 px-4 py-3 font-medium">Unit</th>
                                             <th className="w-40 px-4 py-3 font-medium">Project</th>
                                             <th className="w-32 px-4 py-3 font-medium">Block</th>
                                             <th className="w-28 px-4 py-3 font-medium">Type</th>
                                             <th className="w-36 px-4 py-3 font-medium">Place</th>
                                             <th className="w-28 px-4 py-3 font-medium">Size</th>
-                                            <th className="w-20 px-4 py-3 font-medium">Qty</th>
-                                            <th className="w-28 px-4 py-3 font-medium">Price</th>
+                                            <th className="w-24 px-4 py-3 font-medium">Qty/Rem</th>
+                                            <th className="w-32 whitespace-nowrap px-4 py-3 font-medium">
+                                                Price
+                                            </th>
                                             <th className="w-28 px-4 py-3 font-medium">Status</th>
                                             <th className="w-16 px-4 py-3 text-right font-medium" />
                                         </tr>

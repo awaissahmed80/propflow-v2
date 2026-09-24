@@ -39,6 +39,7 @@ class TenantDatabaseSeeder extends Seeder
         $this->seedDefaultPaymentPlanTemplates();
         $this->seedDefaultAreaUnits();
         $this->seedDefaultUnitTypes();
+        MetaData::ensureUnitCategories();
     }
 
     protected function seedDefaultLeadStages(): void

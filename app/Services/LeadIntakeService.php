@@ -116,6 +116,8 @@ class LeadIntakeService
                 'notes' => $notes !== '' ? $notes : null,
             ]);
 
+            app(LeadScoreCalculator::class)->apply($lead->loadMissing(['stage', 'unit']));
+
             $submission = CampaignFormSubmission::query()->create([
                 'campaign_form_id' => $form->id,
                 'campaign_id' => $campaign?->id,

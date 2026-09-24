@@ -160,25 +160,32 @@ export async function destroyLibraryFile(kind, id) {
  *   assetableId: number|string,
  *   linkage: string,
  *   assetIds: Array<number|string>,
+ *   label?: string|null,
  * }} payload
  */
 export async function syncLibraryLinks(kind, payload) {
   const base = kind === "documents" ? "/documents" : "/media"
+  const body = {
+    assetable_type: payload.assetableType,
+    assetable_id: Number(payload.assetableId),
+    linkage: payload.linkage,
+    asset_ids: payload.assetIds.map(Number),
+  }
+
+  if (payload.label != null && String(payload.label).trim() !== "") {
+    body.label = String(payload.label).trim()
+  }
+
   const response = await fetch(`${base}/sync`, {
     method: "POST",
     credentials: "same-origin",
     headers: jsonHeaders(),
-    body: JSON.stringify({
-      assetable_type: payload.assetableType,
-      assetable_id: Number(payload.assetableId),
-      linkage: payload.linkage,
-      asset_ids: payload.assetIds.map(Number),
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(body?.message || "Unable to save selection")
+    const errorBody = await response.json().catch(() => ({}))
+    throw new Error(errorBody?.message || "Unable to save selection")
   }
 }
 

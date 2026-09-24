@@ -65,6 +65,7 @@ class MediaController extends Controller
             $assetable,
             strtoupper($validated['linkage']),
             $validated['asset_ids'] ?? [],
+            $validated['label'] ?? null,
         );
 
         return response()->json(['ok' => true]);

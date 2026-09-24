@@ -27,6 +27,15 @@ const SYSTEM_ACTIVITY_ICONS = {
     "Ready for handover": "home-smile-line",
     "Booking completed": "flag-line",
     "Booking cancelled": "close-circle-line",
+    "Lead created": "user-add-line",
+    "Stage changed": "git-commit-line",
+    "Assignee changed": "user-shared-line",
+    "Lead shared": "share-line",
+    "Lead archived": "archive-line",
+    "Lead restored": "arrow-go-back-line",
+    "Deal won": "trophy-line",
+    "Deal lost": "close-circle-line",
+    "Deal booked": "bookmark-line",
 };
 
 /**
@@ -140,7 +149,7 @@ function bookingAmountValue(order, deal) {
     return null;
 }
 
-function splitActions({ stage, status, deal, cancelled, closed }) {
+function splitActions({ stage, status, deal, cancelled, closed, canVerifyToken }) {
     if (cancelled || closed) {
         return { primary: [], more: [] };
     }
@@ -149,7 +158,7 @@ function splitActions({ stage, status, deal, cancelled, closed }) {
     const more = [];
     const tokenVerified = Boolean(deal?.booking?.verified_at);
 
-    if (stage === "token") {
+    if (stage === "token" && canVerifyToken) {
         primary.push({ id: "verify", label: "Verify token" });
     }
 
@@ -285,6 +294,7 @@ function ActivityRow({ entry, isLast = false }) {
 function SystemLogRow({ entry, isLast = false }) {
     const actorName = entry.user?.display_name;
     const meta = activityMeta(entry.action, true);
+    const files = entryAttachments(entry);
 
     return (
         <li className="relative flex gap-3">
@@ -318,6 +328,8 @@ function SystemLogRow({ entry, isLast = false }) {
                         {entry.comments}
                     </p>
                 ) : null}
+
+                {files.length > 0 ? <ActivityAttachments files={files} /> : null}
 
                 {actorName ? (
                     <p className="mt-1 text-[11px] text-muted-foreground/80">{actorName}</p>

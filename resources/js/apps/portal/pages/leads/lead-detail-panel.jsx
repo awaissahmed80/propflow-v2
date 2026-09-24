@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import {
@@ -21,11 +21,11 @@ import { ActivityTimeline } from "./lead-activity-timeline";
 import {
     AssigneeMenu,
     HeatMenu,
-    patchLead,
     ProjectMenu,
     StageMenu,
 } from "./lead-assignment-menus";
 import { LeadDetailsTab } from "./lead-detail-sections";
+import { LeadShareButton, LeadSharedUsers } from "./lead-share-controls";
 import { UpdateComposer } from "./lead-update-composer";
 import CloseDealForm from "./close-deal-form";
 
@@ -63,8 +63,37 @@ export default function LeadDetailPanel({
     nextActionTypes = [],
     onClose,
     onEditContact,
+    initialTab = "tasks",
+    initialClosePath = null,
 }) {
-    const [tab, setTab] = useState("tasks");
+    const [tab, setTab] = useState(initialTab);
+    const [closePath, setClosePath] = useState(initialClosePath);
+    const bodyRef = useRef(null);
+
+    useEffect(() => {
+        setTab(initialTab || "tasks");
+        setClosePath(initialClosePath);
+    }, [lead?.id, initialTab, initialClosePath]);
+
+    useEffect(() => {
+        const viewport = bodyRef.current?.querySelector(
+            '[data-slot="scroll-area-viewport"]',
+        );
+
+        if (!viewport) {
+            return;
+        }
+
+        if (tab === "tasks") {
+            return;
+        }
+
+        const frame = window.requestAnimationFrame(() => {
+            viewport.scrollTop = 0;
+        });
+
+        return () => window.cancelAnimationFrame(frame);
+    }, [tab, lead?.id]);
 
     const contactName = lead?.contact?.display_name || "—";
     const phone = lead?.contact?.phone_number;
@@ -73,6 +102,11 @@ export default function LeadDetailPanel({
     const stageColor = lead?.stage?.color || "var(--primary)";
     const isArchived = Boolean(lead?.archived_at);
     const dealLocked = Boolean(lead?.deal_locked || lead?.active_order);
+
+    const openCloseDeal = (outcome) => {
+        setClosePath(outcome || null);
+        setTab("close");
+    };
 
     const handleArchive = async () => {
         const confirmed = await confirm(
@@ -159,7 +193,14 @@ export default function LeadDetailPanel({
                     ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                    {!isArchived ? <StageMenu lead={lead} stages={stages} locked={dealLocked} /> : null}
+                    {!isArchived ? (
+                        <StageMenu
+                            lead={lead}
+                            stages={stages}
+                            locked={dealLocked}
+                            onCloseDealRequest={openCloseDeal}
+                        />
+                    ) : null}
                     <IconButton
                         type="button"
                         size="sm"
@@ -209,6 +250,7 @@ export default function LeadDetailPanel({
                                 contact={lead.contact}
                                 onEdit={onEditContact}
                                 editDisabled={isArchived || dealLocked}
+                                className="size-7 shrink-0 justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground data-popup-open:bg-muted data-popup-open:text-foreground"
                             >
                                 <Icon name="information-line" className="text-base" />
                             </ContactCardPopover>
@@ -252,12 +294,18 @@ export default function LeadDetailPanel({
                                 <TooltipContent>Call</TooltipContent>
                             </Tooltip>
                         ) : null}
+                        <LeadShareButton
+                            lead={lead}
+                            assignees={assignees}
+                            disabled={isArchived || dealLocked}
+                        />
                     </div>
                 </div>
 
-                <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="flex flex-wrap items-start gap-x-10 gap-y-2">
                     <AssigneeMenu lead={lead} assignees={assignees} locked={dealLocked} />
                     <ProjectMenu lead={lead} projects={projects} locked={dealLocked} />
+                    <LeadSharedUsers lead={lead} />
                 </div>
             </div>
 
@@ -275,8 +323,8 @@ export default function LeadDetailPanel({
                                     className={cn(
                                         "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                                         active
-                                            ? "bg-primary text-primary-foreground"
-                                            : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            ? "bg-muted text-foreground"
+                                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                                     )}
                                 >
                                     {item.label}
@@ -317,7 +365,7 @@ export default function LeadDetailPanel({
                 </div>
             </div>
 
-            <ScrollArea className="min-h-0 flex-1 bg-background">
+            <ScrollArea ref={bodyRef} className="min-h-0 flex-1 bg-background">
                 <div className="px-5 py-5">
                     {tab === "tasks" ? (
                         <ActivityTimeline
@@ -342,13 +390,7 @@ export default function LeadDetailPanel({
                             lead={lead}
                             projects={projects}
                             units={units}
-                            onLost={() => {
-                                const lost = stages.find((stage) => stage.label === "closed_lost");
-
-                                if (lost) {
-                                    patchLead(lead, { lead_stage_id: Number(lost.id) }, "Lead marked as lost");
-                                }
-                            }}
+                            initialPath={closePath}
                         />
                     ) : null}
                 </div>

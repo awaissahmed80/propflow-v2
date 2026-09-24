@@ -64,6 +64,22 @@ export function unitMetaLine(unit) {
 }
 
 /**
+ * @param {{ quantity?: number | null, remaining?: number | null }} unit
+ * @returns {string}
+ */
+export function formatUnitQuantity(unit) {
+  const total = unit?.quantity == null ? 1 : Number(unit.quantity)
+  const remaining =
+    unit?.remaining == null ? total : Number(unit.remaining)
+
+  if (total > 1) {
+    return `${total}/${remaining}`
+  }
+
+  return String(total)
+}
+
+/**
  * Inventory unit card for project details, inventory grids, and popovers.
  *
  * @param {object} props
@@ -167,10 +183,10 @@ export function UnitCard({
           </div>
           <div className="min-w-0 space-y-0.5 text-center">
             <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Qty
+              Qty/Rem
             </div>
             <div className="truncate text-sm font-semibold tabular-nums text-foreground">
-              {unit?.quantity == null ? 1 : Number(unit.quantity)}
+              {formatUnitQuantity(unit)}
             </div>
           </div>
           <div className="min-w-0 space-y-0.5 text-right">

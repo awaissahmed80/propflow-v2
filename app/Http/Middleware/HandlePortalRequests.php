@@ -38,13 +38,7 @@ class HandlePortalRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user()?->only([
-                    'id',
-                    'display_name',
-                    'first_name',
-                    'last_name',
-                    'email_address',
-                ]),
+                'user' => $this->sharedAuthUser($request),
             ],
             'urls' => [
                 'auth' => Domain::auth(),
@@ -141,6 +135,7 @@ class HandlePortalRequests extends Middleware
                 'AREA' => [],
                 'LINK' => [],
                 'DEPARTMENT' => [],
+                'UNIT_CATEGORY' => [],
             ];
         }
 
@@ -152,6 +147,46 @@ class HandlePortalRequests extends Middleware
             'AREA' => MetaData::valuesFor(MetaData::TYPE_AREA)->all(),
             'LINK' => MetaData::valuesFor(MetaData::TYPE_LINK)->all(),
             'DEPARTMENT' => MetaData::valuesFor(MetaData::TYPE_DEPARTMENT)->all(),
+            'UNIT_CATEGORY' => MetaData::unitCategoryOptions(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function sharedAuthUser(Request $request): ?array
+    {
+        $user = $request->user();
+
+        if ($user === null) {
+            return null;
+        }
+
+        $permissions = [];
+
+        try {
+            $permissions = $user->getAllPermissions()->pluck('name')->values()->all();
+        } catch (\Throwable) {
+            $permissions = [];
+        }
+
+        $tenant = Tenant::current();
+        $membership = null;
+
+        if ($tenant !== null) {
+            $membership = $user->memberships()
+                ->where('tenant_id', $tenant->id)
+                ->first(['is_owner']);
+        }
+
+        return [
+            'id' => $user->id,
+            'display_name' => $user->display_name,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'email_address' => $user->email_address,
+            'is_owner' => (bool) ($membership?->is_owner ?? false),
+            'permissions' => $permissions,
         ];
     }
 }

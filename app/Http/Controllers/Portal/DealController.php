@@ -10,6 +10,8 @@ use App\Http\Requests\Portal\RecordOrderPaymentRequest;
 use App\Http\Requests\Portal\SetLitigationRequest;
 use App\Http\Requests\Portal\TransferOrderRequest;
 use App\Http\Requests\Portal\VerifyBookingRequest;
+use App\Http\Requests\Portal\VerifyTokenRequest;
+use App\Mail\BookingConfirmationLetterMail;
 use App\Models\Asset;
 use App\Models\Order;
 use App\Models\OrderPayment;
@@ -20,7 +22,9 @@ use App\Models\Tenant;
 use App\Services\DealPipeline;
 use App\Support\AssetManager;
 use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
 use Spatie\LaravelPdf\Facades\Pdf;
 
@@ -31,9 +35,15 @@ class DealController extends Controller
         protected AssetManager $assets,
     ) {}
 
-    public function storeBooking(VerifyBookingRequest $request, Order $order): RedirectResponse
+    public function storeBooking(VerifyBookingRequest $request, Order $order): RedirectResponse|JsonResponse
     {
         $this->deals->completeBookingKyc($order, $request->validated(), $request->user()?->id);
+
+        if ($request->wantsJson()) {
+            $order->refresh();
+
+            return app(OrderController::class)->panel($order);
+        }
 
         return back();
     }
@@ -93,22 +103,83 @@ class DealController extends Controller
         return back();
     }
 
-    public function enterBookingKyc(Order $order): RedirectResponse
+    public function enterBookingKyc(VerifyTokenRequest $request, Order $order): RedirectResponse|JsonResponse
     {
-        $this->deals->verify($order, request()->user()?->id);
+        $this->deals->verify(
+            $order,
+            $request->safe()->except('receipt'),
+            $request->file('receipt'),
+            $request->user()?->id,
+        );
+
+        if ($request->wantsJson()) {
+            $order->refresh();
+
+            return app(OrderController::class)->panel($order);
+        }
+
+        $path = rtrim((string) parse_url((string) $request->headers->get('referer'), PHP_URL_PATH), '/');
+
+        if ($path === '/bookings') {
+            return redirect('/bookings?booking='.$order->code);
+        }
 
         return back();
     }
 
     public function showBookingForm(Order $order): View
     {
-        $order->load(['contact', 'project', 'unit.block', 'paymentPlan']);
-        $deal = $this->deals->snapshot($order);
+        return view('portal.booking-form', $this->bookingFormPayload($order, preview: true));
+    }
 
-        return view('portal.booking-form', [
-            'order' => $order,
-            'deal' => $deal,
-        ]);
+    public function bookingFormPdf(Order $order): Responsable
+    {
+        $payload = $this->bookingFormPayload($order, preview: false);
+
+        return Pdf::view('portal.booking-form', $payload)
+            ->driver('dompdf')
+            ->format('a4')
+            ->margins(12, 12, 12, 12)
+            ->name('booking-confirmation-letter-'.$order->code.'.pdf')
+            ->download();
+    }
+
+    public function emailBookingForm(Order $order): JsonResponse|RedirectResponse
+    {
+        $order->loadMissing(['contact', 'project', 'unit']);
+
+        $email = trim((string) ($order->contact?->email_address ?? ''));
+
+        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            if (request()->wantsJson()) {
+                return response()->json([
+                    'message' => 'This contact does not have a valid email address.',
+                ], 422);
+            }
+
+            return back()->withErrors([
+                'email' => 'This contact does not have a valid email address.',
+            ]);
+        }
+
+        $payload = $this->bookingFormPayload($order, preview: false);
+        $buyerName = $order->contact?->display_name ?: 'Buyer';
+
+        Mail::to($email)->send(new BookingConfirmationLetterMail(
+            order: $order,
+            buyerName: $buyerName,
+            businessName: $this->legalName(),
+            pdfViewData: $payload,
+        ));
+
+        if (request()->wantsJson()) {
+            return response()->json([
+                'ok' => true,
+                'email' => $email,
+            ]);
+        }
+
+        return back();
     }
 
     public function paymentVoucher(Order $order, OrderPayment $payment): Responsable
@@ -212,6 +283,27 @@ class DealController extends Controller
     }
 
     /**
+     * @return array{order: Order, deal: array<string, mixed>, company: array<string, mixed>, business_name: string, currency_symbol: string, preview: bool}
+     */
+    protected function bookingFormPayload(Order $order, bool $preview): array
+    {
+        $order->load(['contact', 'project', 'unit.block', 'paymentPlan']);
+        $deal = $this->deals->snapshot($order);
+        $company = $this->companySettings();
+        $currency = $this->currencySettings();
+        $symbol = trim((string) ($currency['currency_symbol'] ?? '$')) ?: '$';
+
+        return [
+            'order' => $order,
+            'deal' => $deal,
+            'company' => $company,
+            'business_name' => $this->legalName(),
+            'currency_symbol' => $symbol,
+            'preview' => $preview,
+        ];
+    }
+
+    /**
      * @return array{currency_code: string, currency_symbol: string}
      */
     protected function currencySettings(): array
@@ -220,6 +312,47 @@ class DealController extends Controller
             'currency_code' => 'USD',
             'currency_symbol' => '$',
         ]);
+    }
+
+    /**
+     * @return array{
+     *     business_name: ?string,
+     *     legal_name: ?string,
+     *     tagline: ?string,
+     *     phone: ?string,
+     *     whatsapp: ?string,
+     *     email: ?string,
+     *     website: ?string,
+     *     address: ?string,
+     *     city: ?string,
+     *     state: ?string,
+     *     tax_id: ?string,
+     *     logo_path: ?string,
+     *     logo_url: ?string
+     * }
+     */
+    protected function companySettings(): array
+    {
+        $data = Setting::group(Setting::GROUP_GENERAL, [
+            'business_name' => Tenant::current()?->name,
+            'legal_name' => null,
+            'tagline' => null,
+            'phone' => null,
+            'whatsapp' => null,
+            'email' => null,
+            'website' => null,
+            'address' => null,
+            'city' => null,
+            'state' => null,
+            'tax_id' => null,
+            'logo_path' => null,
+        ]);
+
+        $data['logo_url'] = filled($data['logo_path'] ?? null)
+            ? url('assets/'.$data['logo_path'])
+            : null;
+
+        return $data;
     }
 
     /**
@@ -252,10 +385,7 @@ class DealController extends Controller
 
     protected function legalName(): string
     {
-        $general = Setting::group(Setting::GROUP_GENERAL, [
-            'legal_name' => null,
-            'business_name' => Tenant::current()?->name,
-        ]);
+        $general = $this->companySettings();
 
         return filled($general['legal_name'] ?? null)
             ? (string) $general['legal_name']

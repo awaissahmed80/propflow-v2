@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Asset;
 use App\Models\AssetFolder;
 use App\Models\AssetLabel;
+use App\Models\BookingDocumentType;
 use App\Models\Campaign;
 use App\Models\CampaignForm;
 use App\Models\CampaignGoalType;
@@ -59,7 +60,7 @@ class ActivityCatalog
         ],
         'settings' => [
             'label' => 'Settings',
-            'types' => [LeadStage::class, LeadActionType::class, CampaignGoalType::class, CustomField::class, MetaData::class, Setting::class],
+            'types' => [LeadStage::class, LeadActionType::class, CampaignGoalType::class, BookingDocumentType::class, CustomField::class, MetaData::class, Setting::class],
         ],
         'files' => [
             'label' => 'Files',

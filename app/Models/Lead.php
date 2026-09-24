@@ -100,6 +100,7 @@ class Lead extends Model
             'lead_stage_id' => 'integer',
             'attributes' => 'array',
             'budget' => 'decimal:2',
+            'score' => 'integer',
             'due_date' => 'datetime',
             'contacted_at' => 'datetime',
             'archived_at' => 'datetime',
@@ -221,6 +222,44 @@ class Lead extends Model
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /**
+     * @return HasMany<LeadShare, $this>
+     */
+    public function shares(): HasMany
+    {
+        return $this->hasMany(LeadShare::class);
+    }
+
+    /**
+     * Replace shared collaborators. Owner and assignee are never stored as shares.
+     *
+     * @param  list<int>  $userIds
+     * @return list<int>
+     */
+    public function syncShares(array $userIds): array
+    {
+        $normalized = collect($userIds)
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->reject(fn (int $id): bool => $id === (int) $this->user_id || $id === (int) $this->assigned_to)
+            ->unique()
+            ->values();
+
+        $existing = $this->shares()->pluck('user_id')->map(fn ($id): int => (int) $id);
+        $toAdd = $normalized->diff($existing)->values();
+        $toRemove = $existing->diff($normalized)->values();
+
+        if ($toRemove->isNotEmpty()) {
+            $this->shares()->whereIn('user_id', $toRemove->all())->delete();
+        }
+
+        foreach ($toAdd as $userId) {
+            $this->shares()->create(['user_id' => $userId]);
+        }
+
+        return $normalized->all();
     }
 
     /**

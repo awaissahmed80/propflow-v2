@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { update as updateStage } from "@/actions/App/Http/Controllers/Portal/OrderStageController";
 import { update as updateStatus } from "@/actions/App/Http/Controllers/Portal/OrderStatusController";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import BookingDocumentTypesSection from "./booking-document-types-section";
 import { cn } from "@/lib/utils";
 
 function pathFrom(url) {
@@ -173,7 +174,11 @@ function CatalogSection({ title, hint, rows, countLabel, processing, onSave }) {
     );
 }
 
-export default function BookingsPanel({ orderStages = [], orderStatuses = [] }) {
+export default function BookingsPanel({
+    orderStages = [],
+    orderStatuses = [],
+    bookingDocumentTypes = [],
+}) {
     const [processing, setProcessing] = useState(false);
 
     const saveStage = (stage, payload) => {
@@ -215,6 +220,8 @@ export default function BookingsPanel({ orderStages = [], orderStatuses = [] }) 
                 onSave={saveStatus}
                 processing={processing}
             />
+
+            <BookingDocumentTypesSection bookingDocumentTypes={bookingDocumentTypes} />
         </div>
     );
 }

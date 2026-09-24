@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Portal;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Portal\BulkLeadRequest;
 use App\Http\Requests\Portal\ConvertLeadRequest;
+use App\Http\Requests\Portal\LoseLeadRequest;
 use App\Http\Requests\Portal\StoreLeadRequest;
+use App\Http\Requests\Portal\SyncLeadSharesRequest;
 use App\Http\Requests\Portal\UpdateLeadRequest;
+use App\Http\Requests\Portal\WinLeadRequest;
 use App\Http\Resources\Portal\LeadResource;
 use App\Models\Campaign;
 use App\Models\Contact;
@@ -21,6 +24,7 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Services\LeadActivity;
 use App\Services\LeadIntakeService;
+use App\Services\LeadScoreCalculator;
 use App\Services\OrderService;
 use App\Support\AssetManager;
 use Illuminate\Database\Eloquent\Builder;
@@ -40,6 +44,7 @@ class LeadController extends Controller
         protected LeadIntakeService $intake,
         protected LeadActivity $activity,
         protected OrderService $orders,
+        protected LeadScoreCalculator $scores,
     ) {}
 
     public function index(Request $request): Response
@@ -98,7 +103,7 @@ class LeadController extends Controller
         $stageId = $validated['lead_stage_id']
             ?? LeadStage::defaultStageId();
 
-        Lead::query()->create([
+        $lead = Lead::query()->create([
             'contact_id' => $contact->id,
             'user_id' => $request->user()?->id,
             'project_id' => $validated['project_id'] ?? null,
@@ -113,6 +118,8 @@ class LeadController extends Controller
             'notes' => $validated['notes'] ?? null,
         ]);
 
+        $this->scores->apply($lead->loadMissing(['stage', 'unit']));
+
         return to_route('portal.leads.index');
     }
 
@@ -126,7 +133,93 @@ class LeadController extends Controller
 
         $order = $this->orders->book($lead, $request->validated(), $request->user()?->id);
 
+        $this->scores->apply($lead->fresh(['stage', 'unit', 'activeOrder', 'tasks']));
+
         return redirect('/bookings?booking='.$order->code);
+    }
+
+    public function win(WinLeadRequest $request, Lead $lead): RedirectResponse
+    {
+        if ($lead->isArchived()) {
+            return back()->withErrors([
+                'lead' => 'Archived leads cannot be marked as won.',
+            ]);
+        }
+
+        if ($lead->hasActiveDeal()) {
+            return back()->withErrors([
+                'lead' => 'This lead already has an active booking. Cancel the booking to reopen sales work.',
+            ]);
+        }
+
+        if ($lead->contact_id === null) {
+            return back()->withErrors([
+                'lead' => 'This lead needs a contact before it can be marked as won.',
+            ]);
+        }
+
+        $stageId = LeadStage::query()->where('label', 'closed_won')->value('id');
+
+        if ($stageId === null) {
+            return back()->withErrors([
+                'lead' => 'Add a Closed Won stage before marking a lead as won.',
+            ]);
+        }
+
+        if ((int) $lead->lead_stage_id !== (int) $stageId) {
+            $lead->forceFill(['lead_stage_id' => (int) $stageId])->save();
+        }
+
+        $reason = trim((string) $request->validated('reason'));
+
+        $this->activity->log(
+            $lead,
+            'Deal won',
+            $reason,
+            $request->user()?->id,
+        );
+
+        $this->scores->apply($lead->loadMissing(['stage', 'unit', 'activeOrder', 'tasks']));
+
+        return back();
+    }
+
+    public function lose(LoseLeadRequest $request, Lead $lead): RedirectResponse
+    {
+        if ($lead->isArchived()) {
+            return back()->withErrors([
+                'lead' => 'Archived leads cannot be marked as lost.',
+            ]);
+        }
+
+        if ($lead->hasActiveDeal()) {
+            return back()->withErrors([
+                'lead' => 'This lead is locked while its booking is active. Cancel the booking first.',
+            ]);
+        }
+
+        $stageId = LeadStage::query()->where('label', 'closed_lost')->value('id');
+
+        if ($stageId === null) {
+            return back()->withErrors([
+                'lead' => 'Add a Closed Lost stage before marking a lead as lost.',
+            ]);
+        }
+
+        $reason = trim((string) $request->validated('reason'));
+
+        $lead->forceFill(['lead_stage_id' => (int) $stageId])->save();
+
+        $this->activity->log(
+            $lead,
+            'Deal lost',
+            $reason,
+            $request->user()?->id,
+        );
+
+        $this->scores->apply($lead->loadMissing(['stage', 'unit', 'tasks']));
+
+        return back();
     }
 
     public function update(UpdateLeadRequest $request, Lead $lead): RedirectResponse
@@ -202,6 +295,71 @@ class LeadController extends Controller
             $this->activity->log($lead, 'Assignee changed', $from.' → '.$to, $actorId);
         }
 
+        $this->scores->apply($lead->loadMissing(['stage', 'unit', 'tasks']));
+
+        return back();
+    }
+
+    public function syncShares(SyncLeadSharesRequest $request, Lead $lead): RedirectResponse
+    {
+        if ($lead->hasActiveDeal()) {
+            return back()->withErrors([
+                'lead' => 'This lead is locked while its booking is active. Cancel the booking to make changes.',
+            ]);
+        }
+
+        /** @var list<int> $requestedIds */
+        $requestedIds = array_map('intval', $request->validated('user_ids'));
+
+        $previousIds = $lead->shares()
+            ->pluck('user_id')
+            ->map(fn ($id): int => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+
+        $nextIds = collect($requestedIds)
+            ->reject(fn (int $id): bool => $id === (int) $lead->user_id || $id === (int) $lead->assigned_to)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        if ($previousIds === $nextIds) {
+            return back();
+        }
+
+        $lead->syncShares($requestedIds);
+
+        $added = array_values(array_diff($nextIds, $previousIds));
+        $removed = array_values(array_diff($previousIds, $nextIds));
+        $changedIds = array_values(array_unique([...$added, ...$removed]));
+
+        $names = User::query()
+            ->whereIn('id', $changedIds)
+            ->pluck('display_name', 'id');
+
+        $parts = [];
+
+        if ($added !== []) {
+            $parts[] = 'Added: '.collect($added)
+                ->map(fn (int $id): string => $names->get($id) ?? '#'.$id)
+                ->implode(', ');
+        }
+
+        if ($removed !== []) {
+            $parts[] = 'Removed: '.collect($removed)
+                ->map(fn (int $id): string => $names->get($id) ?? '#'.$id)
+                ->implode(', ');
+        }
+
+        $this->activity->log(
+            $lead,
+            'Lead shared',
+            $parts !== [] ? implode(' · ', $parts) : null,
+            $request->user()?->id,
+        );
+
         return back();
     }
 
@@ -219,6 +377,7 @@ class LeadController extends Controller
 
         $lead->archive();
         $this->activity->log($lead, 'Lead archived', null, request()->user()?->id);
+        $this->scores->apply($lead->loadMissing(['stage', 'unit', 'tasks']));
 
         return back();
     }
@@ -237,6 +396,7 @@ class LeadController extends Controller
 
         $lead->restoreFromArchive($fallbackStageId !== null ? (int) $fallbackStageId : null);
         $this->activity->log($lead, 'Lead restored', null, request()->user()?->id);
+        $this->scores->apply($lead->loadMissing(['stage', 'unit', 'tasks']));
 
         return back();
     }
@@ -473,13 +633,14 @@ class LeadController extends Controller
     protected function leadDetailRelations(): array
     {
         return [
-            'contact:id,uuid,first_name,last_name,email_address,phone_number,reference',
+            'contact:id,uuid,first_name,last_name,email_address,phone_number,reference,type,tag',
             'project:id,title,code',
             'project.thumbnail.asset',
             'unit:id,code,name,project_id,price,status',
             'stage:id,label,title,color,priority',
             'campaign:id,title,public_id',
             'activeOrder',
+            'shares:id,lead_id,user_id',
             'tasks' => fn ($query) => $query->with(['gallery.asset', 'documents.asset'])->latest('id'),
         ];
     }
@@ -745,6 +906,9 @@ class LeadController extends Controller
             ->merge($leads->flatMap(
                 fn (Lead $lead) => $lead->relationLoaded('tasks') ? $lead->tasks->pluck('user_id') : []
             ))
+            ->merge($leads->flatMap(
+                fn (Lead $lead) => $lead->relationLoaded('shares') ? $lead->shares->pluck('user_id') : []
+            ))
             ->filter()
             ->unique()
             ->values()
@@ -754,6 +918,7 @@ class LeadController extends Controller
             $leads->each(function (Lead $lead): void {
                 $lead->setRelation('assignee', null);
                 $lead->setRelation('creator', null);
+                $lead->setRelation('sharedUsers', collect());
             });
 
             return;
@@ -786,6 +951,15 @@ class LeadController extends Controller
         $leads->each(function (Lead $lead) use ($users): void {
             $lead->setRelation('assignee', $users->get($lead->assigned_to));
             $lead->setRelation('creator', $users->get($lead->user_id));
+
+            $sharedUsers = $lead->relationLoaded('shares')
+                ? $lead->shares
+                    ->map(fn ($share) => $users->get($share->user_id))
+                    ->filter()
+                    ->values()
+                : collect();
+
+            $lead->setRelation('sharedUsers', $sharedUsers);
 
             if ($lead->relationLoaded('tasks')) {
                 $lead->tasks->each(function (Task $task) use ($users): void {

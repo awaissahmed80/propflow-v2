@@ -122,12 +122,13 @@ class AssetManager
     }
 
     /**
-     * Replace all links for a linkage with the given asset ids.
+     * Replace links for a linkage with the given asset ids.
+     * When $label is set, only links with that label are synced; other labels are left alone.
      * Removed links are unlinked only — assets stay in the library.
      *
      * @param  list<int|string>  $assetIds
      */
-    public function syncLinks(Model $assetable, string $linkage, array $assetIds): void
+    public function syncLinks(Model $assetable, string $linkage, array $assetIds, ?string $label = null): void
     {
         $assetIds = collect($assetIds)
             ->map(fn ($id): int => (int) $id)
@@ -136,11 +137,18 @@ class AssetManager
             ->values()
             ->all();
 
-        $existing = AssetLink::query()
+        $normalizedLabel = filled($label) ? trim((string) $label) : null;
+
+        $existingQuery = AssetLink::query()
             ->where('assetable_type', $assetable::class)
             ->where('assetable_id', $assetable->getKey())
-            ->where('linkage', $linkage)
-            ->get();
+            ->where('linkage', $linkage);
+
+        if ($normalizedLabel !== null) {
+            $existingQuery->where('label', $normalizedLabel);
+        }
+
+        $existing = $existingQuery->get();
 
         foreach ($existing as $link) {
             if (! in_array((int) $link->asset_id, $assetIds, true)) {
@@ -167,6 +175,7 @@ class AssetManager
                 'assetable_type' => $assetable::class,
                 'asset_id' => $assetId,
                 'linkage' => $linkage,
+                'label' => $normalizedLabel,
             ]);
         }
     }

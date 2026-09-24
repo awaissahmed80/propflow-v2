@@ -106,9 +106,11 @@ function TemplateFormDialog({ open, template, formOptions, onOpenChange }) {
         };
 
         if (editing) {
-            form.transform(() => payload).put(updateTemplate.url(template.id), options);
+            form.transform(() => payload);
+            form.put(updateTemplate.url(template.id), options);
         } else {
-            form.transform(() => payload).post(storeTemplate.url(), options);
+            form.transform(() => payload);
+            form.post(storeTemplate.url(), options);
         }
     };
 

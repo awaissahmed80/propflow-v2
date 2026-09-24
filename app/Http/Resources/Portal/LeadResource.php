@@ -6,6 +6,7 @@ use App\Models\AssetLink;
 use App\Models\Lead;
 use App\Models\Order;
 use App\Models\Task;
+use App\Services\LeadScoreCalculator;
 use App\Support\AssetManager;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -32,7 +33,8 @@ class LeadResource extends JsonResource
             'assigned_to' => $this->assigned_to,
             'source' => $this->source,
             'campaign_id' => $this->campaign_id,
-            'score' => $this->score,
+            'score' => $this->score !== null ? (int) $this->score : null,
+            'engagement' => app(LeadScoreCalculator::class)->engagement($this->resource),
             'next_action' => $this->next_action,
             'due_date' => $this->due_date?->toIso8601String(),
             'lead_stage_id' => $this->lead_stage_id,
@@ -50,6 +52,8 @@ class LeadResource extends JsonResource
                 'email_address' => $contact->email_address,
                 'phone_number' => $contact->phone_number,
                 'reference' => $contact->reference,
+                'type' => $contact->type,
+                'tag' => $contact->tag,
                 'display_name' => trim(implode(' ', array_filter([
                     $contact->first_name,
                     $contact->last_name,
@@ -112,6 +116,19 @@ class LeadResource extends JsonResource
                     'display_name' => $this->creator->display_name,
                     'avatar' => $this->creator->getAttribute('avatar'),
                 ] : null,
+            ),
+            'shared_users' => $this->when(
+                $this->relationLoaded('sharedUsers'),
+                fn () => $this->sharedUsers
+                    ->filter()
+                    ->map(fn ($user): array => [
+                        'id' => $user->id,
+                        'code' => $user->getAttribute('code'),
+                        'display_name' => $user->display_name,
+                        'avatar' => $user->getAttribute('avatar'),
+                    ])
+                    ->values()
+                    ->all(),
             ),
             'tasks' => $this->whenLoaded('tasks', fn () => $this->tasks->map(fn (Task $task): array => [
                 'id' => $task->id,

@@ -64,6 +64,11 @@ const TYPE_META = {
         hint: "Departments for teams and roles",
         placeholder: "e.g. Sales",
     },
+    UNIT_CATEGORY: {
+        icon: "price-tag-3-line",
+        hint: "Booking inventory categories (corner, boulevard, etc.)",
+        placeholder: "e.g. Corner",
+    },
 };
 
 function typeMeta(type) {

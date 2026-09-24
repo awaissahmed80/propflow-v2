@@ -61,6 +61,9 @@ class ProjectController extends Controller
 
         $recentUnits = $projectModel->units()
             ->with(['block:id,title,project_id'])
+            ->withCount([
+                'orders as booked_count' => fn ($builder) => $builder->activeOccupancy(),
+            ])
             ->latest('id')
             ->limit(5)
             ->get();

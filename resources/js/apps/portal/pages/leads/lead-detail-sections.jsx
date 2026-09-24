@@ -14,6 +14,7 @@ import { Slider } from "@/components/ui/slider";
 import { formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { LeadMetricBar } from "../../components/lead-card";
 import { UserAvatar, UserCardPopover } from "../../components/user-card";
 import { RelativeTimeTooltip } from "./lead-activity-timeline";
 import { patchLead } from "./lead-assignment-menus";
@@ -402,6 +403,18 @@ export function LeadDetailsTab({
                 disabled={editDisabled}
             />
             <DealValueSlider lead={lead} disabled={editDisabled} />
+            <DetailField label="Lead score">
+                <LeadMetricBar
+                    value={lead?.score}
+                    barClassName="bg-emerald-500"
+                />
+            </DetailField>
+            <DetailField label="Engagement">
+                <LeadMetricBar
+                    value={lead?.engagement}
+                    barClassName="bg-blue-600 dark:bg-blue-500"
+                />
+            </DetailField>
             <DetailField label="Last activity">
                 <RelativeTimeTooltip
                     value={lead.last_activity_at}

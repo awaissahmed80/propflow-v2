@@ -2,19 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="color-scheme" content="light">
     <title>Payment request {{ $voucher_number }}</title>
     <style>
+        :root { color-scheme: light only; }
+        html, body { background: #ffffff; }
         body { font-family: DejaVu Sans, sans-serif; color: #1a1a1a; font-size: 13px; margin: 36px; }
-        h1 { font-size: 22px; margin: 0 0 4px; }
+        h1 { font-size: 22px; margin: 0 0 4px; color: #1a1a1a; }
         h2 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin: 28px 0 10px; color: #444; }
-        p { line-height: 1.45; margin: 0 0 8px; }
+        p { line-height: 1.45; margin: 0 0 8px; color: #1a1a1a; }
         table { width: 100%; border-collapse: collapse; }
-        td { padding: 7px 0; vertical-align: top; }
+        td { padding: 7px 0; vertical-align: top; color: #1a1a1a; }
         td:first-child { width: 34%; color: #555; }
         .muted { color: #666; }
-        .amount { font-size: 20px; font-weight: 700; margin-top: 8px; }
+        .amount { font-size: 20px; font-weight: 700; margin-top: 8px; color: #1a1a1a; }
         .header { border-bottom: 1px solid #ddd; padding-bottom: 16px; margin-bottom: 20px; }
-        .box { border: 1px solid #ddd; border-radius: 6px; padding: 14px 16px; margin-top: 8px; }
+        .box { border: 1px solid #ddd; border-radius: 6px; padding: 14px 16px; margin-top: 8px; background: #ffffff; }
     </style>
 </head>
 <body>

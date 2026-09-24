@@ -43,10 +43,6 @@ export default function BookingsAllotment({ orders, pagination }) {
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">
                             Allotment & Transfers
                         </h1>
-                        <p className="mt-0.5 text-sm text-muted-foreground">
-                            Queue for administrative approval and tracking of allotment letters and
-                            transfer files.
-                        </p>
                     </div>
                 </Layout.Toolbar>
                 <div className="min-h-0 flex-1 overflow-auto px-6 py-4">

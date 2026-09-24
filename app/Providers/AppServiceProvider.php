@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Asset;
+use App\Models\BookingDocumentType;
 use App\Models\Campaign;
 use App\Models\CampaignForm;
 use App\Models\CampaignGoalType;
@@ -42,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
         Campaign::class,
         CampaignForm::class,
         CampaignGoalType::class,
+        BookingDocumentType::class,
         Contact::class,
         Lead::class,
         LeadActionType::class,

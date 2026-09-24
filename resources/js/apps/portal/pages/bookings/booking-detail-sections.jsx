@@ -1,7 +1,6 @@
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import { update } from "@/actions/App/Http/Controllers/Portal/OrderController";
-import { Avatar } from "@/components/ui/avatar";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -10,7 +9,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import { StageBadge } from "@/components/ui/stage-badge";
+import { formatMoney } from "@/lib/currency";
+import { formatDateTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
+import { ProjectCardPopover, projectLocationLabel } from "../../components/project-card";
+import {
+    UNIT_STATUS_LABELS,
+    unitSizeLabel,
+    unitStatusTone,
+} from "../../components/unit-card";
 import { statusTitle, statusColor } from "./booking-stage-dialogs";
 
 function pathFrom(url) {
@@ -123,139 +130,222 @@ export function StatusControl({ order, status, orderStatuses = [], locked = fals
     );
 }
 
-export function BuyerBlock({ contact, deal = null, stage = "token" }) {
-    if (!contact) {
-        return (
-            <div className="min-w-0 text-sm text-muted-foreground">
-                No buyer linked
-            </div>
-        );
-    }
-
-    const name = contact.display_name || "Buyer";
-    const booking = deal?.booking || {};
-    const pastToken =
-        Boolean(booking.verified_at) ||
-        ["booking_kyc", "active", "closed"].includes(stage);
-
-    const lines = [contact.phone_number].filter(Boolean);
-
-    if (pastToken) {
-        const identity =
-            booking.identity_number ||
-            contact.cnic ||
-            null;
-        const identityLine = identity
-            ? `${(booking.identity_kind || "cnic").toUpperCase()} ${identity}`
-            : null;
-
-        lines.push(
-            ...[
-                contact.email_address,
-                identityLine,
-                booking.local_phone && booking.local_phone !== contact.phone_number
-                    ? `Local ${booking.local_phone}`
-                    : null,
-                contact.address,
-            ].filter(Boolean),
-        );
-    }
+function OverviewMetric({ label, value, hint = null, tone = "default" }) {
+    const valueTone =
+        tone === "success"
+            ? "text-emerald-700 dark:text-emerald-400"
+            : tone === "warning"
+              ? "text-amber-700 dark:text-amber-400"
+              : "text-foreground";
 
     return (
-        <div className="flex min-w-0 items-start gap-2.5">
-            <Avatar
-                name={name}
-                size="default"
-                className="size-14 shrink-0"
-                textClass="text-base"
-            />
-            <div className="min-w-0 flex-1">
-                <p className="truncate text-xl font-bold tracking-tight text-foreground">
-                    {name}
-                </p>
-                {lines.map((line) => (
-                    <p key={line} className="truncate text-sm text-muted-foreground">
-                        {line}
-                    </p>
-                ))}
-            </div>
+        <div className="min-w-0 rounded-xl border border-border/70 bg-background px-3.5 py-3 shadow-xs">
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
+            <p
+                className={cn(
+                    "mt-1 truncate text-lg font-semibold tracking-tight tabular-nums",
+                    valueTone,
+                )}
+            >
+                {value}
+            </p>
+            {hint ? (
+                <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>
+            ) : null}
         </div>
     );
 }
 
-export function ProjectDetailsCard({ order, deal }) {
+export function DealOverviewSection({
+    order,
+    totalPrice,
+    bookingAmount,
+    paid,
+    remaining,
+}) {
+    const outstanding = Number(remaining) || 0;
+    const paidAmount = Number(paid) || 0;
+
+    return (
+        <section className="space-y-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h3 className="flex items-center gap-2 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                    <Icon name="funds-line" className="text-base" />
+                    Deal Overview
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                    Booked{" "}
+                    <span className="font-medium text-foreground">
+                        {formatDateTime(order?.booked_at) || "—"}
+                    </span>
+                </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+                <OverviewMetric
+                    label="Total Price"
+                    value={formatMoney(totalPrice)}
+                />
+                <OverviewMetric
+                    label="Booking Amount"
+                    value={
+                        bookingAmount != null ? formatMoney(bookingAmount) : "—"
+                    }
+                />
+                <OverviewMetric
+                    label="Paid"
+                    value={formatMoney(paidAmount)}
+                    tone={paidAmount > 0 ? "success" : "default"}
+                />
+                <OverviewMetric
+                    label="Remaining"
+                    value={formatMoney(outstanding)}
+                    tone={outstanding > 0 ? "warning" : "success"}
+                />
+            </div>
+        </section>
+    );
+}
+
+/**
+ * Compact unit + project summary for booking overview.
+ *
+ * @param {object} props
+ * @param {object} props.order
+ * @param {object} [props.deal]
+ */
+export function BookingPropertyCard({ order }) {
     const project = order?.project;
     const unit = order?.unit;
-    const booking = deal?.booking || {};
-
-    const unitTitle = [unit?.name, unit?.code].filter(Boolean).join(" · ") || null;
-    const unitMeta = [
-        unit?.size != null
-            ? `${Number(unit.size)}${unit.area_type ? ` ${unit.area_type}` : ""}`.trim()
-            : null,
-        unit?.type,
-        booking.category && booking.category !== "standard" ? booking.category : null,
-    ]
-        .filter(Boolean)
-        .join(" · ");
-
-    const plotLine = [
-        booking.plot_or_file,
-        booking.dimensions,
-        booking.block,
-        booking.sector,
-        booking.phase,
-    ]
-        .filter(Boolean)
-        .join(" · ");
-
-    const lines = [
-        project?.title,
-        unitTitle,
-        unitMeta || null,
-        plotLine || null,
-        project?.location,
-    ].filter(Boolean);
 
     if (!project && !unit) {
         return (
-            <section className="text-sm text-muted-foreground">
-                No project linked
-            </section>
+            <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+                No unit or project linked
+            </div>
         );
     }
 
+    const unitName = unit?.name || "—";
+    const sizeLabel = unitSizeLabel(unit);
+    const statusLabel = UNIT_STATUS_LABELS[unit?.status] || unit?.status || null;
+    const features = Array.isArray(unit?.features)
+        ? unit.features.filter(Boolean)
+        : [];
+    const address = projectLocationLabel(project);
+    const hasPrice = unit?.price != null && Number(unit.price) > 0;
+
+    const facts = [
+        sizeLabel ? { label: "Size", value: sizeLabel } : null,
+        unit?.type ? { label: "Type", value: unit.type } : null,
+        unit?.block?.title ? { label: "Block", value: unit.block.title } : null,
+        unit?.sector ? { label: "Sector", value: unit.sector } : null,
+        unit?.quantity != null
+            ? { label: "Quantity", value: String(Number(unit.quantity)) }
+            : null,
+        hasPrice ? { label: "List price", value: formatMoney(unit.price) } : null,
+    ].filter(Boolean);
+
     return (
-        <section>
-            <div className="flex min-w-0 items-start gap-2.5">
-                {project?.thumbnail ? (
-                    <img
-                        src={project.thumbnail}
-                        alt=""
-                        className="size-10 shrink-0 rounded-md object-cover"
-                    />
-                ) : (
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                        <Icon name="community-line" className="text-lg" />
-                    </span>
-                )}
-                <div className="min-w-0 flex-1 space-y-0.5">
-                    <h3 className="text-sm font-semibold text-foreground">Project Details</h3>
-                    {lines.map((line) => (
-                        <p
-                            key={line}
+        <article className="rounded-xl border border-border/70 bg-card p-2.5 shadow-xs">
+            <div className="flex min-w-0 gap-3">
+                <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-muted sm:size-20">
+                    {project?.thumbnail ? (
+                        <img
+                            src={project.thumbnail}
+                            alt=""
+                            className="absolute inset-0 size-full object-cover"
+                        />
+                    ) : (
+                        <div className="flex size-full items-center justify-center text-muted-foreground">
+                            <Icon name="community-line" className="text-xl" />
+                        </div>
+                    )}
+                </div>
+
+                <div className="min-w-0 flex-1 space-y-2 py-0.5 pr-0.5">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                        <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">
+                            Unit {unitName}
+                        </h4>
+                        {statusLabel ? (
+                            <span
+                                className={cn(
+                                    "shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium",
+                                    unitStatusTone(unit?.status),
+                                )}
+                            >
+                                {statusLabel}
+                            </span>
+                        ) : null}
+                    </div>
+
+                    {facts.length > 0 ? (
+                        <div
                             className={cn(
-                                "truncate text-sm",
-                                line === project?.title
-                                    ? "font-medium text-foreground"
-                                    : "text-muted-foreground",
+                                "grid gap-x-3 gap-y-1.5",
+                                facts.length === 1
+                                    ? "grid-cols-1"
+                                    : "grid-cols-2 sm:grid-cols-3",
                             )}
                         >
-                            {line}
+                            {facts.map((fact) => (
+                                <div key={fact.label} className="min-w-0">
+                                    <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                                        {fact.label}
+                                    </p>
+                                    <p className="truncate text-xs font-medium text-foreground">
+                                        {fact.value}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+
+                    {unit?.description ? (
+                        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                            {unit.description}
                         </p>
-                    ))}
+                    ) : null}
+
+                    {features.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                            {features.map((feature) => (
+                                <span
+                                    key={String(feature)}
+                                    className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                                >
+                                    {String(feature)}
+                                </span>
+                            ))}
+                        </div>
+                    ) : null}
+
+                    <div className="space-y-0.5 border-t border-border/70 pt-2">
+                        {project?.title ? (
+                            project.code ? (
+                                <ProjectCardPopover
+                                    project={project}
+                                    className="-ml-1 max-w-full px-1 py-0 text-xs font-medium text-foreground"
+                                >
+                                    <span className="truncate">{project.title}</span>
+                                </ProjectCardPopover>
+                            ) : (
+                                <p className="truncate text-xs font-medium text-foreground">
+                                    {project.title}
+                                </p>
+                            )
+                        ) : (
+                            <p className="text-xs text-muted-foreground">No project linked</p>
+                        )}
+                        {address && address !== "—" ? (
+                            <p className="truncate text-xs text-muted-foreground">
+                                {address}
+                            </p>
+                        ) : null}
+                    </div>
                 </div>
             </div>
-        </section>
+        </article>
     );
 }

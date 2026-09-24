@@ -9,7 +9,7 @@ import { useMeta } from "@/hooks/use-meta"
  * backend on form submit via MetaData::remember().
  *
  * @param {object} props
- * @param {string} props.metaType CITY | COUNTRY | PROJECT | UNIT | AREA | LINK | DEPARTMENT
+ * @param {string} props.metaType CITY | COUNTRY | PROJECT | UNIT | AREA | LINK | DEPARTMENT | UNIT_CATEGORY
  * @param {string[]} [props.options] Optional override; defaults to useMeta(metaType)
  * @param {string | null | undefined} [props.value]
  * @param {(value: string) => void} [props.onValueChange]

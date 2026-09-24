@@ -7,6 +7,7 @@ use App\Http\Requests\Portal\UpdateConfigurationSettingsRequest;
 use App\Http\Requests\Portal\UpdateGeneralSettingsRequest;
 use App\Http\Requests\Portal\UpdateNotificationSettingsRequest;
 use App\Http\Requests\Portal\UpdatePipelineRulesRequest;
+use App\Models\BookingDocumentType;
 use App\Models\CampaignGoalType;
 use App\Models\CustomField;
 use App\Models\LeadActionType;
@@ -98,6 +99,7 @@ class SettingsController extends Controller
                 ->all(),
             'orderStages' => $this->orderStagesPayload(),
             'orderStatuses' => $this->orderStatusesPayload(),
+            'bookingDocumentTypes' => BookingDocumentType::catalog(),
             'paymentAccounts' => PaymentAccount::catalog(),
             'activityActionTypes' => LeadActionType::catalog(LeadActionType::KIND_ACTIVITY),
             'nextActionTypes' => LeadActionType::catalog(LeadActionType::KIND_NEXT_ACTION),
@@ -195,7 +197,7 @@ class SettingsController extends Controller
             ['id' => 'bank-cash', 'label' => 'Bank & Cash', 'icon' => 'bank-card-line'],
             ['id' => 'meta-data', 'label' => 'Meta Data', 'icon' => 'database-2-line'],
             ['id' => 'pipeline', 'label' => 'Lead Pipeline', 'icon' => 'flow-chart'],
-            ['id' => 'bookings', 'label' => 'Orders / Bookings', 'icon' => 'book-2-line'],
+            ['id' => 'bookings', 'label' => 'Bookings', 'icon' => 'book-2-line'],
             ['id' => 'campaigns', 'label' => 'Campaigns', 'icon' => 'megaphone-line'],
             ['id' => 'roles', 'label' => 'Roles', 'icon' => 'checkbox-multiple-line'],
             ['id' => 'integrations', 'label' => 'Integrations', 'icon' => 'plug-line'],
@@ -210,6 +212,9 @@ class SettingsController extends Controller
      */
     protected function metaTypesPayload(): array
     {
+        MetaData::ensurePaymentMethods();
+        MetaData::ensureUnitCategories();
+
         $grouped = MetaData::query()
             ->orderBy('value')
             ->get(['id', 'type', 'value'])

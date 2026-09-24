@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'order_id',
     'payment_installment_id',
+    'payment_account_id',
     'amount',
     'method',
     'reference',
@@ -73,12 +74,21 @@ class OrderPayment extends Model
         return $this->belongsTo(PaymentInstallment::class, 'payment_installment_id');
     }
 
+    /**
+     * @return BelongsTo<PaymentAccount, $this>
+     */
+    public function paymentAccount(): BelongsTo
+    {
+        return $this->belongsTo(PaymentAccount::class);
+    }
+
     protected function casts(): array
     {
         return [
             'id' => 'integer',
             'order_id' => 'integer',
             'payment_installment_id' => 'integer',
+            'payment_account_id' => 'integer',
             'amount' => 'decimal:2',
             'paid_on' => 'date',
             'receipt_asset_id' => 'integer',

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { KanbanLeadCard } from "./kanban-lead-card";
 import { LEAD_DND_TYPE } from "./utils";
 
-const CARD_ESTIMATE = 112;
+const CARD_ESTIMATE = 208;
 const CARD_GAP = 10;
 
 /**
@@ -121,7 +121,7 @@ export function KanbanColumn({
         <section
             ref={setColumnRef}
             className={cn(
-                "flex h-full w-[17.5rem] shrink-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-muted/30",
+                "flex h-full w-[20rem] shrink-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-muted/30",
                 isOver && canDrop && "border-primary/40 bg-primary/5",
                 isOver && !canDrop && "opacity-80",
             )}

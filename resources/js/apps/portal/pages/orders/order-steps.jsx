@@ -15,6 +15,7 @@ import { Icon } from "@/components/ui/icon";
 import { NumberInput } from "@/components/ui/number-input";
 import { SelectBox } from "@/components/ui/select";
 import { ComboBox } from "@/components/ui/combo-box";
+import { MetaComboBox } from "@/components/ui/meta-combo-box";
 import { formatMoney } from "@/lib/currency";
 import { paymentMethodOptions, post } from "./order-helpers";
 import { ScheduleTable, Stat } from "./order-step-shared";
@@ -22,10 +23,13 @@ import { ScheduleTable, Stat } from "./order-step-shared";
 export function BookingStep({ order, deal, errors }) {
     const bookingData = deal?.booking || {};
     const [form, setForm] = useState({
+        customer_legal_name:
+            bookingData.customer_legal_name || order?.contact?.display_name || "",
         identity_kind: bookingData.identity_kind || "cnic",
         identity_number: bookingData.identity_number || "",
         overseas: Boolean(bookingData.overseas),
         local_phone: bookingData.local_phone || "",
+        international_phone: bookingData.international_phone || "",
         nominee_name: bookingData.nominee_name || "",
         nominee_relation: bookingData.nominee_relation || "",
         nominee_cnic: bookingData.nominee_cnic || "",
@@ -55,6 +59,14 @@ export function BookingStep({ order, deal, errors }) {
                 The unit stays frozen. Capture the applicant, nominee, and the file details, then print the provisional allotment letter.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                    label="Legal name"
+                    required
+                    className="sm:col-span-2"
+                    value={form.customer_legal_name}
+                    error={errors.customer_legal_name}
+                    onChange={set("customer_legal_name")}
+                />
                 <SelectBox
                     label="Identity"
                     value={form.identity_kind}
@@ -65,8 +77,7 @@ export function BookingStep({ order, deal, errors }) {
                     onValueChange={(value) => setForm((current) => ({ ...current, identity_kind: value || "cnic" }))}
                 />
                 <Input label="Number" required value={form.identity_number} error={errors.identity_number} onChange={set("identity_number")} />
-                <Input label="Local phone" value={form.local_phone} error={errors.local_phone} onChange={set("local_phone")} />
-                <label className="flex items-end gap-2 pb-2 text-sm">
+                <label className="flex items-end gap-2 pb-2 text-sm sm:col-span-2">
                     <input
                         type="checkbox"
                         checked={form.overseas}
@@ -74,6 +85,19 @@ export function BookingStep({ order, deal, errors }) {
                     />
                     Overseas Pakistani
                 </label>
+                <Input
+                    label="Main phone number"
+                    required
+                    value={form.international_phone}
+                    error={errors.international_phone}
+                    onChange={set("international_phone")}
+                />
+                <Input
+                    label="Alternate phone number"
+                    value={form.local_phone}
+                    error={errors.local_phone}
+                    onChange={set("local_phone")}
+                />
                 <Input label="Nominee" required value={form.nominee_name} error={errors.nominee_name} onChange={set("nominee_name")} />
                 <Input label="Relation" required value={form.nominee_relation} error={errors.nominee_relation} onChange={set("nominee_relation")} />
                 <Input label="Nominee CNIC" required value={form.nominee_cnic} error={errors.nominee_cnic} onChange={set("nominee_cnic")} />
@@ -81,11 +105,16 @@ export function BookingStep({ order, deal, errors }) {
                 <Input label="Phase" value={form.phase} onChange={set("phase")} />
                 <Input label="Sector" value={form.sector} onChange={set("sector")} />
                 <Input label="Plot / file number" required value={form.plot_or_file} error={errors.plot_or_file} onChange={set("plot_or_file")} />
-                <SelectBox
+                <MetaComboBox
                     label="Category"
+                    metaType="UNIT_CATEGORY"
+                    required
                     value={form.category}
-                    options={(deal?.categories || []).map((item) => ({ value: item.id, label: item.label }))}
-                    onValueChange={(value) => setForm((current) => ({ ...current, category: value || "standard" }))}
+                    placeholder="Standard, Corner..."
+                    error={errors.category}
+                    onValueChange={(value) =>
+                        setForm((current) => ({ ...current, category: value || "" }))
+                    }
                 />
                 <Input label="Premium" type="number" min="0" step="0.01" value={form.premium} onChange={set("premium")} />
                 <Input label="Discount" type="number" min="0" step="0.01" value={form.discount} onChange={set("discount")} />

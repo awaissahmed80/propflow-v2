@@ -15,8 +15,12 @@ const SYSTEM_ACTIVITY_ICONS = {
     "Lead created": "user-add-line",
     "Stage changed": "git-commit-line",
     "Assignee changed": "user-shared-line",
+    "Lead shared": "share-line",
     "Lead archived": "archive-line",
     "Lead restored": "arrow-go-back-line",
+    "Deal won": "trophy-line",
+    "Deal lost": "close-circle-line",
+    "Deal booked": "bookmark-line",
 };
 
 const ACTIVITY_TYPE_COLORS = {
@@ -328,24 +332,26 @@ function ScheduledActivityCard({ entry, lead }) {
         <div className="flex justify-center px-1">
             <div
                 className={cn(
-                    "inline-flex max-w-full items-center gap-2 rounded-full px-3.5 py-1.5 text-center text-sm font-medium shadow-xs",
-                    tone === "upcoming" && "bg-primary text-primary-foreground",
+                    "inline-flex max-w-full items-center gap-2 rounded-full px-3.5 py-2.5 text-center text-base font-medium shadow-xs",
+                    tone === "upcoming" && "bg-primary/5 text-primary",
                     tone === "today" && "bg-orange-500 text-white",
                     tone === "overdue" && "bg-destructive text-destructive-foreground",
                 )}
                 title={formatDateTime(lead.due_date)}
             >
-                <Icon
-                    name={
-                        tone === "overdue"
-                            ? "error-warning-line"
-                            : tone === "today"
-                              ? "time-line"
-                              : "calendar-check-line"
-                    }
-                    className="size-4 shrink-0"
-                />
-                <span className="min-w-0 truncate">{message}</span>
+                <span className="inline-flex size-4 shrink-0 items-center justify-center">
+                    <Icon
+                        name={
+                            tone === "overdue"
+                                ? "error-warning-line"
+                                : tone === "today"
+                                  ? "time-line"
+                                  : "calendar-check-line"
+                        }
+                        className="text-base leading-none"
+                    />
+                </span>
+                <span className="min-w-0 truncate leading-none">{message}</span>
             </div>
         </div>
     );
@@ -375,34 +381,44 @@ function SystemLogRow({ entry, isLast = false }) {
         <li className="relative flex gap-3">
             {!isLast ? (
                 <span
-                    className="absolute top-9 -bottom-6 left-4.5 border-l border-dashed border-border/70"
+                    className="absolute top-9 -bottom-6 left-4.5 border-l border-dashed border-border/50"
                     aria-hidden
                 />
             ) : null}
 
             <span
-                className="relative z-1 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border/60"
+                className="relative z-1 flex size-9 shrink-0 items-center justify-center text-muted-foreground"
                 aria-hidden
             >
-                <Icon name={meta.icon || "history-line"} className="text-sm" />
+                <Icon
+                    name={meta.icon || "history-line"}
+                    className="text-sm leading-none opacity-70"
+                />
             </span>
 
-            <div className="min-w-0 flex-1 rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-2">
+            <div className="min-w-0 flex-1 self-center py-0.5">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <p className="text-sm font-medium text-muted-foreground">
                         {entry.action}
                     </p>
-                    <RelativeTimeTooltip value={entry.created_at} />
+                    <RelativeTimeTooltip
+                        value={entry.created_at}
+                        className="text-xs text-muted-foreground/70"
+                    />
                 </div>
 
                 {entry.comments ? (
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground/90">
+                    <p className="mt-0.5 text-sm leading-snug text-muted-foreground/80">
                         {entry.comments}
+                        {actorName ? (
+                            <span className="text-muted-foreground/60">
+                                {" "}
+                                · {actorName}
+                            </span>
+                        ) : null}
                     </p>
-                ) : null}
-
-                {actorName ? (
-                    <p className="mt-1 text-[11px] text-muted-foreground/80">
+                ) : actorName ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground/60">
                         {actorName}
                     </p>
                 ) : null}
@@ -434,10 +450,13 @@ function UserActivityRow({ entry, actionTypes = [], isLast = false }) {
             </span>
 
             <div className="min-w-0 flex-1 pt-0.5">
-                <RelativeTimeTooltip value={entry.created_at} />
+                <RelativeTimeTooltip
+                    value={entry.created_at}
+                    className="text-sm text-muted-foreground"
+                />
 
                 <div className="flex flex-row items-center gap-2">
-                    <p className="mt-0.5 text-sm font-semibold text-foreground">
+                    <p className="mt-0.5 text-base font-semibold text-foreground">
                         {entry.action}
                     </p>
 
@@ -448,7 +467,7 @@ function UserActivityRow({ entry, actionTypes = [], isLast = false }) {
                             className="size-5 shrink-0"
                             textClass="text-[8px]"
                         />
-                        <span className="truncate text-xs text-muted-foreground">
+                        <span className="truncate text-sm text-muted-foreground">
                             {actorName}
                         </span>
                     </div>

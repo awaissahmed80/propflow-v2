@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, router } from "@inertiajs/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, router, usePage } from "@inertiajs/react";
 import { toast } from "sonner";
 import { cancel } from "@/actions/App/Http/Controllers/Portal/OrderController";
+import {
+    bookingFormPdf,
+    showBookingForm,
+} from "@/actions/App/Http/Controllers/Portal/DealController";
 import { FilePreview } from "@/components/file-preview";
 import { UserCard } from "@/components/ui/entity-card";
 import { Button } from "@/components/ui/button";
@@ -18,37 +22,52 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     Tooltip,
     TooltipContent,
-    TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { StageBadge } from "@/components/ui/stage-badge";
 import { formatMoney } from "@/lib/currency";
-import { formatDateTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
+import { bookingApi } from "@/portal/store/api";
+import { ContactCardPopover } from "../../components/contact-card";
 import { ActivityTimeline } from "./booking-activity-timeline";
-import { BookingAssigneeMenu } from "./booking-assignment-menus";
 import {
-    BuyerBlock,
-    ProjectDetailsCard,
+    BookingAssigneeMenu,
+    BookingProjectField,
+} from "./booking-assignment-menus";
+import {
+    BookingPropertyCard,
+    DealOverviewSection,
     StatusControl,
 } from "./booking-detail-sections";
-import { InstallmentsTab } from "./booking-installments-tab";
 import { BookingDocumentsSection } from "./booking-documents-section";
+import { InstallmentsTab } from "./booking-installments-tab";
 import { NoteComposer } from "./booking-note-composer";
-import { PaymentsTab } from "./booking-payments-tab";
 import {
-    resolveBookingStages,
     stageTitle,
     stageColor,
     BookingStageDialog,
 } from "./booking-stage-dialogs";
 
+function phoneDigits(phone) {
+    return String(phone || "").replace(/\D+/g, "");
+}
+
+function whatsappUrl(phone) {
+    const digits = phoneDigits(phone);
+
+    return digits ? `https://wa.me/${digits}` : null;
+}
+
+function telUrl(phone) {
+    const digits = phoneDigits(phone);
+
+    return digits ? `tel:+${digits}` : null;
+}
+
 const PANEL_TABS = [
     ["overview", "Overview"],
     ["documents", "Documents"],
     ["activity", "Activity"],
-    ["plan", "Payment Plan"],
-    ["payments", "Payment History"],
 ];
 
 function pathFrom(url) {
@@ -63,6 +82,14 @@ function pathFrom(url) {
     }
 
     return raw.startsWith("/") ? raw : `/${raw}`;
+}
+
+function pdfPreviewFile(name, url) {
+    return {
+        name: name || "Document.pdf",
+        url,
+        type: "application/pdf",
+    };
 }
 
 function bookingAmountValue(order, deal) {
@@ -84,7 +111,7 @@ function bookingAmountValue(order, deal) {
 /**
  * Split booking actions into Ops/Accounts (formal) vs Sales liaison CTAs.
  */
-function splitActions({ stage, status, deal, cancelled, closed, liaisonActive }) {
+function splitActions({ stage, status, deal, cancelled, closed, liaisonActive, canVerifyToken }) {
     if (cancelled || closed) {
         return { primary: [], more: [], liaison: [] };
     }
@@ -94,12 +121,15 @@ function splitActions({ stage, status, deal, cancelled, closed, liaisonActive })
     const liaison = [];
     const tokenVerified = Boolean(deal?.booking?.verified_at);
 
-    if (stage === "token") {
+    if (stage === "token" && canVerifyToken) {
         primary.push({
             id: "verify",
             label: "Verify token",
             group: "ops",
         });
+    }
+
+    if (stage === "token") {
         liaison.push({
             id: "verification_queue",
             label: "Monitor verification queue",
@@ -163,19 +193,45 @@ export default function BookingDetailPanel({
     payload,
     orderStages = [],
     orderStatuses = [],
-    projects: _projects = [],
+    projects = [],
+    units = [],
+    paymentAccounts = [],
     assignees = [],
     activityTypes: _activityTypes = [],
+    bookingDocumentTypes = [],
     onClose,
+    onEditContact,
+    onOrdersRefresh,
 }) {
-    const order = payload?.order;
-    const deal = payload?.deal;
-    const stages = resolveBookingStages(orderStages);
+    const [localPayload, setLocalPayload] = useState(payload);
+    const [payloadCode, setPayloadCode] = useState(payload?.order?.code ?? null);
+    const [fetchPanel] = bookingApi.useLazyPanelQuery();
+    const [emailConfirmationLetter] = bookingApi.useEmailConfirmationLetterMutation();
+
+    if ((payload?.order?.code ?? null) !== payloadCode) {
+        setPayloadCode(payload?.order?.code ?? null);
+        setLocalPayload(payload);
+    }
+
+    const { auth } = usePage().props;
+    const permissions = Array.isArray(auth?.user?.permissions) ? auth.user.permissions : [];
+    const canVerifyToken =
+        Boolean(auth?.user?.is_owner) ||
+        permissions.includes("verify booking") ||
+        permissions.includes("manage booking");
+
+    const order = localPayload?.order;
+    const deal = localPayload?.deal;
     const [tab, setTab] = useState("overview");
+    const bodyRef = useRef(null);
     const [dialogAction, setDialogAction] = useState(null);
     const [printableOpen, setPrintableOpen] = useState(false);
     const [printableFiles, setPrintableFiles] = useState([]);
     const [printableIndex, setPrintableIndex] = useState(0);
+    const [printableDownloadUrl, setPrintableDownloadUrl] = useState(null);
+    const [printablePageAspect, setPrintablePageAspect] = useState(null);
+    const [printableEmailTo, setPrintableEmailTo] = useState(null);
+    const [printableEmailHandler, setPrintableEmailHandler] = useState(null);
 
     const stage = deal?.stage || order?.stage || "token";
     const status = deal?.status || order?.status || "hold";
@@ -189,33 +245,115 @@ export default function BookingDetailPanel({
     const tokenVerified = Boolean(deal?.booking?.verified_at);
     const canSetPlan = tokenVerified && !hasPlan && open;
     const stageLabel = stageTitle(stage, orderStages);
+    const stageTone = stageColor(stage, orderStages) || "var(--primary)";
+    const contactName = order?.contact?.display_name || "—";
+    const bookingNumber = order?.booking_number || deal?.booking?.booking_number || null;
+    const phone = order?.contact?.phone_number;
+    const wa = useMemo(() => whatsappUrl(phone), [phone]);
+    const call = useMemo(() => telUrl(phone), [phone]);
 
     const leadHref = order?.lead?.code ? `/leads?lead=${order.lead.code}` : null;
     const { primary, more, liaison } = useMemo(
-        () => splitActions({ stage, status, deal, cancelled, closed, liaisonActive }),
-        [stage, status, deal, cancelled, closed, liaisonActive],
+        () =>
+            splitActions({
+                stage,
+                status,
+                deal,
+                cancelled,
+                closed,
+                liaisonActive,
+                canVerifyToken,
+            }),
+        [stage, status, deal, cancelled, closed, liaisonActive, canVerifyToken],
     );
-    const primaryAction = primary[0] || null;
-
-    useEffect(() => {
-        if (tab === "plan" && !hasPlan) {
-            setTab("overview");
-        }
-    }, [tab, hasPlan]);
+    const hasActions = primary.length > 0 || more.length > 0 || liaison.length > 0;
 
     useEffect(() => {
         setTab("overview");
         setDialogAction(null);
     }, [order?.code]);
 
-    const openPrintable = (file) => {
+    useEffect(() => {
+        const viewport = bodyRef.current?.querySelector(
+            '[data-slot="scroll-area-viewport"]',
+        );
+
+        if (!viewport) {
+            return;
+        }
+
+        if (tab === "activity") {
+            return;
+        }
+
+        const frame = window.requestAnimationFrame(() => {
+            viewport.scrollTop = 0;
+        });
+
+        return () => window.cancelAnimationFrame(frame);
+    }, [tab, order?.code]);
+
+    const refreshPanel = async () => {
+        if (!order?.code) {
+            return;
+        }
+
+        const data = await fetchPanel(order.code).unwrap();
+        setLocalPayload(data);
+        setTab("documents");
+    };
+
+    const handlePanelUpdated = (nextPayload) => {
+        if (nextPayload?.order && nextPayload?.deal) {
+            setLocalPayload(nextPayload);
+        }
+
+        onOrdersRefresh?.();
+    };
+
+    const openPrintable = (file, options = {}) => {
         if (!file?.url) {
             return;
         }
 
         setPrintableFiles([file]);
         setPrintableIndex(0);
+        setPrintableDownloadUrl(options.downloadUrl || null);
+        setPrintablePageAspect(options.pageAspect || null);
+        setPrintableEmailTo(options.emailTo || null);
+        setPrintableEmailHandler(
+            typeof options.onEmail === "function" ? () => options.onEmail : null,
+        );
         setPrintableOpen(true);
+    };
+
+    const openBookingFormPreview = () => {
+        if (!order?.code) {
+            return;
+        }
+
+        const emailTo = String(order?.contact?.email_address || "").trim();
+
+        openPrintable(pdfPreviewFile("Booking Confirmation Letter.pdf", pathFrom(showBookingForm.url(order.code))), {
+            downloadUrl: pathFrom(bookingFormPdf.url(order.code)),
+            pageAspect: "a4",
+            emailTo: emailTo || null,
+            onEmail: emailTo
+                ? async () => {
+                      try {
+                          await emailConfirmationLetter(order.code).unwrap();
+                          toast.success(`Letter emailed to ${emailTo}`);
+                      } catch (error) {
+                          toast.error(
+                              error?.message ||
+                                  Object.values(error?.errors || {})[0] ||
+                                  "Unable to email the confirmation letter",
+                          );
+                          throw error;
+                      }
+                  }
+                : null,
+        });
     };
 
     const handleCancel = () => {
@@ -263,39 +401,168 @@ export default function BookingDetailPanel({
     const bookingAmount = bookingAmountValue(order, deal);
     const paid = Number(deal?.ledger?.total_paid) || 0;
     const remaining = Number(deal?.ledger?.total_outstanding) || 0;
-    const recentActivity = deal?.activities || [];
 
     return (
         <div className="flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden bg-card">
-            <div className="shrink-0 space-y-3 border-b border-border px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-xs font-medium tracking-wide text-muted-foreground">
-                        #{order.code}
-                    </p>
-                    <div className="flex shrink-0 items-center gap-1">
-                        <StageBadge
-                            label={stageLabel}
-                            color={stageColor(stage, orderStages) || undefined}
-                        />
-                        {more.length > 0 || liaison.length > 0 ? (
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                    <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: stageTone }}
+                        aria-hidden
+                    />
+                    {order.code ? (
+                        <span className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                            {order.code}
+                        </span>
+                    ) : null}
+                    {bookingNumber ? (
+                        <span className="truncate text-xs font-semibold tracking-wide text-foreground">
+                            {bookingNumber}
+                        </span>
+                    ) : null}
+                    <StageBadge label={stageLabel} color={stageTone} />
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                    <StatusControl
+                        order={order}
+                        status={status}
+                        orderStatuses={orderStatuses}
+                        locked={!open}
+                    />
+                    <IconButton
+                        type="button"
+                        size="sm"
+                        className="rounded-full"
+                        icon="close-line"
+                        aria-label="Close booking details"
+                        tooltip="Close"
+                        onClick={onClose}
+                    />
+                </div>
+            </div>
+
+            <div className="shrink-0 space-y-4 border-b border-border px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                        <h2 className="truncate text-2xl font-bold tracking-tight text-foreground">
+                            {contactName}
+                        </h2>
+                        {order.contact?.uuid ? (
+                            <ContactCardPopover
+                                contact={order.contact}
+                                onEdit={onEditContact}
+                                className="size-7 shrink-0 justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground data-popup-open:bg-muted data-popup-open:text-foreground"
+                            >
+                                <Icon name="information-line" className="text-base" />
+                            </ContactCardPopover>
+                        ) : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        {wa ? (
+                            <Tooltip>
+                                <TooltipTrigger
+                                    render={
+                                        <a
+                                            href={wa}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex size-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
+                                            aria-label="WhatsApp"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <Icon name="whatsapp-line" className="text-lg" />
+                                        </a>
+                                    }
+                                />
+                                <TooltipContent>WhatsApp</TooltipContent>
+                            </Tooltip>
+                        ) : null}
+                        {call ? (
+                            <Tooltip>
+                                <TooltipTrigger
+                                    render={
+                                        <a
+                                            href={call}
+                                            className="inline-flex size-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
+                                            aria-label="Call"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <Icon name="phone-line" className="text-lg" />
+                                        </a>
+                                    }
+                                />
+                                <TooltipContent>Call</TooltipContent>
+                            </Tooltip>
+                        ) : null}
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-start gap-x-10 gap-y-2">
+                    <BookingAssigneeMenu
+                        order={order}
+                        assignees={assignees}
+                        locked={!open}
+                    />
+                    <BookingProjectField order={order} />
+                </div>
+            </div>
+
+            <div className="shrink-0 border-b border-border px-5 py-2">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 flex-wrap gap-2.5">
+                        {PANEL_TABS.map(([id, label]) => {
+                            const active = tab === id;
+
+                            return (
+                                <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => setTab(id)}
+                                    className={cn(
+                                        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                                        active
+                                            ? "bg-muted text-foreground"
+                                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                                    )}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {hasActions ? (
+                        <div className="flex shrink-0 items-center gap-2">
+                            {primary[0] ? (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => setDialogAction(primary[0].id)}
+                                >
+                                    {primary[0].label}
+                                </Button>
+                            ) : null}
                             <DropdownMenu>
-                                <Tooltip content="More actions">
-                                    <DropdownMenuTrigger
-                                        render={
-                                            <IconButton
-                                                type="button"
-                                                size="sm"
-                                                variant="outline"
-                                                icon="more-2-fill"
-                                                aria-label="More actions"
-                                                tooltip={false}
-                                            />
-                                        }
-                                    />
-                                </Tooltip>
+                                <DropdownMenuTrigger
+                                    render={
+                                        <Button type="button" size="sm" variant="outline">
+                                            Actions
+                                            <Icon name="arrow-down-s-line" className="text-base" />
+                                        </Button>
+                                    }
+                                />
                                 <DropdownMenuContent align="end" className="min-w-52">
+                                    {primary.slice(1).map((action) => (
+                                        <DropdownMenuItem
+                                            key={action.id}
+                                            onClick={() => setDialogAction(action.id)}
+                                        >
+                                            {action.label}
+                                        </DropdownMenuItem>
+                                    ))}
                                     {liaison.length > 0 ? (
                                         <>
+                                            {primary.length > 1 ? <DropdownMenuSeparator /> : null}
                                             <p className="px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
                                                 Sales liaison
                                             </p>
@@ -307,250 +574,130 @@ export default function BookingDetailPanel({
                                                     {action.label}
                                                 </DropdownMenuItem>
                                             ))}
-                                            <DropdownMenuSeparator />
-                                            <p className="px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                                                Operations / Accounts
-                                            </p>
                                         </>
                                     ) : null}
-                                    {more.map((action, index) => {
-                                        const showSeparator =
-                                            action.destructive &&
-                                            index > 0 &&
-                                            !more[index - 1]?.destructive;
+                                    {more.length > 0 ? (
+                                        <>
+                                            {primary.length > 1 || liaison.length > 0 ? (
+                                                <DropdownMenuSeparator />
+                                            ) : null}
+                                            {liaison.length > 0 ? (
+                                                <p className="px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                                                    Operations / Accounts
+                                                </p>
+                                            ) : null}
+                                            {more.map((action, index) => {
+                                                const showSeparator =
+                                                    action.destructive &&
+                                                    index > 0 &&
+                                                    !more[index - 1]?.destructive;
 
-                                        return (
-                                            <span key={action.id} className="contents">
-                                                {showSeparator ? <DropdownMenuSeparator /> : null}
-                                                <DropdownMenuItem
-                                                    className={cn(
-                                                        action.destructive && "text-destructive",
-                                                    )}
-                                                    onClick={() => runMoreAction(action)}
-                                                >
-                                                    {action.label}
-                                                </DropdownMenuItem>
-                                            </span>
-                                        );
-                                    })}
+                                                return (
+                                                    <span key={action.id} className="contents">
+                                                        {showSeparator ? (
+                                                            <DropdownMenuSeparator />
+                                                        ) : null}
+                                                        <DropdownMenuItem
+                                                            className={cn(
+                                                                action.destructive &&
+                                                                    "text-destructive",
+                                                            )}
+                                                            onClick={() => runMoreAction(action)}
+                                                        >
+                                                            {action.label}
+                                                        </DropdownMenuItem>
+                                                    </span>
+                                                );
+                                            })}
+                                        </>
+                                    ) : null}
                                 </DropdownMenuContent>
                             </DropdownMenu>
-                        ) : null}
-                        <IconButton
-                            type="button"
-                            size="sm"
-                            className="rounded-full"
-                            icon="close-line"
-                            aria-label="Close booking details"
-                            tooltip="Close"
-                            variant="ghost"
-                            onClick={onClose}
-                        />
-                    </div>
-                </div>
-
-                {liaisonActive ? (
-                    <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-foreground">
-                        Sales remains the customer touchpoint until handover. Operations /
-                        Accounts own formal verification and ledgers.
-                    </div>
-                ) : null}
-
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                        <BuyerBlock
-                            contact={order.contact}
-                            deal={deal}
-                            stage={stage}
-                        />
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                        <StatusControl
-                            order={order}
-                            status={status}
-                            orderStatuses={orderStatuses}
-                            locked={!open}
-                        />
-                        {primaryAction ? (
-                            <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => setDialogAction(primaryAction.id)}
-                            >
-                                {primaryAction.label}
-                            </Button>
-                        ) : null}
-                    </div>
+                        </div>
+                    ) : null}
                 </div>
             </div>
 
-            <div className="flex shrink-0 flex-wrap gap-1 border-b border-border px-4 py-2">
-                <TooltipProvider delay={200}>
-                    {PANEL_TABS.map(([id, label]) => {
-                        const disabled = id === "plan" && !hasPlan;
-                        const active = tab === id;
-
-                        if (disabled) {
-                            return (
-                                <Tooltip key={id}>
-                                    <TooltipTrigger
-                                        render={
-                                            <span className="inline-flex">
-                                                <button
-                                                    type="button"
-                                                    disabled
-                                                    className="cursor-not-allowed rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground/50"
-                                                >
-                                                    {label}
-                                                </button>
-                                            </span>
-                                        }
-                                    />
-                                    <TooltipContent>
-                                        Set a payment plan to view the schedule
-                                    </TooltipContent>
-                                </Tooltip>
-                            );
-                        }
-
-                        return (
-                            <button
-                                key={id}
-                                type="button"
-                                onClick={() => setTab(id)}
-                                className={cn(
-                                    "rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
-                                    active
-                                        ? "bg-primary/10 text-primary"
-                                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                                )}
-                            >
-                                {label}
-                            </button>
-                        );
-                    })}
-                </TooltipProvider>
-            </div>
-
-            <ScrollArea className="min-h-0 flex-1">
-                <div className="divide-y divide-border px-4">
+            <ScrollArea ref={bodyRef} className="min-h-0 flex-1 bg-background">
+                <div className="space-y-6 px-5 py-4">
                     {tab === "overview" ? (
                         <>
-                            <section className="py-4">
-                                <h3 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-                                    Deal Overview
-                                </h3>
-                                <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                    <div className="min-w-0">
-                                        <dt className="text-sm text-muted-foreground">Total Price</dt>
-                                        <dd className="truncate text-sm font-semibold tabular-nums">
-                                            {formatMoney(totalPrice)}
-                                        </dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <dt className="text-sm text-muted-foreground">Booking Amount</dt>
-                                        <dd className="truncate text-sm font-semibold tabular-nums">
-                                            {bookingAmount != null ? formatMoney(bookingAmount) : "—"}
-                                        </dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <dt className="text-sm text-muted-foreground">Paid</dt>
-                                        <dd className="truncate text-sm font-semibold tabular-nums">
-                                            {formatMoney(paid)}
-                                        </dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <dt className="text-sm text-muted-foreground">Remaining</dt>
-                                        <dd className="truncate text-sm font-semibold tabular-nums">
-                                            {formatMoney(remaining)}
-                                        </dd>
-                                    </div>
-                                </dl>
-                            </section>
+                            <DealOverviewSection
+                                order={order}
+                                totalPrice={totalPrice}
+                                bookingAmount={bookingAmount}
+                                paid={paid}
+                                remaining={remaining}
+                            />
 
-                            <div className="grid gap-4 py-4 sm:grid-cols-2 sm:gap-6">
-                                <section>
-                                    <div className="mb-2 flex items-center justify-between gap-2">
-                                        <h3 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-                                            Payment Plan
-                                        </h3>
-                                        {hasPlan ? (
-                                            <button
-                                                type="button"
-                                                className="text-sm font-medium text-primary hover:underline"
-                                                onClick={() => setTab("plan")}
-                                            >
-                                                View schedule
-                                            </button>
-                                        ) : null}
+                            <BookingPropertyCard order={order} />
+
+                            <section>
+                                <h3 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                                    Payment Plan
+                                </h3>
+
+                                {hasPlan ? (
+                                    <div className="rounded-lg border border-border bg-card px-4 py-3">
+                                        <InstallmentsTab
+                                            order={order}
+                                            deal={deal}
+                                            liaisonActive={liaisonActive}
+                                            onLogRecovery={() => setTab("activity")}
+                                            onPreview={openPrintable}
+                                        />
                                     </div>
-                                    {hasPlan ? (
-                                        <div className="min-w-0">
-                                            <p className="truncate text-sm font-semibold text-foreground">
-                                                {deal.plan.title || "Payment plan"}
+                                ) : (
+                                    <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-5">
+                                        <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                                            <Icon name="calendar-schedule-line" className="text-xl" />
+                                        </div>
+                                        <div className="min-w-0 space-y-1">
+                                            <p className="text-sm font-semibold text-foreground">
+                                                No payment plan yet
                                             </p>
-                                            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                                                {deal.plan.summary ||
-                                                    `${deal.plan.frequency || "Monthly"} · ${deal.plan.installment_count || 0} installments`}
+                                            <p className="text-sm text-muted-foreground">
+                                                {open && !tokenVerified
+                                                    ? "Verify the token before setting a payment plan."
+                                                    : canSetPlan
+                                                      ? "Set a plan to generate the installment schedule and track collections."
+                                                      : "No payment plan is set for this booking."}
                                             </p>
                                         </div>
-                                    ) : canSetPlan ? (
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="w-full"
-                                            onClick={() => setDialogAction("plan")}
-                                        >
-                                            Add payment plan
-                                        </Button>
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">
-                                            {open && !tokenVerified
-                                                ? "Verify the token before setting a payment plan."
-                                                : "No payment plan set."}
-                                        </p>
-                                    )}
-                                </section>
+                                        {canSetPlan ? (
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => setDialogAction("plan")}
+                                            >
+                                                Add payment plan
+                                            </Button>
+                                        ) : null}
+                                    </div>
+                                )}
+                            </section>
 
-                                <ProjectDetailsCard order={order} deal={deal} />
-                            </div>
-
-                            <section className="py-4">
+                            <section>
                                 <h3 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
                                     Team
                                 </h3>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <p className="text-sm font-medium text-muted-foreground">Sales</p>
-                                        <UserCard user={order.sold_by} label="Sold by" size="sm" />
-                                        <p className="text-sm text-muted-foreground">
-                                            Booked {formatDateTime(order.booked_at) || "—"}
-                                        </p>
-                                        {leadHref ? (
-                                            <Link
-                                                href={leadHref}
-                                                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                                            >
-                                                Open lead
-                                                <Icon name="arrow-right-s-line" className="text-sm" />
-                                            </Link>
-                                        ) : null}
-                                    </div>
-                                    <div className="space-y-2">
-                                        <p className="text-sm font-medium text-muted-foreground">
-                                            Assignee
-                                        </p>
-                                        <BookingAssigneeMenu order={order} assignees={assignees} />
-                                        <p className="text-xs text-muted-foreground">
-                                            Primary liaison for the buyer until handover.
-                                        </p>
-                                    </div>
+                                <div className="space-y-2">
+                                    <UserCard user={order.sold_by} label="Sold by" size="sm" />
+                                    {leadHref ? (
+                                        <Link
+                                            href={leadHref}
+                                            className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                                        >
+                                            Open lead
+                                            <Icon name="arrow-right-s-line" className="text-sm" />
+                                        </Link>
+                                    ) : null}
                                 </div>
                             </section>
 
                             {(deal?.transfers || []).length > 0 && (
-                                <section className="py-4">
+                                <section>
                                     <h3 className="mb-2 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
                                         Transfer history
                                     </h3>
@@ -572,47 +719,23 @@ export default function BookingDetailPanel({
                     ) : null}
 
                     {tab === "documents" ? (
-                        <div className="py-4">
-                            <BookingDocumentsSection
-                                order={order}
-                                deal={deal}
-                                liaisonActive={liaisonActive}
-                                onPreview={openPrintable}
-                            />
-                        </div>
+                        <BookingDocumentsSection
+                            order={order}
+                            deal={deal}
+                            requiredDocuments={bookingDocumentTypes}
+                            liaisonActive={liaisonActive}
+                            onPreview={openPrintable}
+                            onDocumentsApplied={refreshPanel}
+                            onOpenBookingForm={openBookingFormPreview}
+                        />
                     ) : null}
 
                     {tab === "activity" ? (
-                        <div className="py-4">
-                            <ActivityTimeline
-                                entries={deal?.activities || []}
-                                active={tab === "activity"}
-                                showHeader={false}
-                            />
-                        </div>
-                    ) : null}
-
-                    {tab === "plan" && hasPlan ? (
-                        <div className="py-4">
-                            <InstallmentsTab
-                                order={order}
-                                deal={deal}
-                                liaisonActive={liaisonActive}
-                                onLogRecovery={() => setTab("activity")}
-                                onPreview={openPrintable}
-                            />
-                        </div>
-                    ) : null}
-
-                    {tab === "payments" ? (
-                        <div className="py-4">
-                            <PaymentsTab
-                                order={order}
-                                deal={deal}
-                                canRecord={open}
-                                onPreview={openPrintable}
-                            />
-                        </div>
+                        <ActivityTimeline
+                            entries={deal?.activities || []}
+                            active={tab === "activity"}
+                            showHeader={false}
+                        />
                     ) : null}
                 </div>
             </ScrollArea>
@@ -626,10 +749,22 @@ export default function BookingDetailPanel({
 
             <FilePreview
                 open={printableOpen}
-                onOpenChange={setPrintableOpen}
+                onOpenChange={(next) => {
+                    setPrintableOpen(next);
+                    if (!next) {
+                        setPrintableDownloadUrl(null);
+                        setPrintablePageAspect(null);
+                        setPrintableEmailTo(null);
+                        setPrintableEmailHandler(null);
+                    }
+                }}
                 files={printableFiles}
                 index={printableIndex}
                 onIndexChange={setPrintableIndex}
+                downloadUrl={printableDownloadUrl}
+                pageAspect={printablePageAspect}
+                emailTo={printableEmailTo}
+                onEmail={printableEmailHandler || undefined}
             />
 
             <BookingStageDialog
@@ -642,6 +777,12 @@ export default function BookingDetailPanel({
                 action={dialogAction}
                 order={order}
                 deal={deal}
+                projects={projects}
+                units={units}
+                paymentAccounts={paymentAccounts}
+                bookingDocumentTypes={bookingDocumentTypes}
+                onPanelUpdated={handlePanelUpdated}
+                onPreview={openPrintable}
             />
         </div>
     );

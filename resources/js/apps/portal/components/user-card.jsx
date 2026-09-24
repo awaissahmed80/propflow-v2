@@ -320,7 +320,7 @@ export function UserCardPopover({ user, children, align = "start", className }) 
         align={align}
         side="top"
         sideOffset={8}
-        className="w-[22rem] gap-0 overflow-hidden p-0 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.28)] ring-1 ring-foreground/10 dark:shadow-[0_18px_50px_-12px_rgba(0,0,0,0.55)]"
+        className="w-88 gap-0 overflow-hidden p-0 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.28)] ring-1 ring-foreground/10 dark:shadow-[0_18px_50px_-12px_rgba(0,0,0,0.55)]"
       >
         {loading && !details ? (
           <UserCardSkeleton />

@@ -126,6 +126,126 @@ class LeadConversionTest extends TestCase
         Tenant::forgetCurrent();
     }
 
+    public function test_lead_can_be_marked_lost_with_a_reason_logged(): void
+    {
+        [$user, $tenant, $lead] = $this->bookableLead('tenant_close_lost');
+
+        $tenant->makeCurrent();
+        $lost = LeadStage::factory()->create([
+            'label' => 'closed_lost',
+            'title' => 'Closed Lost',
+            'priority' => 8,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/lose'), [
+            'reason' => 'Chose another developer',
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $lead->refresh();
+        $this->assertSame($lost->id, $lead->lead_stage_id);
+        $this->assertSame(0, Order::query()->count());
+        $this->assertTrue(
+            Task::query()
+                ->whereMorphedTo('taskable', $lead)
+                ->where('action', 'Deal lost')
+                ->where('comments', 'Chose another developer')
+                ->exists(),
+        );
+        Tenant::forgetCurrent();
+    }
+
+    public function test_lose_requires_a_reason(): void
+    {
+        [$user, $tenant, $lead] = $this->bookableLead('tenant_close_lost_validation');
+
+        $tenant->makeCurrent();
+        LeadStage::factory()->create([
+            'label' => 'closed_lost',
+            'title' => 'Closed Lost',
+            'priority' => 8,
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/lose'), [
+            'reason' => '',
+        ])->assertSessionHasErrors('reason');
+    }
+
+    public function test_lead_can_be_marked_won_without_creating_a_booking(): void
+    {
+        [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_close_won_only');
+        $wonId = $lead->getAttribute('won_stage_id');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/win'), [
+            'reason' => 'Verbal agreement — unit TBD',
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $lead->refresh();
+        $unit->refresh();
+        $this->assertSame($wonId, $lead->lead_stage_id);
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(Unit::STATUS_AVAILABLE, $unit->status);
+        $this->assertTrue(
+            Task::query()
+                ->whereMorphedTo('taskable', $lead)
+                ->where('action', 'Deal won')
+                ->where('comments', 'Verbal agreement — unit TBD')
+                ->exists(),
+        );
+        Tenant::forgetCurrent();
+    }
+
+    public function test_win_requires_a_reason(): void
+    {
+        [$user, $tenant, $lead] = $this->bookableLead('tenant_close_won_validation');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/win'), [
+            'reason' => '',
+        ])->assertSessionHasErrors('reason');
+    }
+
+    public function test_one_payment_convert_with_empty_token_creates_a_single_remainder(): void
+    {
+        [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_convert_one_payment');
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->post(Domain::portal('/leads/'.$lead->code.'/convert'), [
+            'unit_id' => $unit->id,
+            'booking_kind' => Order::KIND_TOKEN,
+            'agreed_price' => 100,
+            'token_amount' => null,
+            'payment_mode' => 'one_payment',
+            'installment_count' => null,
+            'first_due_on' => null,
+        ])->assertRedirect();
+
+        $tenant->makeCurrent();
+        $order = Order::query()->with('paymentPlan.installments')->first();
+        $this->assertNotNull($order);
+        $this->assertCount(1, $order->paymentPlan->installments);
+        $this->assertSame('Installment 1', $order->paymentPlan->installments[0]->label);
+        $this->assertSame('100.00', $order->paymentPlan->installments[0]->amount);
+        $this->assertSame(now()->toDateString(), $order->paymentPlan->installments[0]->due_on->toDateString());
+        Tenant::forgetCurrent();
+    }
+
     public function test_sold_unit_and_a_second_active_order_are_rejected(): void
     {
         [$user, $tenant, $lead, $unit] = $this->bookableLead('tenant_convert_reject');

@@ -22,8 +22,9 @@ class OrderService
      *     booking_kind: string,
      *     agreed_price: float|int|string,
      *     token_amount?: float|int|string|null,
-     *     installment_count: int,
-     *     first_due_on: string,
+     *     installment_count?: int|null,
+     *     first_due_on?: string|null,
+     *     payment_mode?: string|null,
      * }  $data
      */
     public function book(Lead $lead, array $data, ?int $actorId): Order
@@ -73,6 +74,11 @@ class OrderService
                 ]);
             }
 
+            $installmentCount = max(1, (int) ($data['installment_count'] ?? 1));
+            $firstDueOn = filled($data['first_due_on'] ?? null)
+                ? Carbon::parse($data['first_due_on'])->startOfDay()
+                : now()->startOfDay();
+
             $stageId = LeadStage::query()->where('label', 'closed_won')->value('id');
 
             if ($stageId === null) {
@@ -104,6 +110,8 @@ class OrderService
                 'booked_at' => now(),
             ]);
 
+            $order->ensureDocumentFolder();
+
             $plan = PaymentPlan::query()->create([
                 'order_id' => $order->id,
                 'agreed_price' => $agreed,
@@ -114,8 +122,8 @@ class OrderService
                 $kind,
                 $agreed,
                 $token,
-                (int) $data['installment_count'],
-                Carbon::parse($data['first_due_on'])->startOfDay(),
+                $installmentCount,
+                $firstDueOn,
             );
 
             $unitLabel = $unit->name ?: 'unit';
@@ -149,16 +157,16 @@ class OrderService
                 ]);
             }
 
-            if ($order->unit_id !== null) {
-                $unit = Unit::query()->whereKey($order->unit_id)->lockForUpdate()->first();
-                $unit?->releaseFromBooking();
-            }
-
             $order->forceFill([
                 'status' => Order::STATUS_CANCELLED,
                 'stage' => Order::STAGE_CLOSED,
                 'cancelled_at' => now(),
             ])->save();
+
+            if ($order->unit_id !== null) {
+                $unit = Unit::query()->whereKey($order->unit_id)->lockForUpdate()->first();
+                $unit?->syncStockStatus(forceAvailableWhenStocked: true);
+            }
 
             $lead = $order->lead;
 

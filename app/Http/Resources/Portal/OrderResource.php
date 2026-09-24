@@ -27,7 +27,11 @@ class OrderResource extends JsonResource
         return [
             'id' => $this->id,
             'code' => $this->code,
+            'booking_number' => $this->booking_number,
             'lead_id' => $this->lead_id,
+            'project_id' => $this->project_id,
+            'unit_id' => $this->unit_id,
+            'document_folder_id' => $this->document_folder_id,
             'booking_kind' => $this->booking_kind,
             'agreed_price' => $this->agreed_price !== null ? (float) $this->agreed_price : 0,
             'balance_due' => $this->resolveBalanceDue(),
@@ -40,6 +44,7 @@ class OrderResource extends JsonResource
             'unpaid_count' => $this->unpaid_count ?? null,
             'contact' => $contact ? [
                 'id' => $contact->id,
+                'uuid' => $contact->uuid,
                 'display_name' => trim(implode(' ', array_filter([
                     $contact->first_name,
                     $contact->last_name,
@@ -55,16 +60,25 @@ class OrderResource extends JsonResource
                 'title' => $this->project->title,
                 'code' => $this->project->code ?? null,
                 'location' => $this->project->location ?? null,
+                'city' => $this->project->city ?? null,
                 'thumbnail' => $this->project->getAttribute('thumbnail_url'),
             ] : null),
             'unit' => $this->whenLoaded('unit', fn () => $this->unit ? [
                 'id' => $this->unit->id,
-                'code' => $this->unit->code,
                 'name' => $this->unit->name,
+                'description' => $this->unit->description,
                 'status' => $this->unit->status,
                 'type' => $this->unit->type,
+                'sector' => $this->unit->sector,
+                'price' => $this->unit->price !== null ? (float) $this->unit->price : null,
                 'size' => $this->unit->size !== null ? (float) $this->unit->size : null,
                 'area_type' => $this->unit->area_type,
+                'quantity' => $this->unit->quantity,
+                'features' => $this->unit->features,
+                'block' => $this->unit->relationLoaded('block') && $this->unit->block ? [
+                    'id' => $this->unit->block->id,
+                    'title' => $this->unit->block->title,
+                ] : null,
             ] : null),
             'lead' => $lead ? [
                 'id' => $lead->id,
@@ -86,6 +100,7 @@ class OrderResource extends JsonResource
             ] : null,
             'assignee' => $assignee ? [
                 'id' => $assignee->id,
+                'code' => $assignee->getAttribute('code'),
                 'display_name' => $assignee->display_name
                     ?: trim($assignee->first_name.' '.$assignee->last_name),
                 'email_address' => $assignee->email_address ?? null,
@@ -122,7 +137,7 @@ class OrderResource extends JsonResource
     }
 
     /**
-     * @return array{id: int, display_name: string, email_address: ?string, title: ?string, avatar: mixed}|null
+     * @return array{id: int, code: ?string, display_name: string, email_address: ?string, title: ?string, avatar: mixed}|null
      */
     protected function resolveSoldBy(mixed $lead): ?array
     {
@@ -148,6 +163,7 @@ class OrderResource extends JsonResource
 
         return [
             'id' => $user->id,
+            'code' => $user->getAttribute('code'),
             'display_name' => $user->display_name
                 ?: trim($user->first_name.' '.$user->last_name),
             'email_address' => $user->email_address ?? null,

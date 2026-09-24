@@ -33,6 +33,8 @@ class MetaData extends Model
 
     public const TYPE_PAYMENT_METHOD = 'PAYMENT_METHOD';
 
+    public const TYPE_UNIT_CATEGORY = 'UNIT_CATEGORY';
+
     /**
      * @return list<string>
      */
@@ -47,6 +49,7 @@ class MetaData extends Model
             self::TYPE_LINK,
             self::TYPE_DEPARTMENT,
             self::TYPE_PAYMENT_METHOD,
+            self::TYPE_UNIT_CATEGORY,
         ];
     }
 
@@ -94,6 +97,38 @@ class MetaData extends Model
         foreach (static::defaultPaymentMethods() as $method) {
             static::remember(self::TYPE_PAYMENT_METHOD, $method);
         }
+    }
+
+    /**
+     * Default booking / inventory category labels.
+     *
+     * @return list<string>
+     */
+    public static function defaultUnitCategories(): array
+    {
+        return [
+            'Standard',
+            'Corner',
+            'Main Boulevard',
+            'Park Facing',
+        ];
+    }
+
+    public static function ensureUnitCategories(): void
+    {
+        foreach (static::defaultUnitCategories() as $category) {
+            static::remember(self::TYPE_UNIT_CATEGORY, $category);
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function unitCategoryOptions(): array
+    {
+        static::ensureUnitCategories();
+
+        return static::valuesFor(self::TYPE_UNIT_CATEGORY)->all();
     }
 
     public static function remember(string $type, string $value): static

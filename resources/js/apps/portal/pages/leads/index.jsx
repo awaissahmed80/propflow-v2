@@ -41,6 +41,12 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { formatDateTime, formatRelativeTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 import { HEAT_LABELS } from "@/lib/heat";
@@ -322,6 +328,8 @@ function Leads({
     const [contactFormOpen, setContactFormOpen] = useState(false);
     const [editingContact, setEditingContact] = useState(null);
     const [selectedLead, setSelectedLead] = useState(null);
+    const [detailTab, setDetailTab] = useState("tasks");
+    const [closePath, setClosePath] = useState(null);
     const [checkedIds, setCheckedIds] = useState([]);
     const [bulkBusy, setBulkBusy] = useState(false);
     const searchTimeout = useRef(null);
@@ -424,7 +432,8 @@ function Leads({
         });
     }, [openedLead, leads, board, leadsProp]);
 
-    const panelOpen = Boolean(selectedLead);
+    const panelOpen = Boolean(selectedLead) && layoutView !== "kanban";
+    const detailModalOpen = Boolean(selectedLead) && layoutView === "kanban";
     const compact = panelOpen;
 
     const currentPage = Number(pagination.current_page) || 1;
@@ -766,13 +775,29 @@ function Leads({
             errorMessage: "Could not update assignee",
         });
 
-    const handleBulkStage = (stageId) =>
+    const handleBulkStage = (stageId) => {
+        const stage = (formOptions.stages || []).find(
+            (item) => Number(item.id) === Number(stageId)
+        );
+
+        if (
+            stage?.label === "closed_won" ||
+            stage?.label === "closed_lost"
+        ) {
+            toast.error(
+                "Closing deals needs a note — open a lead and use the stage menu or Close Deal tab."
+            );
+
+            return;
+        }
+
         runBulkAction({
             action: "stage",
             lead_stage_id: stageId,
             successMessage: "Stage updated",
             errorMessage: "Could not update stage",
         });
+    };
 
     const handleSearchChange = (event) => {
         const value = event.target.value;
@@ -832,19 +857,23 @@ function Leads({
         setLeadFormOpen(true);
     };
 
-    const openLead = (lead) => {
+    const openLead = (lead, options = {}) => {
         if (!lead?.code) {
             return;
         }
 
         openLeadCode.current = lead.code;
         setSelectedLead(lead);
+        setDetailTab(options.tab || "tasks");
+        setClosePath(options.closePath || null);
         writeLeadHash(lead.code);
     };
 
     const clearSelection = () => {
         openLeadCode.current = null;
         setSelectedLead(null);
+        setDetailTab("tasks");
+        setClosePath(null);
         writeLeadHash(null);
     };
 
@@ -922,9 +951,6 @@ function Leads({
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">
                             Leads
                         </h1>
-                        <p className="text-xs text-muted-foreground">
-                            {isArchive ? "Archived Leads" : "Sales Pipelines"}
-                        </p>
                     </div>
 
                     <FilterInput
@@ -1359,7 +1385,7 @@ function Leads({
                                 panelOpen ? "translate-x-0" : "translate-x-full"
                             )}
                         >
-                            {selectedLead ? (
+                            {selectedLead && layoutView !== "kanban" ? (
                                 <LeadDetailPanel
                                     lead={selectedLead}
                                     stages={formOptions.stages || []}
@@ -1372,12 +1398,50 @@ function Leads({
                                     nextActionTypes={formOptions.next_actions || []}
                                     onClose={clearSelection}
                                     onEditContact={openEditContact}
+                                    initialTab={detailTab}
+                                    initialClosePath={closePath}
                                 />
                             ) : null}
                         </div>
                     </aside>
                 </div>
             </Layout.Content>
+
+            <Dialog
+                open={detailModalOpen}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        clearSelection();
+                    }
+                }}
+            >
+                <DialogContent
+                    showCloseButton={false}
+                    className="flex h-[min(92vh,52rem)] max-h-[92vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
+                >
+                    <DialogTitle className="sr-only">Lead details</DialogTitle>
+                    <DialogDescription className="sr-only">
+                        Review and update this lead.
+                    </DialogDescription>
+                    {selectedLead && layoutView === "kanban" ? (
+                        <LeadDetailPanel
+                            lead={selectedLead}
+                            stages={formOptions.stages || []}
+                            projects={formOptions.projects || []}
+                            units={formOptions.units || []}
+                            assignees={formOptions.assignees || []}
+                            sources={formOptions.sources || []}
+                            campaigns={formOptions.campaigns || []}
+                            activityTypes={formOptions.activity_types || []}
+                            nextActionTypes={formOptions.next_actions || []}
+                            onClose={clearSelection}
+                            onEditContact={openEditContact}
+                            initialTab={detailTab}
+                            initialClosePath={closePath}
+                        />
+                    ) : null}
+                </DialogContent>
+            </Dialog>
 
             <LeadForm
                 isOpen={leadFormOpen}

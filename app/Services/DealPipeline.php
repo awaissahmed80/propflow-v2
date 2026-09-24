@@ -3,12 +3,14 @@
 namespace App\Services;
 
 use App\Models\Asset;
+use App\Models\BookingDocumentType;
 use App\Models\Contact;
 use App\Models\Integration;
 use App\Models\MetaData;
 use App\Models\Order;
 use App\Models\OrderPayment;
 use App\Models\OrderTransfer;
+use App\Models\PaymentAccount;
 use App\Models\PaymentInstallment;
 use App\Models\PaymentPlan;
 use App\Models\PaymentPlanTemplate;
@@ -20,6 +22,7 @@ use App\Support\Integrations\WhatsApp\WhatsAppGraphClient;
 use App\Support\Notifications\WorkspaceNotifier;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -34,11 +37,14 @@ class DealPipeline
     ) {}
 
     /**
-     * Verify the token and advance into Booking & KYC.
+     * Verify the token payment (with proof), adjust customer/amounts, assign booking number,
+     * and advance into Booking & KYC.
+     *
+     * @param  array<string, mixed>  $data
      */
-    public function verify(Order $order, ?int $actorId): Order
+    public function verify(Order $order, array $data, ?UploadedFile $receipt, ?int $actorId): Order
     {
-        return DB::connection('tenant')->transaction(function () use ($order, $actorId): Order {
+        return DB::connection('tenant')->transaction(function () use ($order, $data, $receipt, $actorId): Order {
             $order = $this->lockOpen($order);
 
             if ($order->stage !== Order::STAGE_TOKEN && $order->booking_verified_at === null) {
@@ -51,19 +57,47 @@ class DealPipeline
                 return $order;
             }
 
+            if ($receipt === null) {
+                throw ValidationException::withMessages([
+                    'receipt' => 'Upload proof of the token payment.',
+                ]);
+            }
+
+            $this->applyVerifyContact($order, $data);
+            $this->applyVerifyInventory($order, $data);
+            $tokenInstallment = $this->applyVerifyAmounts($order, $data);
+            $payment = $this->recordTokenPayment($order, $tokenInstallment, $data, $receipt);
+
+            if (! filled($order->booking_number)) {
+                $order->forceFill([
+                    'booking_number' => $this->nextBookingNumber(),
+                ])->save();
+            }
+
+            $identityNumber = $data['identity_number'] ?? $data['cnic'] ?? null;
+            $identityKind = $data['identity_kind']
+                ?? (filled($identityNumber) ? 'cnic' : null);
+
             $order->forceFill([
+                'identity_kind' => filled($identityKind) ? $identityKind : $order->identity_kind,
+                'identity_number' => filled($identityNumber) ? $identityNumber : $order->identity_number,
                 'booking_verified_at' => $order->booking_verified_at ?? now(),
                 'stage' => Order::STAGE_BOOKING_KYC,
                 'status' => Order::STATUS_IN_PROGRESS,
             ])->save();
 
-            $this->orderActivity->log($order, 'Token verified', $order->contact?->display_name ?: 'Booking', $actorId);
+            $label = ($order->booking_number ?: $order->code).' · '.($order->contact?->display_name ?: 'Booking');
+            $receiptIds = $payment->receipt_asset_id !== null
+                ? [(int) $payment->receipt_asset_id]
+                : [];
+            $this->orderActivity->log($order, 'Token verified', $label, $actorId, $receiptIds);
+            $this->ensureTokenPaymentProofDocument($order);
 
             if ($order->lead) {
-                $this->activity->log($order->lead, 'Token verified', $order->contact?->display_name ?: 'Booking', $actorId);
+                $this->activity->log($order->lead, 'Token verified', $label, $actorId);
             }
 
-            return $order;
+            return $order->fresh(['paymentPlan.installments', 'payments', 'contact', 'documents.asset']) ?? $order;
         });
     }
 
@@ -74,6 +108,7 @@ class DealPipeline
     {
         return DB::connection('tenant')->transaction(function () use ($order, $data, $actorId): Order {
             $order = $this->lockOpen($order);
+            $order->loadMissing(['unit', 'project']);
 
             if ($order->booking_verified_at === null && $order->stage === Order::STAGE_TOKEN) {
                 throw ValidationException::withMessages([
@@ -81,18 +116,33 @@ class DealPipeline
                 ]);
             }
 
+            if (! $this->kycDocumentsAreReady($order)) {
+                $missing = $this->missingKycDocumentLabels($order);
+
+                throw ValidationException::withMessages([
+                    'documents' => $missing->isEmpty()
+                        ? 'Upload all required KYC documents before completing Booking & KYC.'
+                        : 'Upload required documents: '.$missing->implode(', ').'.',
+                ]);
+            }
+
             $order->forceFill([
+                'customer_legal_name' => $data['customer_legal_name'],
                 'identity_kind' => $data['identity_kind'],
                 'identity_number' => $data['identity_number'],
                 'overseas' => (bool) ($data['overseas'] ?? false),
                 'local_phone' => $data['local_phone'] ?? null,
+                'international_phone' => $data['international_phone'] ?? null,
                 'nominee_name' => $data['nominee_name'],
                 'nominee_relation' => $data['nominee_relation'],
+                'nominee_identity_kind' => $data['nominee_identity_kind'] ?? 'cnic',
                 'nominee_cnic' => $data['nominee_cnic'],
                 'nominee_phone' => $data['nominee_phone'] ?? null,
-                'phase' => $data['phase'] ?? null,
-                'sector' => $data['sector'] ?? $order->unit?->sector,
-                'plot_or_file' => $data['plot_or_file'],
+                'phase' => $data['phase'] ?? $order->phase ?? $order->project?->title,
+                'sector' => $data['sector'] ?? $order->sector ?? $order->unit?->sector,
+                'plot_or_file' => filled($data['plot_or_file'] ?? null)
+                    ? $data['plot_or_file']
+                    : ($order->plot_or_file ?: $order->unit?->name ?: $order->unit?->code),
                 'category' => $data['category'],
                 'premium' => $this->money($this->cents($data['premium'] ?? 0)),
                 'discount' => $this->money($this->cents($data['discount'] ?? 0)),
@@ -101,11 +151,18 @@ class DealPipeline
                 'status' => Order::STATUS_IN_PROGRESS,
             ])->save();
 
+            if (filled($data['category'] ?? null)) {
+                MetaData::remember(MetaData::TYPE_UNIT_CATEGORY, (string) $data['category']);
+            }
+
             $contact = $order->contact;
 
             if ($contact) {
                 $contact->forceFill([
                     'cnic' => $data['identity_kind'] === 'cnic' ? $data['identity_number'] : $contact->cnic,
+                    'phone_number' => filled($data['international_phone'] ?? null)
+                        ? $data['international_phone']
+                        : $contact->phone_number,
                     'phone_number_alt' => $data['local_phone'] ?? $contact->phone_number_alt,
                     'type' => Contact::TYPE_CLIENT,
                 ])->save();
@@ -119,16 +176,325 @@ class DealPipeline
                 $this->activity->log($order->lead, 'Booking & KYC completed', $order->contact?->display_name ?: 'Booking', $actorId);
             }
 
-            return $order->fresh() ?? $order;
+            $planPayload = $this->planPayloadFromKyc($data);
+
+            if ($planPayload !== null) {
+                $this->generatePlan($order->fresh(['paymentPlan.installments', 'payments']) ?? $order, $planPayload);
+            }
+
+            return $order->fresh(['paymentPlan.installments', 'payments', 'contact']) ?? $order;
         });
     }
 
     /**
-     * @deprecated Use verify() — kept for route compatibility.
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>|null
      */
-    public function enterBookingKyc(Order $order, ?int $actorId): Order
+    protected function planPayloadFromKyc(array $data): ?array
     {
-        return $this->verify($order, $actorId);
+        if (! filled($data['first_due_on'] ?? null)) {
+            return null;
+        }
+
+        $payload = [
+            'template_id' => $data['template_id'] ?? null,
+            'template' => $data['template'] ?? null,
+            'down_payment' => $data['down_payment'] ?? null,
+            'handover_percent' => $data['handover_percent'] ?? null,
+            'installment_count' => $data['installment_count'] ?? null,
+            'frequency' => $data['frequency'] ?? null,
+            'first_due_on' => $data['first_due_on'],
+            'late_fee_basis' => $data['late_fee_basis'] ?? null,
+            'late_fee_rate' => $data['late_fee_rate'] ?? null,
+        ];
+
+        $isCustom = ($payload['template'] ?? null) === PaymentSchedule::TEMPLATE_CUSTOM
+            || ($payload['template_id'] ?? null) === 'custom';
+
+        if ($isCustom) {
+            $payload['template'] = PaymentSchedule::TEMPLATE_CUSTOM;
+            $payload['template_id'] = 'custom';
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @deprecated Use verify() — kept for route compatibility.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function enterBookingKyc(Order $order, array $data, ?UploadedFile $receipt, ?int $actorId): Order
+    {
+        return $this->verify($order, $data, $receipt, $actorId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function applyVerifyContact(Order $order, array $data): void
+    {
+        $contact = $order->contact;
+
+        if ($contact === null) {
+            return;
+        }
+
+        $parts = preg_split('/\s+/', trim((string) ($data['contact_name'] ?? '')), 2) ?: [];
+
+        $identityNumber = $data['identity_number'] ?? $data['cnic'] ?? null;
+        $identityKind = $data['identity_kind'] ?? (filled($identityNumber) ? 'cnic' : null);
+
+        $contact->forceFill([
+            'first_name' => $parts[0] ?? $contact->first_name,
+            'last_name' => $parts[1] ?? null,
+            'phone_number' => $data['phone_number'] ?? $contact->phone_number,
+            'email_address' => $data['email_address'] ?? $contact->email_address,
+            'cnic' => ($identityKind === null || $identityKind === 'cnic') && filled($identityNumber)
+                ? $identityNumber
+                : ($data['cnic'] ?? $contact->cnic),
+        ])->save();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function applyVerifyInventory(Order $order, array $data): void
+    {
+        $unitId = (int) ($data['unit_id'] ?? 0);
+        $projectId = (int) ($data['project_id'] ?? 0);
+
+        if ($unitId <= 0) {
+            throw ValidationException::withMessages([
+                'unit_id' => 'Choose a unit for this booking.',
+            ]);
+        }
+
+        $unit = Unit::query()->whereKey($unitId)->lockForUpdate()->first();
+
+        if ($unit === null) {
+            throw ValidationException::withMessages([
+                'unit_id' => 'Choose a unit for this booking.',
+            ]);
+        }
+
+        if ($projectId > 0 && (int) $unit->project_id !== $projectId) {
+            throw ValidationException::withMessages([
+                'unit_id' => 'Choose a unit that belongs to the selected project.',
+            ]);
+        }
+
+        $currentUnitId = (int) $order->unit_id;
+
+        if ($unitId === $currentUnitId) {
+            if ((int) $order->project_id !== (int) $unit->project_id) {
+                $order->forceFill([
+                    'project_id' => $unit->project_id,
+                ])->save();
+            }
+
+            return;
+        }
+
+        if (! $unit->isBookable()) {
+            throw ValidationException::withMessages([
+                'unit_id' => 'Choose a unit that is available or on hold.',
+            ]);
+        }
+
+        $previous = $currentUnitId > 0
+            ? Unit::query()->whereKey($currentUnitId)->lockForUpdate()->first()
+            : null;
+
+        $order->forceFill([
+            'unit_id' => $unit->id,
+            'project_id' => $unit->project_id,
+        ])->save();
+
+        if ($order->lead) {
+            $order->lead->forceFill([
+                'unit_id' => $unit->id,
+                'project_id' => $unit->project_id,
+            ])->save();
+        }
+
+        if ($previous !== null) {
+            $previous->syncStockStatus(forceAvailableWhenStocked: true);
+        }
+
+        $unit->reserveForBooking(
+            $order->booking_kind === Order::KIND_RESERVE
+                ? Unit::STATUS_RESERVED
+                : Unit::STATUS_TOKEN,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function applyVerifyAmounts(Order $order, array $data): PaymentInstallment
+    {
+        $agreed = $this->money($this->cents($data['agreed_price'] ?? 0));
+        $tokenCents = $this->cents($data['token_amount'] ?? 0);
+
+        if ($tokenCents <= 0) {
+            throw ValidationException::withMessages([
+                'token_amount' => 'Enter a token amount greater than zero.',
+            ]);
+        }
+
+        if ($tokenCents > $this->cents($agreed)) {
+            throw ValidationException::withMessages([
+                'token_amount' => 'The token amount cannot be more than the agreed price.',
+            ]);
+        }
+
+        $order->forceFill([
+            'agreed_price' => $agreed,
+        ])->save();
+
+        $plan = $order->paymentPlan()->lockForUpdate()->first();
+
+        if ($plan === null) {
+            $plan = PaymentPlan::query()->create([
+                'order_id' => $order->id,
+                'agreed_price' => $agreed,
+            ]);
+        } else {
+            $plan->forceFill([
+                'agreed_price' => $agreed,
+            ])->save();
+        }
+
+        $tokenRow = $plan->installments()
+            ->where('kind', PaymentInstallment::KIND_TOKEN)
+            ->lockForUpdate()
+            ->first();
+
+        if ($tokenRow === null) {
+            $tokenRow = PaymentInstallment::query()->create([
+                'payment_plan_id' => $plan->id,
+                'sequence' => 1,
+                'kind' => PaymentInstallment::KIND_TOKEN,
+                'label' => 'Token',
+                'amount' => $this->money($tokenCents),
+                'due_on' => now()->toDateString(),
+                'status' => PaymentInstallment::STATUS_PENDING,
+            ]);
+        } else {
+            $tokenRow->forceFill([
+                'amount' => $this->money($tokenCents),
+            ])->save();
+        }
+
+        if ($plan->template === null) {
+            $this->rebalanceProvisionalInstallments($plan, $this->cents($agreed), $tokenCents);
+        }
+
+        return $tokenRow->fresh() ?? $tokenRow;
+    }
+
+    protected function rebalanceProvisionalInstallments(PaymentPlan $plan, int $agreedCents, int $tokenCents): void
+    {
+        $others = $plan->installments()
+            ->where('kind', '!=', PaymentInstallment::KIND_TOKEN)
+            ->orderBy('sequence')
+            ->lockForUpdate()
+            ->get();
+
+        $count = max(1, $others->count());
+        $firstDue = $others->first()?->due_on?->copy() ?? now()->startOfDay()->addMonth();
+
+        foreach ($others as $row) {
+            $row->delete();
+        }
+
+        $remainder = $agreedCents - $tokenCents;
+
+        if ($remainder <= 0) {
+            return;
+        }
+
+        $base = intdiv($remainder, $count);
+        $extra = $remainder % $count;
+        $sequence = 2;
+
+        for ($index = 0; $index < $count; $index++) {
+            $cents = $base + ($index === $count - 1 ? $extra : 0);
+
+            if ($cents <= 0) {
+                continue;
+            }
+
+            PaymentInstallment::query()->create([
+                'payment_plan_id' => $plan->id,
+                'sequence' => $sequence,
+                'kind' => PaymentInstallment::KIND_INSTALLMENT,
+                'label' => 'Installment '.($index + 1),
+                'amount' => $this->money($cents),
+                'due_on' => $firstDue->copy()->addMonths($index)->toDateString(),
+                'status' => PaymentInstallment::STATUS_PENDING,
+            ]);
+            $sequence++;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function recordTokenPayment(
+        Order $order,
+        PaymentInstallment $tokenInstallment,
+        array $data,
+        UploadedFile $receipt,
+    ): OrderPayment {
+        $amountCents = $this->cents($tokenInstallment->amount);
+
+        $payment = OrderPayment::query()->create([
+            'order_id' => $order->id,
+            'payment_installment_id' => $tokenInstallment->id,
+            'payment_account_id' => $data['payment_account_id'] ?? null,
+            'amount' => $this->money($amountCents),
+            'method' => $data['method'],
+            'reference' => $data['reference'] ?? null,
+            'paid_on' => $data['paid_on'],
+            'notes' => 'Token payment',
+        ]);
+
+        $asset = $this->assets->attach($payment, $receipt, AssetManager::LINKAGE_DOCUMENT, 'receipts');
+        $payment->forceFill(['receipt_asset_id' => $asset->asset_id])->save();
+
+        $tokenInstallment->forceFill([
+            'paid_amount' => $this->money($amountCents),
+            'status' => PaymentInstallment::STATUS_PAID,
+            'paid_at' => now(),
+        ])->save();
+
+        if (filled($data['method'] ?? null) && ($data['method'] ?? '') !== OrderPayment::METHOD_BOOKING) {
+            MetaData::remember(MetaData::TYPE_PAYMENT_METHOD, (string) $data['method']);
+        }
+
+        return $payment;
+    }
+
+    protected function nextBookingNumber(): string
+    {
+        $year = date('Y');
+        $prefix = 'BK-'.$year.'-';
+
+        $last = Order::query()
+            ->where('booking_number', 'like', $prefix.'%')
+            ->orderByDesc('booking_number')
+            ->lockForUpdate()
+            ->value('booking_number');
+
+        $sequence = 1;
+
+        if (is_string($last) && preg_match('/^BK-\d{4}-(\d+)$/', $last, $matches) === 1) {
+            $sequence = ((int) $matches[1]) + 1;
+        }
+
+        return $prefix.str_pad((string) $sequence, 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -344,11 +710,15 @@ class DealPipeline
             }
 
             $this->syncActiveStatus($order->fresh(['paymentPlan.installments', 'payments']) ?? $order);
+            $receiptIds = $payment->receipt_asset_id !== null
+                ? [(int) $payment->receipt_asset_id]
+                : [];
             $this->orderActivity->log(
                 $order->fresh() ?? $order,
                 'Payment recorded',
                 $this->money($amountCents).' via '.$data['method'],
                 null,
+                $receiptIds,
             );
 
             return $payment;
@@ -603,6 +973,8 @@ class DealPipeline
      */
     public function snapshot(Order $order): array
     {
+        $this->ensureTokenPaymentProofDocument($order);
+
         $order->loadMissing([
             'paymentPlan.installments',
             'payments',
@@ -614,6 +986,9 @@ class DealPipeline
             'activities.user',
             'activities.gallery.asset',
             'activities.documents.asset',
+            'lead.tasks.user',
+            'lead.tasks.gallery.asset',
+            'lead.tasks.documents.asset',
             'documents.asset',
         ]);
         $plan = $order->paymentPlan;
@@ -621,13 +996,45 @@ class DealPipeline
         $kycDocuments = $order->documents
             ->map(fn ($link): ?array => $link->asset ? [
                 'id' => $link->asset->id,
+                'link_id' => $link->id,
                 'name' => $link->asset->name,
                 'url' => $this->assets->url($link->asset),
                 'type' => $link->asset->type,
+                'label' => $link->label,
+                'is_secure' => (bool) $link->is_secure,
             ] : null)
             ->filter()
             ->values()
             ->all();
+
+        $requiredLabels = $this->requiredKycDocumentLabels();
+
+        $linkedLabels = collect($kycDocuments)
+            ->pluck('label')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $kycDocsReady = $requiredLabels->isEmpty()
+            || $requiredLabels->every(fn (string $label): bool => $linkedLabels->contains($label));
+
+        $tokenInstallment = $plan?->installments
+            ?->firstWhere('kind', PaymentInstallment::KIND_TOKEN);
+
+        $tokenPayment = $tokenInstallment
+            ? $order->payments->firstWhere('payment_installment_id', $tokenInstallment->id)
+            : null;
+
+        if ($tokenPayment === null) {
+            $tokenPayment = $order->payments->first(
+                fn (OrderPayment $payment): bool => str_contains(strtolower((string) $payment->notes), 'token'),
+            );
+        }
+
+        $paymentAccountsById = collect(PaymentAccount::catalog())->keyBy('id');
+        $tokenAccount = $tokenPayment?->payment_account_id
+            ? $paymentAccountsById->get($tokenPayment->payment_account_id)
+            : null;
 
         return [
             'stage' => $order->stage ?: Order::STAGE_TOKEN,
@@ -636,12 +1043,15 @@ class DealPipeline
             'balloting_enabled' => (bool) ($order->project?->balloting_enabled ?? false),
             'net_price' => (float) $this->money($this->netCents($order)),
             'booking' => [
+                'customer_legal_name' => $order->customer_legal_name ?: $order->contact?->display_name,
                 'identity_kind' => $order->identity_kind ?: 'cnic',
                 'identity_number' => $order->identity_number ?: $order->contact?->cnic,
                 'overseas' => (bool) $order->overseas,
-                'local_phone' => $order->local_phone ?: $order->contact?->phone_number,
+                'local_phone' => $order->local_phone ?: $order->contact?->phone_number_alt,
+                'international_phone' => $order->international_phone ?: $order->contact?->phone_number,
                 'nominee_name' => $order->nominee_name,
                 'nominee_relation' => $order->nominee_relation,
+                'nominee_identity_kind' => $order->nominee_identity_kind ?: 'cnic',
                 'nominee_cnic' => $order->nominee_cnic,
                 'nominee_phone' => $order->nominee_phone,
                 'phase' => $order->phase ?: $order->project?->title,
@@ -652,12 +1062,24 @@ class DealPipeline
                 'premium' => (float) $order->premium,
                 'discount' => (float) $order->discount,
                 'verified_at' => $order->booking_verified_at?->toIso8601String(),
+                'booking_number' => $order->booking_number,
+                'agreed_price' => (float) $order->agreed_price,
+                'token_amount' => (float) ($tokenInstallment?->amount ?? 0),
+                'token_payment' => $tokenPayment ? [
+                    'id' => $tokenPayment->id,
+                    'amount' => (float) $tokenPayment->amount,
+                    'method' => $tokenPayment->method,
+                    'reference' => $tokenPayment->reference,
+                    'paid_on' => $tokenPayment->paid_on?->toDateString(),
+                    'payment_account_id' => $tokenPayment->payment_account_id,
+                    'payment_account' => $this->paymentAccountLabel($tokenAccount),
+                ] : null,
                 'inventory_kind' => $order->inventory_kind,
                 'dimensions' => $order->dimensions,
                 'balloted_at' => $order->balloted_at?->toIso8601String(),
             ],
             'kyc_documents' => $kycDocuments,
-            'kyc_docs_ready' => $kycDocuments !== [],
+            'kyc_docs_ready' => $kycDocsReady,
             'plan' => $plan ? [
                 'template' => $plan->template,
                 'title' => $this->planTitle($plan->template),
@@ -670,12 +1092,13 @@ class DealPipeline
                 'late_fee_rate' => (float) $plan->late_fee_rate,
             ] : null,
             'templates' => $this->planTemplates($order),
-            'categories' => [
-                ['id' => 'standard', 'label' => 'Standard'],
-                ['id' => 'corner', 'label' => 'Corner'],
-                ['id' => 'main_boulevard', 'label' => 'Main Boulevard'],
-                ['id' => 'park_facing', 'label' => 'Park Facing'],
-            ],
+            'categories' => collect(MetaData::unitCategoryOptions())
+                ->map(fn (string $value): array => [
+                    'id' => $value,
+                    'label' => $value,
+                ])
+                ->values()
+                ->all(),
             'ledger' => $ledger,
             'installments' => $plan
                 ? $plan->installments->map(fn (PaymentInstallment $row): array => $this->installmentRow($row, $plan, $order))->values()->all()
@@ -683,9 +1106,16 @@ class DealPipeline
             'installment_totals' => $this->installmentTotals($order),
             'activities' => $this->orderActivity->timeline($order),
             'payment_methods' => OrderPayment::methodOptions(),
-            'payments' => $order->payments->map(function (OrderPayment $payment) use ($order): array {
+            'payment_accounts' => collect(PaymentAccount::catalog())
+                ->filter(fn (array $account): bool => (bool) ($account['is_enabled'] ?? false))
+                ->values()
+                ->all(),
+            'payments' => $order->payments->map(function (OrderPayment $payment) use ($order, $paymentAccountsById): array {
                 $asset = $payment->receipt_asset_id
                     ? Asset::query()->find($payment->receipt_asset_id)
+                    : null;
+                $account = $payment->payment_account_id
+                    ? $paymentAccountsById->get($payment->payment_account_id)
                     : null;
 
                 return [
@@ -695,6 +1125,8 @@ class DealPipeline
                     'reference' => $payment->reference,
                     'paid_on' => $payment->paid_on?->toDateString(),
                     'notes' => $payment->notes,
+                    'payment_account_id' => $payment->payment_account_id,
+                    'payment_account' => $this->paymentAccountLabel($account),
                     'receipt_url' => $this->assets->url($asset),
                     'voucher_url' => route('portal.orders.payments.voucher', [
                         'order' => $order->code,
@@ -912,6 +1344,144 @@ class DealPipeline
         }
 
         return $order;
+    }
+
+    /**
+     * Mandatory KYC document labels currently configured (does not seed defaults).
+     *
+     * @return Collection<int, string>
+     */
+    protected function requiredKycDocumentLabels(): Collection
+    {
+        return BookingDocumentType::query()
+            ->where('is_required', true)
+            ->orderBy('priority')
+            ->pluck('label')
+            ->filter()
+            ->values();
+    }
+
+    /**
+     * Labels linked on the order as KYC documents.
+     *
+     * @return Collection<int, string>
+     */
+    protected function linkedKycDocumentLabels(Order $order): Collection
+    {
+        $order->loadMissing('documents');
+
+        return $order->documents
+            ->pluck('label')
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * Ensure the token payment receipt is filed on the booking under Pay order / cheque copy.
+     */
+    public function ensureTokenPaymentProofDocument(Order $order): void
+    {
+        $order->loadMissing(['payments.installment', 'documents']);
+
+        $tokenPayment = $order->payments->first(
+            fn (OrderPayment $payment): bool => $payment->receipt_asset_id !== null
+                && $payment->installment?->kind === PaymentInstallment::KIND_TOKEN,
+        );
+
+        if ($tokenPayment === null) {
+            $tokenPayment = $order->payments->first(
+                fn (OrderPayment $payment): bool => $payment->receipt_asset_id !== null
+                    && str_contains(strtolower((string) $payment->notes), 'token'),
+            );
+        }
+
+        if ($tokenPayment === null || $tokenPayment->receipt_asset_id === null) {
+            return;
+        }
+
+        $assetId = (int) $tokenPayment->receipt_asset_id;
+        $asset = Asset::query()->find($assetId);
+
+        if ($asset === null) {
+            return;
+        }
+
+        $alreadyLinked = $order->documents->contains(
+            fn ($link): bool => (int) $link->asset_id === $assetId,
+        );
+
+        if (! $alreadyLinked) {
+            $existingPayOrderIds = $order->documents
+                ->filter(fn ($link): bool => $link->label === BookingDocumentType::LABEL_PAY_ORDER)
+                ->pluck('asset_id')
+                ->map(fn ($id): int => (int) $id)
+                ->values()
+                ->all();
+
+            $this->assets->syncLinks(
+                $order,
+                AssetManager::LINKAGE_DOCUMENT,
+                [...$existingPayOrderIds, $assetId],
+                BookingDocumentType::LABEL_PAY_ORDER,
+            );
+
+            $order->unsetRelation('documents');
+            $order->load('documents.asset');
+        }
+
+        $folder = $order->ensureDocumentFolder();
+        $this->assets->moveToFolder($asset, $folder);
+    }
+
+    protected function kycDocumentsAreReady(Order $order): bool
+    {
+        $required = $this->requiredKycDocumentLabels();
+
+        if ($required->isEmpty()) {
+            return true;
+        }
+
+        $linked = $this->linkedKycDocumentLabels($order);
+
+        return $required->every(fn (string $label): bool => $linked->contains($label));
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    protected function missingKycDocumentLabels(Order $order): Collection
+    {
+        $linked = $this->linkedKycDocumentLabels($order);
+        $titles = BookingDocumentType::query()
+            ->orderBy('priority')
+            ->get(['label', 'title'])
+            ->keyBy('label');
+
+        return $this->requiredKycDocumentLabels()
+            ->reject(fn (string $label): bool => $linked->contains($label))
+            ->map(fn (string $label): string => (string) ($titles->get($label)?->title ?: $label))
+            ->values();
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $account
+     */
+    protected function paymentAccountLabel(?array $account): ?string
+    {
+        if ($account === null || ! filled($account['name'] ?? null)) {
+            return null;
+        }
+
+        $typeLabel = ($account['type'] ?? null) === PaymentAccount::TYPE_CASH ? 'Cash' : 'Bank';
+        $details = collect([
+            $account['bank_name'] ?? null,
+            $account['account_number'] ?? null,
+        ])->filter()->implode(' · ');
+
+        return $details !== ''
+            ? $account['name'].' ('.$typeLabel.') · '.$details
+            : $account['name'].' ('.$typeLabel.')';
     }
 
     protected function lockOpen(Order $order): Order

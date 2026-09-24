@@ -24,6 +24,8 @@ class UnitController extends Controller
             MetaData::remember(MetaData::TYPE_AREA, $validated['area_type']);
         }
 
+        $quantity = (int) ($validated['quantity'] ?? 1);
+
         Unit::query()->create([
             'project_id' => $validated['project_id'],
             'project_block_id' => $validated['project_block_id'] ?? null,
@@ -34,7 +36,7 @@ class UnitController extends Controller
             'price' => $validated['price'] ?? 0,
             'size' => $validated['size'] ?? null,
             'area_type' => $validated['area_type'] ?? null,
-            'quantity' => $validated['quantity'] ?? 1,
+            'quantity' => $quantity,
             'status' => $validated['status'] ?? Unit::STATUS_AVAILABLE,
             'features' => $validated['features'] ?? null,
         ]);
@@ -55,6 +57,7 @@ class UnitController extends Controller
         }
 
         $unit->fill($validated)->save();
+        $unit->syncStockStatus(forceAvailableWhenStocked: true);
 
         return to_route('portal.inventory.index');
     }

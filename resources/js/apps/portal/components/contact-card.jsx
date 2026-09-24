@@ -358,10 +358,9 @@ export function ContactCardPopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className={cn(
-          "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none",
-          "transition-colors hover:bg-muted hover:text-foreground",
-          "focus-visible:ring-2 focus-visible:ring-ring/50",
-          "data-popup-open:bg-muted data-popup-open:text-foreground",
+          "inline-flex max-w-full items-center gap-2.5 rounded-md text-left text-sm outline-none",
+          "transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50",
+          "data-popup-open:bg-muted/50",
           className
         )}
         aria-label={ariaLabel}

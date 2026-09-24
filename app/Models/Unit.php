@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use InvalidArgumentException;
 
@@ -81,11 +82,35 @@ class Unit extends Model
     }
 
     /**
-     * Remaining sellable stock for this inventory row.
+     * Configured total capacity for this inventory row.
+     */
+    public function totalStock(): int
+    {
+        return max(0, (int) ($this->quantity ?? 1));
+    }
+
+    /**
+     * Open bookings currently occupying this inventory row.
+     */
+    public function bookedCount(): int
+    {
+        if (array_key_exists('booked_count', $this->attributes)) {
+            return max(0, (int) $this->attributes['booked_count']);
+        }
+
+        if (isset($this->booked_count)) {
+            return max(0, (int) $this->booked_count);
+        }
+
+        return (int) $this->orders()->activeOccupancy()->count();
+    }
+
+    /**
+     * Remaining sellable stock (quantity minus open bookings).
      */
     public function stock(): int
     {
-        return max(0, (int) ($this->quantity ?? 1));
+        return max(0, $this->totalStock() - $this->bookedCount());
     }
 
     public function isBookable(): bool
@@ -103,24 +128,18 @@ class Unit extends Model
             throw new InvalidArgumentException('Booking reservation status must be RESERVED or TOKEN.');
         }
 
-        if ($this->stock() <= 1) {
+        if ($this->totalStock() <= 1) {
             $this->forceFill(['status' => $status])->save();
         }
     }
 
     /**
-     * Deduct one unit of stock when a booking is sold/allocated.
-     * Marks the row sold when stock reaches zero.
+     * Sync availability after a booking is sold/allocated.
+     * Quantity stays fixed; remaining is derived from open bookings.
      */
     public function consumeForSale(int $count = 1): void
     {
-        $count = max(1, $count);
-        $remaining = max(0, $this->stock() - $count);
-
-        $this->forceFill([
-            'quantity' => $remaining,
-            'status' => $remaining === 0 ? self::STATUS_SOLD : self::STATUS_AVAILABLE,
-        ])->save();
+        $this->syncStockStatus();
     }
 
     /**
@@ -128,14 +147,36 @@ class Unit extends Model
      */
     public function releaseFromBooking(): void
     {
-        if (! in_array($this->status, [self::STATUS_RESERVED, self::STATUS_TOKEN], true)) {
+        if (! in_array($this->status, [self::STATUS_RESERVED, self::STATUS_TOKEN, self::STATUS_SOLD], true)) {
             return;
         }
 
-        $this->forceFill([
-            'status' => self::STATUS_AVAILABLE,
-            'quantity' => max(1, $this->stock()),
-        ])->save();
+        $this->syncStockStatus(forceAvailableWhenStocked: true);
+    }
+
+    /**
+     * Align unit status with remaining calculated stock.
+     */
+    public function syncStockStatus(bool $forceAvailableWhenStocked = false): void
+    {
+        if ($this->status === self::STATUS_INACTIVE) {
+            return;
+        }
+
+        $remaining = $this->stock();
+
+        if ($remaining === 0 && $this->totalStock() > 0) {
+            $this->forceFill(['status' => self::STATUS_SOLD])->save();
+
+            return;
+        }
+
+        if ($remaining > 0 && (
+            $forceAvailableWhenStocked
+            || in_array($this->status, [self::STATUS_SOLD, self::STATUS_RESERVED, self::STATUS_TOKEN], true)
+        )) {
+            $this->forceFill(['status' => self::STATUS_AVAILABLE])->save();
+        }
     }
 
     public static function boot(): void
@@ -171,5 +212,13 @@ class Unit extends Model
     public function block(): BelongsTo
     {
         return $this->belongsTo(ProjectBlock::class, 'project_block_id');
+    }
+
+    /**
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
     }
 }

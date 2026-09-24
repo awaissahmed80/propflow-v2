@@ -5,6 +5,8 @@ namespace Tests\Feature\Portal;
 use App\Models\Lead;
 use App\Models\LeadStage;
 use App\Models\Order;
+use App\Models\PaymentAccount;
+use App\Models\PaymentInstallment;
 use App\Models\PaymentPlanTemplate;
 use App\Models\Project;
 use App\Models\Tenant;
@@ -13,6 +15,9 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Services\TenantContext;
 use App\Support\Domain;
+use Database\Seeders\TenantPermissionsSeeder;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 class BookingsIndexTest extends TestCase
@@ -65,6 +70,9 @@ class BookingsIndexTest extends TestCase
                 ->has('openedBooking.order.lead')
                 ->has('openedBooking.order.contact')
                 ->has('openedBooking.order.sold_by')
+                ->has('contactOptions.tags')
+                ->has('contactOptions.types')
+                ->has('paymentAccounts')
             );
     }
 
@@ -85,7 +93,15 @@ class BookingsIndexTest extends TestCase
         ])->assertRedirect();
 
         $tenant->makeCurrent();
-        $order = Order::query()->first();
+        $order = Order::query()->with(['contact', 'paymentPlan.installments'])->first();
+        $tokenAmount = $order->paymentPlan?->installments
+            ?->firstWhere('kind', PaymentInstallment::KIND_TOKEN)
+            ?->amount;
+        PaymentAccount::ensureDefaults();
+        $accountId = PaymentAccount::query()
+            ->where('is_enabled', true)
+            ->orderByDesc('is_default')
+            ->value('id');
         $template = PaymentPlanTemplate::factory()->create([
             'title' => 'Project monthly',
             'project_id' => $unit->project_id,
@@ -96,11 +112,27 @@ class BookingsIndexTest extends TestCase
         ]);
         Tenant::forgetCurrent();
 
-        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'))->assertRedirect();
+        $this->post(Domain::portal('/bookings/'.$order->code.'/enter-booking-kyc'), [
+            'contact_name' => $order->contact?->display_name ?: 'Buyer Test',
+            'phone_number' => $order->contact?->phone_number ?: '03001234567',
+            'email_address' => $order->contact?->email_address,
+            'cnic' => $order->contact?->cnic ?: '42101-1234567-1',
+            'project_id' => $order->project_id,
+            'unit_id' => $order->unit_id,
+            'payment_account_id' => $accountId,
+            'agreed_price' => (float) $order->agreed_price,
+            'token_amount' => (float) ($tokenAmount ?: 1000),
+            'method' => 'Cash',
+            'reference' => 'TOK-TEST',
+            'paid_on' => now()->toDateString(),
+            'receipt' => UploadedFile::fake()->create('token-proof.pdf', 120, 'application/pdf'),
+        ])->assertRedirect();
 
         $this->post(Domain::portal('/bookings/'.$order->code.'/booking'), [
+            'customer_legal_name' => 'Legal Buyer Name',
             'identity_kind' => 'cnic',
             'identity_number' => '42101-1234567-1',
+            'international_phone' => '03001234567',
             'nominee_name' => 'Sara',
             'nominee_relation' => 'Spouse',
             'nominee_cnic' => '42101-7654321-1',
@@ -188,6 +220,13 @@ class BookingsIndexTest extends TestCase
         ]);
 
         $tenant->makeCurrent();
+        Artisan::call('db:seed', [
+            '--class' => TenantPermissionsSeeder::class,
+            '--database' => 'tenant',
+            '--force' => true,
+        ]);
+        $user->assignRole('Admin');
+
         LeadStage::factory()->create([
             'label' => 'closed_won',
             'title' => 'Closed Won',

@@ -4,6 +4,7 @@ namespace Tests\Feature\Portal;
 
 use App\Models\Asset;
 use App\Models\AssetLink;
+use App\Models\BookingDocumentType;
 use App\Models\Campaign;
 use App\Models\Order;
 use App\Models\Project;
@@ -198,21 +199,136 @@ class AssetLinkSyncTest extends TestCase
             'assetable_type' => 'order',
             'assetable_id' => $order->id,
             'linkage' => AssetManager::LINKAGE_DOCUMENT,
+            'label' => 'buyer_id',
             'asset_ids' => [$doc->id],
         ])->assertOk();
 
         $tenant->makeCurrent();
+        BookingDocumentType::ensureDefaults();
         $this->assertDatabaseHas('asset_links', [
             'assetable_type' => Order::class,
             'assetable_id' => $order->id,
             'asset_id' => $doc->id,
             'linkage' => AssetManager::LINKAGE_DOCUMENT,
+            'label' => 'buyer_id',
         ], 'tenant');
 
         $snapshot = app(DealPipeline::class)->snapshot($order->fresh());
-        $this->assertTrue($snapshot['kyc_docs_ready']);
+        $this->assertFalse($snapshot['kyc_docs_ready']);
         $this->assertCount(1, $snapshot['kyc_documents']);
+        $this->assertSame('buyer_id', $snapshot['kyc_documents'][0]['label']);
         $this->assertTrue($snapshot['liaison_active']);
+        Tenant::forgetCurrent();
+    }
+
+    public function test_label_scoped_sync_does_not_remove_other_document_types(): void
+    {
+        [$actor, $tenant] = $this->createTenantUser('tenant_order_kyc_scoped');
+
+        $tenant->makeCurrent();
+        $order = Order::factory()->create([
+            'stage' => Order::STAGE_TOKEN,
+            'status' => Order::STATUS_HOLD,
+        ]);
+        $buyerId = Asset::factory()->document()->create(['name' => 'cnic.pdf']);
+        $nominee = Asset::factory()->document()->create(['name' => 'nominee.pdf']);
+        $replacement = Asset::factory()->document()->create(['name' => 'cnic-v2.pdf']);
+
+        AssetLink::query()->create([
+            'assetable_id' => $order->id,
+            'assetable_type' => Order::class,
+            'asset_id' => $buyerId->id,
+            'linkage' => AssetManager::LINKAGE_DOCUMENT,
+            'label' => 'buyer_id',
+        ]);
+        AssetLink::query()->create([
+            'assetable_id' => $order->id,
+            'assetable_type' => Order::class,
+            'asset_id' => $nominee->id,
+            'linkage' => AssetManager::LINKAGE_DOCUMENT,
+            'label' => 'nominee',
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($actor);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->postJson(Domain::portal('/documents/sync'), [
+            'assetable_type' => 'order',
+            'assetable_id' => $order->id,
+            'linkage' => AssetManager::LINKAGE_DOCUMENT,
+            'label' => 'buyer_id',
+            'asset_ids' => [$replacement->id],
+        ])->assertOk();
+
+        $tenant->makeCurrent();
+        $links = AssetLink::query()
+            ->where('assetable_type', Order::class)
+            ->where('assetable_id', $order->id)
+            ->where('linkage', AssetManager::LINKAGE_DOCUMENT)
+            ->get()
+            ->map(fn (AssetLink $link): array => [
+                'asset_id' => (int) $link->asset_id,
+                'label' => $link->label,
+            ])
+            ->sortBy('label')
+            ->values()
+            ->all();
+
+        $this->assertSame([
+            ['asset_id' => (int) $replacement->id, 'label' => 'buyer_id'],
+            ['asset_id' => (int) $nominee->id, 'label' => 'nominee'],
+        ], $links);
+        $this->assertNotSoftDeleted('assets', ['id' => $buyerId->id], 'tenant');
+        Tenant::forgetCurrent();
+    }
+
+    public function test_multiple_documents_can_be_synced_for_the_same_label(): void
+    {
+        [$actor, $tenant] = $this->createTenantUser('tenant_order_kyc_multi');
+
+        $tenant->makeCurrent();
+        $order = Order::factory()->create([
+            'stage' => Order::STAGE_TOKEN,
+            'status' => Order::STATUS_HOLD,
+        ]);
+        $front = Asset::factory()->document()->create(['name' => 'cnic-front.pdf']);
+        $back = Asset::factory()->document()->create(['name' => 'cnic-back.pdf']);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($actor);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->postJson(Domain::portal('/documents/sync'), [
+            'assetable_type' => 'order',
+            'assetable_id' => $order->id,
+            'linkage' => AssetManager::LINKAGE_DOCUMENT,
+            'label' => 'buyer_id',
+            'asset_ids' => [$front->id, $back->id],
+        ])->assertOk();
+
+        $tenant->makeCurrent();
+        $linkedIds = AssetLink::query()
+            ->where('assetable_type', Order::class)
+            ->where('assetable_id', $order->id)
+            ->where('linkage', AssetManager::LINKAGE_DOCUMENT)
+            ->where('label', 'buyer_id')
+            ->pluck('asset_id')
+            ->map(fn ($id): int => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertSame(
+            collect([(int) $front->id, (int) $back->id])->sort()->values()->all(),
+            $linkedIds,
+        );
+
+        $snapshot = app(DealPipeline::class)->snapshot($order->fresh());
+        $buyerDocs = collect($snapshot['kyc_documents'])
+            ->where('label', 'buyer_id')
+            ->values();
+        $this->assertCount(2, $buyerDocs);
         Tenant::forgetCurrent();
     }
 

@@ -49,6 +49,9 @@ class InventoryController extends Controller
 
         $paginator = Unit::query()
             ->with(['project:id,title,code', 'block:id,title,project_id'])
+            ->withCount([
+                'orders as booked_count' => fn ($builder) => $builder->activeOccupancy(),
+            ])
             ->when($query !== '', function ($builder) use ($query): void {
                 $builder->where(function ($inner) use ($query): void {
                     $inner->where('name', 'like', "%{$query}%")

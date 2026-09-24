@@ -8,6 +8,7 @@ const EMPTY_META = {
     AREA: [],
     LINK: [],
     DEPARTMENT: [],
+    UNIT_CATEGORY: [],
 };
 
 /**

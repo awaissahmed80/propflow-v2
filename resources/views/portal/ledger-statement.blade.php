@@ -2,30 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="color-scheme" content="light">
     <title>Installment plan {{ $order->code }}</title>
     <style>
+        :root { color-scheme: light only; }
+        html, body { background: #ffffff; }
         body { font-family: DejaVu Sans, sans-serif; color: #1a1a1a; font-size: 12px; margin: 28px; }
-        h1 { font-size: 20px; margin: 0 0 4px; }
-        p { line-height: 1.45; margin: 0 0 6px; }
+        h1 { font-size: 20px; margin: 0 0 4px; color: #1a1a1a; }
+        p { line-height: 1.45; margin: 0 0 6px; color: #1a1a1a; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { border-bottom: 1px solid #e5e5e5; padding: 8px 6px; text-align: left; }
+        th, td { border-bottom: 1px solid #e5e5e5; padding: 8px 6px; text-align: left; color: #1a1a1a; }
         th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #555; }
         td.num, th.num { text-align: right; }
         .muted { color: #666; }
         .header { border-bottom: 1px solid #ddd; padding-bottom: 14px; margin-bottom: 16px; }
         .totals td { font-weight: 700; border-bottom: none; padding-top: 12px; }
         @media print {
-            .no-print { display: none !important; }
+            html, body { background: #ffffff; }
         }
     </style>
 </head>
 <body>
-    @if (!empty($preview))
-        <p class="no-print muted" style="margin-bottom: 16px;">
-            <button onclick="window.print()">Print</button>
-        </p>
-    @endif
-
     <div class="header">
         <p class="muted">{{ $business_name }}</p>
         <h1>Installment plan</h1>

@@ -8,6 +8,7 @@ use App\Models\LeadStage;
 use App\Models\LeadWebhook;
 use App\Models\LeadWebhookDelivery;
 use App\Services\LeadIntakeService;
+use App\Services\LeadScoreCalculator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -121,7 +122,7 @@ class LeadWebhookReceiver
                 ? trim((string) $validated['source'])
                 : ($webhook->default_source ?: 'Webhook');
 
-            return Lead::query()->create([
+            return tap(Lead::query()->create([
                 'contact_id' => $contact->id,
                 'campaign_id' => $campaign?->id,
                 'project_id' => $campaign?->project_id,
@@ -138,7 +139,9 @@ class LeadWebhookReceiver
                         'campaign_code' => $validated['campaign_code'] ?? null,
                     ],
                 ],
-            ]);
+            ]), function (Lead $lead): void {
+                app(LeadScoreCalculator::class)->apply($lead->loadMissing(['stage', 'unit']));
+            });
         });
     }
 

@@ -6,20 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Portal\BulkOrderRequest;
 use App\Http\Requests\Portal\UpdateOrderRequest;
 use App\Http\Resources\Portal\OrderResource;
+use App\Models\BookingDocumentType;
+use App\Models\Contact;
 use App\Models\LeadActionType;
 use App\Models\Order;
 use App\Models\OrderStage;
 use App\Models\OrderStatus;
+use App\Models\PaymentAccount;
 use App\Models\PaymentInstallment;
 use App\Models\Project;
 use App\Models\Tenant;
 use App\Models\TenantUser;
+use App\Models\Unit;
 use App\Models\User;
 use App\Services\DealPipeline;
 use App\Services\OrderService;
 use App\Support\AssetManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -41,6 +46,11 @@ class OrderController extends Controller
     public function show(Order $order): RedirectResponse
     {
         return redirect('/bookings?booking='.$order->code);
+    }
+
+    public function panel(Order $order): JsonResponse
+    {
+        return response()->json($this->bookingPanelPayload($order));
     }
 
     public function update(UpdateOrderRequest $request, Order $order): RedirectResponse
@@ -142,10 +152,10 @@ class OrderController extends Controller
 
         $query = Order::query()
             ->with([
-                'contact:id,first_name,last_name,phone_number,email_address',
-                'project:id,title,code,location',
+                'contact:id,uuid,first_name,last_name,phone_number,email_address,cnic',
+                'project:id,title,code,location,city',
                 'project.thumbnail.asset',
-                'unit:id,code,name,status',
+                'unit:id,name,status,type,size,area_type,project_id',
                 'lead:id,code,tag,lead_stage_id,assigned_to,user_id',
                 'lead.stage:id,label,title,color',
                 'lead.assignee:id,display_name,first_name,last_name,email_address',
@@ -174,8 +184,18 @@ class OrderController extends Controller
             'orderStages' => $this->orderStagesPayload(),
             'orderStatuses' => OrderStatus::catalog(enabledOnly: false),
             'projects' => $this->projectOptions(),
+            'units' => $this->unitOptions(),
+            'paymentAccounts' => $this->paymentAccountOptions(),
             'assignees' => $this->assigneeOptions(),
             'activityTypes' => LeadActionType::catalog(LeadActionType::KIND_ACTIVITY, enabledOnly: true),
+            'contactOptions' => [
+                'tags' => Contact::tags(),
+                'types' => Contact::types(),
+                'income_levels' => Contact::incomeLevels(),
+                'affordability_levels' => Contact::affordabilityLevels(),
+                'capability_levels' => Contact::capabilityLevels(),
+            ],
+            'bookingDocumentTypes' => BookingDocumentType::catalog(),
         ]);
     }
 
@@ -284,26 +304,34 @@ class OrderController extends Controller
             return null;
         }
 
-        $order = Order::query()
-            ->with([
-                'contact:id,first_name,last_name,phone_number,email_address,type',
-                'project:id,title,code,location',
-                'project.thumbnail.asset',
-                'unit:id,code,name,status',
-                'lead:id,code,tag,lead_stage_id,assigned_to,user_id,budget,source',
-                'lead.stage:id,label,title,color',
-                'lead.project:id,title,code',
-                'lead.assignee:id,display_name,first_name,last_name,email_address',
-                'lead.creator:id,display_name,first_name,last_name,email_address',
-                'assignee:id,display_name,first_name,last_name,email_address',
-                'paymentPlan.installments',
-            ])
-            ->where('code', $code)
-            ->first();
+        $order = Order::query()->where('code', $code)->first();
 
         if ($order === null) {
             return null;
         }
+
+        return $this->bookingPanelPayload($order);
+    }
+
+    /**
+     * @return array{order: array<string, mixed>, deal: array<string, mixed>}
+     */
+    protected function bookingPanelPayload(Order $order): array
+    {
+        $order->load([
+            'contact:id,uuid,first_name,last_name,phone_number,email_address,cnic,type',
+            'project:id,title,code,location,city',
+            'project.thumbnail.asset',
+            'unit:id,name,description,status,type,sector,price,size,area_type,quantity,features,project_id,project_block_id',
+            'unit.block:id,title',
+            'lead:id,code,tag,lead_stage_id,assigned_to,user_id,budget,source',
+            'lead.stage:id,label,title,color',
+            'lead.project:id,title,code',
+            'lead.assignee:id,display_name,first_name,last_name,email_address',
+            'lead.creator:id,display_name,first_name,last_name,email_address',
+            'assignee:id,display_name,first_name,last_name,email_address',
+            'paymentPlan.installments',
+        ]);
 
         if ($order->project) {
             $order->project->setAttribute(
@@ -320,19 +348,31 @@ class OrderController extends Controller
 
         if ($userIds !== []) {
             $avatars = app(AssetManager::class)->urlsFor(User::class, $userIds, AssetManager::LINKAGE_AVATAR);
+            $tenant = Tenant::current();
+            $membershipCodes = $tenant
+                ? TenantUser::query()
+                    ->where('tenant_id', $tenant->id)
+                    ->whereIn('user_id', $userIds)
+                    ->pluck('code', 'user_id')
+                : collect();
 
             if ($order->assignee) {
                 $order->assignee->setAttribute('avatar', $avatars->get($order->assignee->id));
+                $order->assignee->setAttribute('code', $membershipCodes->get($order->assignee->id));
             }
 
             if ($order->lead?->assignee) {
                 $order->lead->assignee->setAttribute('avatar', $avatars->get($order->lead->assignee->id));
+                $order->lead->assignee->setAttribute('code', $membershipCodes->get($order->lead->assignee->id));
             }
 
             if ($order->lead?->creator) {
                 $order->lead->creator->setAttribute('avatar', $avatars->get($order->lead->creator->id));
+                $order->lead->creator->setAttribute('code', $membershipCodes->get($order->lead->creator->id));
             }
         }
+
+        $order->ensureDocumentFolder();
 
         return [
             'order' => (new OrderResource($order))->resolve(),
@@ -387,17 +427,28 @@ class OrderController extends Controller
 
         $avatars = $assets->urlsFor(User::class, $userIds, AssetManager::LINKAGE_AVATAR);
 
+        $tenant = Tenant::current();
+        $membershipCodes = $tenant
+            ? TenantUser::query()
+                ->where('tenant_id', $tenant->id)
+                ->whereIn('user_id', $userIds)
+                ->pluck('code', 'user_id')
+            : collect();
+
         foreach ($orders as $order) {
             if ($order->assignee) {
                 $order->assignee->setAttribute('avatar', $avatars->get($order->assignee->id));
+                $order->assignee->setAttribute('code', $membershipCodes->get($order->assignee->id));
             }
 
             if ($order->lead?->assignee) {
                 $order->lead->assignee->setAttribute('avatar', $avatars->get($order->lead->assignee->id));
+                $order->lead->assignee->setAttribute('code', $membershipCodes->get($order->lead->assignee->id));
             }
 
             if ($order->lead?->creator) {
                 $order->lead->creator->setAttribute('avatar', $avatars->get($order->lead->creator->id));
+                $order->lead->creator->setAttribute('code', $membershipCodes->get($order->lead->creator->id));
             }
         }
     }
@@ -416,6 +467,37 @@ class OrderController extends Controller
                 'title' => $project->title,
                 'thumbnail' => app(AssetManager::class)->url($project->thumbnail?->asset),
             ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array{id: int, project_id: int, name: ?string, price: ?float, status: ?string}>
+     */
+    protected function unitOptions(): array
+    {
+        return Unit::query()
+            ->orderBy('name')
+            ->orderBy('id')
+            ->get(['id', 'project_id', 'name', 'price', 'status'])
+            ->map(fn (Unit $unit): array => [
+                'id' => $unit->id,
+                'project_id' => $unit->project_id,
+                'name' => $unit->name,
+                'price' => $unit->price !== null ? (float) $unit->price : null,
+                'status' => $unit->status,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array{id: int, type: string, name: string, bank_name: ?string, account_title: ?string, account_number: ?string, iban: ?string, swift: ?string, branch: ?string, is_default: bool, is_enabled: bool}>
+     */
+    protected function paymentAccountOptions(): array
+    {
+        return collect(PaymentAccount::catalog())
+            ->filter(fn (array $account): bool => (bool) ($account['is_enabled'] ?? false))
             ->values()
             ->all();
     }

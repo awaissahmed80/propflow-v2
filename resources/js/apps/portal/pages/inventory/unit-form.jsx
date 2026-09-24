@@ -503,7 +503,7 @@ export default function UnitForm({
                                         </InputGroupAddon>
                                     </InputGroup>
                                     <p className="text-xs text-muted-foreground">
-                                        Use more than 1 for bulk inventory. Each sale deducts one.
+                                        Total capacity. Remaining is quantity minus open bookings.
                                     </p>
                                     {fieldError("quantity") ? (
                                         <p className="text-sm text-destructive">

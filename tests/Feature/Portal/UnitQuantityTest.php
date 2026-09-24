@@ -29,7 +29,7 @@ class UnitQuantityTest extends TestCase
         $this->migrateTenant();
     }
 
-    public function test_multi_quantity_unit_stays_available_when_booked_and_deducts_on_allocate(): void
+    public function test_multi_quantity_unit_stays_available_when_booked_and_keeps_configured_quantity(): void
     {
         [$user, $tenant, $lead, $unit] = $this->bookableLead(
             'tenant_unit_qty_multi',
@@ -53,13 +53,17 @@ class UnitQuantityTest extends TestCase
         $order = Order::query()->first();
         $this->assertSame(Unit::STATUS_AVAILABLE, $unit->status);
         $this->assertSame(3, (int) $unit->quantity);
+        $this->assertSame(1, $unit->bookedCount());
+        $this->assertSame(2, $unit->stock());
         Tenant::forgetCurrent();
 
         $this->post(Domain::portal('/bookings/'.$order->code.'/allocate'))->assertRedirect();
 
         $tenant->makeCurrent();
         $unit->refresh();
-        $this->assertSame(2, (int) $unit->quantity);
+        $this->assertSame(3, (int) $unit->quantity);
+        $this->assertSame(1, $unit->bookedCount());
+        $this->assertSame(2, $unit->stock());
         $this->assertSame(Unit::STATUS_AVAILABLE, $unit->status);
         Tenant::forgetCurrent();
     }
@@ -87,13 +91,15 @@ class UnitQuantityTest extends TestCase
         $order = Order::query()->first();
         $this->assertSame(Unit::STATUS_RESERVED, $unit->status);
         $this->assertSame(1, (int) $unit->quantity);
+        $this->assertSame(0, $unit->stock());
         Tenant::forgetCurrent();
 
         $this->post(Domain::portal('/bookings/'.$order->code.'/allocate'))->assertRedirect();
 
         $tenant->makeCurrent();
         $unit->refresh();
-        $this->assertSame(0, (int) $unit->quantity);
+        $this->assertSame(1, (int) $unit->quantity);
+        $this->assertSame(0, $unit->stock());
         $this->assertSame(Unit::STATUS_SOLD, $unit->status);
         Tenant::forgetCurrent();
     }
@@ -122,7 +128,48 @@ class UnitQuantityTest extends TestCase
         $tenant->makeCurrent();
         $unit->refresh();
         $this->assertSame(8, (int) $unit->quantity);
+        $this->assertSame(8, $unit->stock());
         Tenant::forgetCurrent();
+    }
+
+    public function test_inventory_payload_includes_remaining_from_bookings(): void
+    {
+        [$user, $tenant] = $this->createTenantUser('tenant_unit_qty_inventory');
+
+        $tenant->makeCurrent();
+        $project = Project::factory()->create();
+        $unit = Unit::factory()->create([
+            'project_id' => $project->id,
+            'name' => 'Bulk-A',
+            'quantity' => 5,
+            'status' => Unit::STATUS_AVAILABLE,
+        ]);
+        Order::factory()->create([
+            'project_id' => $project->id,
+            'unit_id' => $unit->id,
+            'status' => Order::STATUS_IN_PROGRESS,
+            'stage' => Order::STAGE_BOOKING_KYC,
+        ]);
+        Order::factory()->create([
+            'project_id' => $project->id,
+            'unit_id' => $unit->id,
+            'status' => Order::STATUS_CANCELLED,
+            'stage' => Order::STAGE_CLOSED,
+            'cancelled_at' => now(),
+        ]);
+        Tenant::forgetCurrent();
+
+        $this->actingAs($user);
+        session([TenantContext::SESSION_TENANT_ID => $tenant->id]);
+
+        $this->get(Domain::portal('/inventory'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('inventory/index', false)
+                ->where('units.0.code', $unit->code)
+                ->where('units.0.quantity', 5)
+                ->where('units.0.remaining', 4)
+            );
     }
 
     /**

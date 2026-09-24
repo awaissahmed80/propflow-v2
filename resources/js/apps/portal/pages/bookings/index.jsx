@@ -5,6 +5,9 @@ import { bulk as bulkOrders } from "@/actions/App/Http/Controllers/Portal/OrderC
 import PortalLayout from "../../layouts/portal.layout";
 import { Layout } from "../../components/layout";
 import { isPagePending, PageSkeleton } from "../../components/page-skeleton";
+import { ProjectCardPopover } from "../../components/project-card";
+import { UserCardPopover } from "../../components/user-card";
+import ContactForm from "../contacts/contact-form";
 import { Button } from "@/components/ui/button";
 import { CheckboxControl } from "@/components/ui/checkbox";
 import {
@@ -183,11 +186,6 @@ function BookingRow({
                         textClass="text-xs"
                     />
                     <div className="min-w-0">
-                        {order.code ? (
-                            <div className="truncate text-xs font-medium text-muted-foreground">
-                                {order.code}
-                            </div>
-                        ) : null}
                         <div className="truncate font-medium text-foreground">
                             {buyer}
                         </div>
@@ -204,9 +202,13 @@ function BookingRow({
                     {formatDateTime(order.booked_at) || "—"}
                 </td>
             ) : null}
-            <td className="px-4 py-3 align-middle">
+            <td
+                className="px-4 py-3 align-middle"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+            >
                 {soldBy ? (
-                    <div className="flex min-w-0 items-center gap-2.5">
+                    <UserCardPopover user={soldBy} className="gap-2.5">
                         <Avatar
                             name={soldBy.display_name}
                             src={soldBy.avatar || undefined}
@@ -219,15 +221,19 @@ function BookingRow({
                                 {soldBy.display_name}
                             </span>
                         ) : null}
-                    </div>
+                    </UserCardPopover>
                 ) : (
                     <span className="text-sm text-muted-foreground">—</span>
                 )}
             </td>
             {!compact ? (
-                <td className="px-4 py-3 align-middle">
+                <td
+                    className="px-4 py-3 align-middle"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                >
                     {order.project ? (
-                        <div className="flex min-w-0 items-center gap-2.5">
+                        <ProjectCardPopover project={order.project} className="gap-2.5">
                             {order.project.thumbnail ? (
                                 <img
                                     src={order.project.thumbnail}
@@ -244,12 +250,10 @@ function BookingRow({
                                     {order.project.title}
                                 </div>
                                 <div className="truncate text-xs text-muted-foreground">
-                                    {[order.unit?.name || order.unit?.code, order.project.location]
-                                        .filter(Boolean)
-                                        .join(" · ") || "—"}
+                                    {order.unit?.name || "—"}
                                 </div>
                             </div>
-                        </div>
+                        </ProjectCardPopover>
                     ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                     )}
@@ -285,8 +289,12 @@ export default function BookingsIndex({
     orderStages = [],
     orderStatuses = [],
     projects = [],
+    units = [],
+    paymentAccounts = [],
     assignees = [],
     activityTypes = [],
+    contactOptions = {},
+    bookingDocumentTypes = [],
 }) {
     const pending = isPagePending(ordersProp);
     const orders = ordersProp ?? [];
@@ -296,6 +304,8 @@ export default function BookingsIndex({
     );
     const [checkedIds, setCheckedIds] = useState([]);
     const [bulkBusy, setBulkBusy] = useState(false);
+    const [contactFormOpen, setContactFormOpen] = useState(false);
+    const [editingContact, setEditingContact] = useState(null);
     const searchTimeout = useRef(null);
     const openBookingCode = useRef(selectedCode || null);
     const requestedBookingCode = useRef(null);
@@ -673,6 +683,30 @@ export default function BookingsIndex({
         writeBookingHash(null);
     };
 
+    const openEditContact = (contact) => {
+        if (!contact?.uuid) {
+            return;
+        }
+
+        setEditingContact(contact);
+        setContactFormOpen(true);
+    };
+
+    const handleContactSaved = () => {
+        router.reload({
+            only: ["orders", "openedBooking"],
+            preserveScroll: true,
+        });
+    };
+
+    const refreshOrdersList = () => {
+        router.reload({
+            only: ["orders"],
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
     const panelOpen = Boolean(selectedCode && openedBooking?.order?.code === selectedCode);
     const compact = panelOpen;
 
@@ -702,9 +736,6 @@ export default function BookingsIndex({
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">
                             Bookings
                         </h1>
-                        <p className="text-xs text-muted-foreground">
-                            Contract files in motion
-                        </p>
                     </div>
 
                     <FilterInput
@@ -1004,15 +1035,35 @@ export default function BookingsIndex({
                                     orderStages={orderStages}
                                     orderStatuses={orderStatuses}
                                     projects={projects}
+                                    units={units}
+                                    paymentAccounts={paymentAccounts}
                                     assignees={assignees}
                                     activityTypes={activityTypes}
+                                    bookingDocumentTypes={bookingDocumentTypes}
                                     onClose={closePanel}
+                                    onEditContact={openEditContact}
+                                    onOrdersRefresh={refreshOrdersList}
                                 />
                             ) : null}
                         </div>
                     </aside>
                 </div>
             </Layout.Content>
+
+            <ContactForm
+                isOpen={contactFormOpen}
+                onClose={() => {
+                    setContactFormOpen(false);
+                    setEditingContact(null);
+                }}
+                data={editingContact}
+                tags={contactOptions.tags || []}
+                types={contactOptions.types || []}
+                incomeLevels={contactOptions.income_levels || []}
+                affordabilityLevels={contactOptions.affordability_levels || []}
+                capabilityLevels={contactOptions.capability_levels || []}
+                onSaved={handleContactSaved}
+            />
         </Layout>
     );
 }

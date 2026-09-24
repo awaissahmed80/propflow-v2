@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { router } from "@inertiajs/react";
 import { toast } from "sonner";
 import { update } from "@/actions/App/Http/Controllers/Portal/LeadController";
+import { IconButton } from "@/components/ui/icon-button";
+import { cn } from "@/lib/utils";
+import { closeOutcomeFromStageLabel } from "../lead-close-helpers";
 import { KanbanColumn } from "./kanban-column";
+
+const COLUMN_SCROLL_STEP = 336;
 
 /**
  * @param {object[]} board
@@ -100,7 +105,7 @@ function toBoardFilterParams(filters = {}) {
  *   board: object[],
  *   filters?: Record<string, unknown>,
  *   selectedLeadId?: number | null,
- *   onOpenLead: (lead: object) => void,
+ *   onOpenLead: (lead: object, options?: { tab?: string, closePath?: "won" | "lost" }) => void,
  * }} props
  */
 export function LeadsKanbanBoard({
@@ -112,10 +117,60 @@ export function LeadsKanbanBoard({
 }) {
     const [columns, setColumns] = useState(board);
     const filterParams = useMemo(() => toBoardFilterParams(filters), [filters]);
+    const scrollerRef = useRef(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
 
     useEffect(() => {
         setColumns(board);
     }, [board]);
+
+    const updateScrollState = useCallback(() => {
+        const node = scrollerRef.current;
+
+        if (!node) {
+            setCanScrollLeft(false);
+            setCanScrollRight(false);
+
+            return;
+        }
+
+        const maxScroll = node.scrollWidth - node.clientWidth;
+        setCanScrollLeft(node.scrollLeft > 4);
+        setCanScrollRight(maxScroll > 4 && node.scrollLeft < maxScroll - 4);
+    }, []);
+
+    useEffect(() => {
+        const node = scrollerRef.current;
+
+        if (!node) {
+            return undefined;
+        }
+
+        updateScrollState();
+        node.addEventListener("scroll", updateScrollState, { passive: true });
+
+        const observer = new ResizeObserver(updateScrollState);
+        observer.observe(node);
+
+        return () => {
+            node.removeEventListener("scroll", updateScrollState);
+            observer.disconnect();
+        };
+    }, [updateScrollState, columns.length]);
+
+    const scrollBoard = useCallback((direction) => {
+        const node = scrollerRef.current;
+
+        if (!node) {
+            return;
+        }
+
+        node.scrollBy({
+            left: direction * COLUMN_SCROLL_STEP,
+            behavior: "smooth",
+        });
+    }, []);
 
     const handleDropLead = useCallback(
         (leadId, stageId) => {
@@ -140,6 +195,17 @@ export function LeadsKanbanBoard({
                 return;
             }
 
+            const closeOutcome = closeOutcomeFromStageLabel(targetColumn.stage?.label);
+
+            if (closeOutcome) {
+                onOpenLead?.(lead, {
+                    tab: "close",
+                    closePath: closeOutcome,
+                });
+
+                return;
+            }
+
             const previous = columns;
             const next = moveLeadOnBoard(columns, leadId, stageId, targetColumn.stage);
 
@@ -157,7 +223,7 @@ export function LeadsKanbanBoard({
                 },
             );
         },
-        [columns],
+        [columns, onOpenLead],
     );
 
     const handleColumnPage = useCallback((stageId, page) => {
@@ -195,19 +261,59 @@ export function LeadsKanbanBoard({
 
     return (
         <DndProvider backend={HTML5Backend}>
-            <div className="scrollbar-kanban flex h-full min-h-0 gap-5 overflow-x-scroll overflow-y-hidden px-6 py-6">
-                {columns.map((column) => (
-                    <KanbanColumn
-                        key={column.stage.id}
-                        column={column}
-                        selectedLeadId={selectedLeadId}
-                        filterParams={filterParams}
-                        doNothingTitle={doNothingTitle}
-                        onOpenLead={onOpenLead}
-                        onDropLead={handleDropLead}
-                        onColumnPage={handleColumnPage}
+            <div className="relative h-full min-h-0">
+                <div
+                    className={cn(
+                        "pointer-events-none absolute inset-y-0 left-0 z-10 flex w-12 items-center justify-start bg-gradient-to-r from-background via-background/80 to-transparent pl-2 transition-opacity",
+                        canScrollLeft ? "opacity-100" : "opacity-0"
+                    )}
+                >
+                    <IconButton
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="pointer-events-auto size-8 rounded-full bg-background shadow-sm"
+                        disabled={!canScrollLeft}
+                        aria-label="Scroll board left"
+                        icon="arrow-left-s-line"
+                        onClick={() => scrollBoard(-1)}
                     />
-                ))}
+                </div>
+                <div
+                    className={cn(
+                        "pointer-events-none absolute inset-y-0 right-0 z-10 flex w-12 items-center justify-end bg-gradient-to-l from-background via-background/80 to-transparent pr-2 transition-opacity",
+                        canScrollRight ? "opacity-100" : "opacity-0"
+                    )}
+                >
+                    <IconButton
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="pointer-events-auto size-8 rounded-full bg-background shadow-sm"
+                        disabled={!canScrollRight}
+                        aria-label="Scroll board right"
+                        icon="arrow-right-s-line"
+                        onClick={() => scrollBoard(1)}
+                    />
+                </div>
+
+                <div
+                    ref={scrollerRef}
+                    className="scrollbar-kanban flex h-full min-h-0 gap-5 overflow-x-scroll overflow-y-hidden px-6 py-6"
+                >
+                    {columns.map((column) => (
+                        <KanbanColumn
+                            key={column.stage.id}
+                            column={column}
+                            selectedLeadId={selectedLeadId}
+                            filterParams={filterParams}
+                            doNothingTitle={doNothingTitle}
+                            onOpenLead={onOpenLead}
+                            onDropLead={handleDropLead}
+                            onColumnPage={handleColumnPage}
+                        />
+                    ))}
+                </div>
             </div>
         </DndProvider>
     );
